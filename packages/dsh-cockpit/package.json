@@ -1,0 +1,28 @@
+{
+  "name": "@romany-saad/dsh-cockpit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A durable task board for a DSH hub session: link fields, GitHub tracking-issue sync, and state readable outside the session.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/romany-saad/dsh-plugins.git",
+    "directory": "packages/dsh-cockpit"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness"
+  ],
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  }
+}
