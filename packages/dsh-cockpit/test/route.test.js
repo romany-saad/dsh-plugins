@@ -45,13 +45,16 @@ test('boards lists the keys in the folder', async () => {
 })
 
 test('view: a bound session gets its board, tree, flags and drift', async () => {
-  const { routes } = await home()
+  const { routes, dataDir } = await home()
   const v = await (await routes[ROUTES.view](get(ROUTES.view, '?sessionId=s1'))).json()
   assert.equal(v.key, 'bosla-883')
   assert.equal(v.board.revision, 8)
   assert.deepEqual(v.flags, [{ item: '2a', code: 'unknown_dependency', ref: '1' }])
   assert.match(v.tree, /^2 +now +dsh-cockpit board +0 of 1 done\n└─ 2a +waiting +Read DSH sessions +after 1 +! unknown dependency 1$/)
   assert.equal(v.board.drift.items[0].differs, true)
+  assert.equal(v.driftConfigured, false)
+  const on = createRouteHandlers(dataDir, { driftConfigured: true })
+  assert.equal((await (await on[ROUTES.view](get(ROUTES.view, '?sessionId=s1'))).json()).driftConfigured, true)
 })
 
 test('view: an unbound session gets the board list', async () => {

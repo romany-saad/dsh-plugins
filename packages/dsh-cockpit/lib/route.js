@@ -24,8 +24,11 @@ async function readText(file) {
   }
 }
 
-/** The three handlers for one data directory ($DSH_HOME/data/dsh-cockpit). */
-export function createRouteHandlers(dataDir) {
+/**
+ * The three handlers for one data directory ($DSH_HOME/data/dsh-cockpit).
+ * driftConfigured: whether the plugin has a drift command; the view says so.
+ */
+export function createRouteHandlers(dataDir, { driftConfigured = false } = {}) {
   const store = createStore({ dataDir })
   return {
     [ROUTES.boards]: async () => json({ boards: await listBoards(dataDir) }),
@@ -53,7 +56,7 @@ export function createRouteHandlers(dataDir) {
         return json({ key, error: error.message })
       }
       const { tree, flags } = boardTree(board)
-      return json({ key, board, tree, flags })
+      return json({ key, board, tree, flags, driftConfigured })
     },
   }
 }
@@ -62,8 +65,8 @@ export function createRouteHandlers(dataDir) {
  * Register the routes on a host connection (ctx.connection inside
  * ctx.inject(['connection'], …)); each disposer is tied to ctx.
  */
-export function registerRoutes(ctx, dataDir) {
-  for (const [path, handle] of Object.entries(createRouteHandlers(dataDir))) {
+export function registerRoutes(ctx, dataDir, options) {
+  for (const [path, handle] of Object.entries(createRouteHandlers(dataDir, options))) {
     ctx.effect(() => ctx.connection.fetch.register({
       path,
       methods: ['GET', 'HEAD'],
