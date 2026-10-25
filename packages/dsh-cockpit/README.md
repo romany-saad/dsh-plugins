@@ -8,7 +8,7 @@ A durable task board for a DeepSeek Harness hub session: a tree of steps, each l
 
 - `index.js`: the host plugin. Registers `board_open`, `board_read`, `board_add`, `board_update` in `ctx.inject(['tools'], …)`. Results are `{ ok: true, … }` or `{ ok: false, code, message }`.
 - `lib/store.js`: `$DSH_HOME/data/dsh-cockpit/boards/<encodeURIComponent(key)>.json` (format `dsh-cockpit.board`, version 1), written by temp file, fsync, rename and directory fsync; `sessions/<sessionId>.json` binds a session to its board. A file that does not parse, or has an unknown version, is never overwritten (`board_unreadable`).
-- `lib/tree.js`: the tree text and the flags `unknown_parent`, `unknown_dependency`, `parent_loop`.
+- `lib/tree.js`: the tree text, led by a Problems block, and the flags `unknown_parent`, `unknown_dependency`, `parent_loop`, `duplicate_issue`, `duplicate_pr` (rules in `lib/rows.js`). Bad data never moves a row: a looped or orphaned task is drawn under its nearest valid ancestor, else the board's one root task, else at the top after the real roots.
 - `lib/drift.js`: the optional `drift.command`, run only on `board_read({ checkDrift: true })`, with the board on stdin and `DSH_HOME`, `DSH_COCKPIT_KEY`, `DSH_COCKPIT_FILE` in its environment.
 - `reader.js` (`@romany-saad/dsh-cockpit/reader`): `listBoards(dir?)`, `readBoard(keyOrFile, dir?)`, `boardTree(board)`, with no DSH imports.
 

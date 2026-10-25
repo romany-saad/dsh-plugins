@@ -21,23 +21,58 @@ export function parentLoops(tasks) {
   return inLoop
 }
 
+/** How a task is named in flags and problems: its issue, else its item. */
+const refOf = (task) => text(task.issue) ?? String(task.item)
+
 /**
- * Tasks in tree order: [{ task, depth, guide, children }]. A task whose parent
- * is unknown, in a loop, or not drawn (only) is a root. guide is the tree
- * prefix ('├─ ', '│  └─ ', …); children are the drawn child tasks.
+ * Where each task is drawn: Map item -> parent item, or undefined at the top.
+ * A task with a known parent outside a loop sits under it. A task in a parent
+ * loop sits under its nearest ancestor outside the loop; with none, or with a
+ * parent not on the board, under the board's root task (the one root task
+ * with children, when there is exactly one), else at the top, after the real
+ * roots (misplaced lists those).
+ * @returns {{ parentOf: Map<string, string|undefined>, misplaced: Set<string> }}
+ */
+export function placement(tasks) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const inLoop = parentLoops(tasks)
+  const roots = tasks.filter((t) => t.parent === undefined && tasks.some((c) => c.parent === t.item))
+  const boardRoot = roots.length === 1 ? roots[0].item : undefined
+  const parentOf = new Map()
+  const misplaced = new Set()
+  for (const t of tasks) {
+    if (t.parent === undefined) { parentOf.set(t.item, undefined); continue }
+    if (byItem.has(t.parent) && !inLoop.has(t.item)) { parentOf.set(t.item, t.parent); continue }
+    let at
+    const seen = new Set([t.item])
+    for (let p = t.parent; p !== undefined && byItem.has(p) && !seen.has(p); p = byItem.get(p).parent) {
+      if (!inLoop.has(p)) { at = p; break }
+      seen.add(p)
+    }
+    at = at ?? boardRoot
+    parentOf.set(t.item, at)
+    if (at === undefined) misplaced.add(t.item)
+  }
+  return { parentOf, misplaced }
+}
+
+/**
+ * Tasks in tree order: [{ task, depth, guide, children }], placed by
+ * placement(); a task whose drawn parent is not drawn (only) is a root. guide
+ * is the tree prefix ('├─ ', '│  └─ ', …); children are the drawn child tasks.
  * @param {object[]} tasks
  * @param {{only?: Set<string>}} [options]
  */
 export function treeOrder(tasks, { only } = {}) {
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  const inLoop = parentLoops(tasks)
+  const { parentOf, misplaced } = placement(tasks)
   const drawn = tasks.filter((t) => !only || only.has(t.item))
-  const isRoot = (t) => t.parent === undefined || !byItem.has(t.parent) || inLoop.has(t.item) || (only && !only.has(t.parent))
+  const under = (t) => { const p = parentOf.get(t.item); return p !== undefined && (!only || only.has(p)) ? p : undefined }
   const children = new Map()
   for (const t of drawn) {
-    if (isRoot(t)) continue
-    if (!children.has(t.parent)) children.set(t.parent, [])
-    children.get(t.parent).push(t)
+    const p = under(t)
+    if (p === undefined) continue
+    if (!children.has(p)) children.set(p, [])
+    children.get(p).push(t)
   }
   const rows = []
   const visited = new Set()
@@ -51,8 +86,84 @@ export function treeOrder(tasks, { only } = {}) {
       walk(c, depth + 1, stem + (last ? '   ' : '│  '), stem + (last ? '└─ ' : '├─ '))
     })
   }
-  for (const t of drawn) if (isRoot(t)) walk(t, 0, '', '')
+  const tops = drawn.filter((t) => under(t) === undefined)
+  for (const t of tops) if (!misplaced.has(t.item)) walk(t, 0, '', '')
+  for (const t of tops) if (misplaced.has(t.item)) walk(t, 0, '', '')
   return rows
+}
+
+/** Issue and pr values two or more tasks share: [{ field, value, items }]. */
+export function duplicateRefs(tasks) {
+  const out = []
+  for (const field of ['issue', 'pr']) {
+    const by = new Map()
+    for (const t of tasks) {
+      const v = text(t[field])
+      if (!v) continue
+      if (!by.has(v)) by.set(v, [])
+      by.get(v).push(String(t.item))
+    }
+    for (const [value, items] of by) if (items.length > 1) out.push({ field, value, items })
+  }
+  return out
+}
+
+/**
+ * Flags, never refusals, in board order: unknown_parent, parent_loop (with
+ * path, the loop's refs from the task back to it), unknown_dependency, and
+ * duplicate_issue / duplicate_pr (with items).
+ * @returns {{item: string, code: string, ref: string, path?: string[], items?: string[]}[]}
+ */
+export function boardFlags(tasks) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const inLoop = parentLoops(tasks)
+  const dups = duplicateRefs(tasks)
+  const flags = []
+  for (const t of tasks) {
+    if (t.parent !== undefined && !byItem.has(t.parent)) flags.push({ item: t.item, code: 'unknown_parent', ref: t.parent })
+    if (inLoop.has(t.item)) {
+      const path = [refOf(t)]
+      for (let p = t.parent; ; p = byItem.get(p).parent) { path.push(refOf(byItem.get(p))); if (p === t.item) break }
+      flags.push({ item: t.item, code: 'parent_loop', ref: t.parent, path })
+    }
+    for (const d of Array.isArray(t.dependsOn) ? t.dependsOn : []) if (!byItem.has(d)) flags.push({ item: t.item, code: 'unknown_dependency', ref: d })
+    for (const d of dups) if (d.items.includes(String(t.item))) flags.push({ item: t.item, code: 'duplicate_' + d.field, ref: d.value, items: d.items })
+  }
+  return flags
+}
+
+/** A row's flag: "parent loop: #885 → #886 → #885", "blocked by 'x' (not on the board)", … */
+export function flagText(f) {
+  if (f.code === 'parent_loop') return 'parent loop: ' + (f.path ?? []).join(' → ')
+  if (f.code === 'unknown_parent') return 'parent ' + f.ref + ' not on the board'
+  if (f.code === 'unknown_dependency') return "blocked by '" + f.ref + "' (not on the board)"
+  if (f.code === 'duplicate_issue' || f.code === 'duplicate_pr') return 'duplicate ' + f.code.slice(10) + ' ' + f.ref + ' (items ' + f.items.join(', ') + ')'
+  return f.code.replace(/_/g, ' ') + ' ' + f.ref
+}
+
+/**
+ * The board's problems, one per loop, unknown reference and shared value:
+ * [{ item, items, text }]; item is the row to show, items every row involved.
+ * "Parent loop: #885 ↔ #886", "Unknown dependency: 'release notes' on #887".
+ */
+export function problems(tasks) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const out = []
+  const looped = new Set()
+  for (const f of boardFlags(tasks)) {
+    const on = refOf(byItem.get(f.item))
+    if (f.code === 'parent_loop') {
+      if (looped.has(f.item)) continue
+      const items = [f.item]
+      for (let p = f.ref; p !== f.item; p = byItem.get(p).parent) items.push(p)
+      items.forEach((i) => looped.add(i))
+      const loop = f.path.length === 3 ? f.path[0] + ' ↔ ' + f.path[1] : f.path.join(' → ')
+      out.push({ item: f.item, items, text: 'Parent loop: ' + loop })
+    } else if (f.code === 'unknown_parent') out.push({ item: f.item, items: [f.item], text: "Unknown parent: '" + f.ref + "' on " + on })
+    else if (f.code === 'unknown_dependency') out.push({ item: f.item, items: [f.item], text: "Unknown dependency: '" + f.ref + "' on " + on })
+    else if (f.items[0] === String(f.item)) out.push({ item: f.item, items: f.items, text: 'Duplicate ' + f.code.slice(10) + ': ' + f.ref + ' (items ' + f.items.join(', ') + ')' })
+  }
+  return out
 }
 
 /** waitingOn is "owner", ignoring case and surrounding space. */

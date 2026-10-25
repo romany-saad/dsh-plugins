@@ -25,23 +25,58 @@ function parentLoops(tasks) {
   return inLoop
 }
 
+/** How a task is named in flags and problems: its issue, else its item. */
+const refOf = (task) => text(task.issue) ?? String(task.item)
+
 /**
- * Tasks in tree order: [{ task, depth, guide, children }]. A task whose parent
- * is unknown, in a loop, or not drawn (only) is a root. guide is the tree
- * prefix ('├─ ', '│  └─ ', …); children are the drawn child tasks.
+ * Where each task is drawn: Map item -> parent item, or undefined at the top.
+ * A task with a known parent outside a loop sits under it. A task in a parent
+ * loop sits under its nearest ancestor outside the loop; with none, or with a
+ * parent not on the board, under the board's root task (the one root task
+ * with children, when there is exactly one), else at the top, after the real
+ * roots (misplaced lists those).
+ * @returns {{ parentOf: Map<string, string|undefined>, misplaced: Set<string> }}
+ */
+function placement(tasks) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const inLoop = parentLoops(tasks)
+  const roots = tasks.filter((t) => t.parent === undefined && tasks.some((c) => c.parent === t.item))
+  const boardRoot = roots.length === 1 ? roots[0].item : undefined
+  const parentOf = new Map()
+  const misplaced = new Set()
+  for (const t of tasks) {
+    if (t.parent === undefined) { parentOf.set(t.item, undefined); continue }
+    if (byItem.has(t.parent) && !inLoop.has(t.item)) { parentOf.set(t.item, t.parent); continue }
+    let at
+    const seen = new Set([t.item])
+    for (let p = t.parent; p !== undefined && byItem.has(p) && !seen.has(p); p = byItem.get(p).parent) {
+      if (!inLoop.has(p)) { at = p; break }
+      seen.add(p)
+    }
+    at = at ?? boardRoot
+    parentOf.set(t.item, at)
+    if (at === undefined) misplaced.add(t.item)
+  }
+  return { parentOf, misplaced }
+}
+
+/**
+ * Tasks in tree order: [{ task, depth, guide, children }], placed by
+ * placement(); a task whose drawn parent is not drawn (only) is a root. guide
+ * is the tree prefix ('├─ ', '│  └─ ', …); children are the drawn child tasks.
  * @param {object[]} tasks
  * @param {{only?: Set<string>}} [options]
  */
 function treeOrder(tasks, { only } = {}) {
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  const inLoop = parentLoops(tasks)
+  const { parentOf, misplaced } = placement(tasks)
   const drawn = tasks.filter((t) => !only || only.has(t.item))
-  const isRoot = (t) => t.parent === undefined || !byItem.has(t.parent) || inLoop.has(t.item) || (only && !only.has(t.parent))
+  const under = (t) => { const p = parentOf.get(t.item); return p !== undefined && (!only || only.has(p)) ? p : undefined }
   const children = new Map()
   for (const t of drawn) {
-    if (isRoot(t)) continue
-    if (!children.has(t.parent)) children.set(t.parent, [])
-    children.get(t.parent).push(t)
+    const p = under(t)
+    if (p === undefined) continue
+    if (!children.has(p)) children.set(p, [])
+    children.get(p).push(t)
   }
   const rows = []
   const visited = new Set()
@@ -55,8 +90,84 @@ function treeOrder(tasks, { only } = {}) {
       walk(c, depth + 1, stem + (last ? '   ' : '│  '), stem + (last ? '└─ ' : '├─ '))
     })
   }
-  for (const t of drawn) if (isRoot(t)) walk(t, 0, '', '')
+  const tops = drawn.filter((t) => under(t) === undefined)
+  for (const t of tops) if (!misplaced.has(t.item)) walk(t, 0, '', '')
+  for (const t of tops) if (misplaced.has(t.item)) walk(t, 0, '', '')
   return rows
+}
+
+/** Issue and pr values two or more tasks share: [{ field, value, items }]. */
+function duplicateRefs(tasks) {
+  const out = []
+  for (const field of ['issue', 'pr']) {
+    const by = new Map()
+    for (const t of tasks) {
+      const v = text(t[field])
+      if (!v) continue
+      if (!by.has(v)) by.set(v, [])
+      by.get(v).push(String(t.item))
+    }
+    for (const [value, items] of by) if (items.length > 1) out.push({ field, value, items })
+  }
+  return out
+}
+
+/**
+ * Flags, never refusals, in board order: unknown_parent, parent_loop (with
+ * path, the loop's refs from the task back to it), unknown_dependency, and
+ * duplicate_issue / duplicate_pr (with items).
+ * @returns {{item: string, code: string, ref: string, path?: string[], items?: string[]}[]}
+ */
+function boardFlags(tasks) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const inLoop = parentLoops(tasks)
+  const dups = duplicateRefs(tasks)
+  const flags = []
+  for (const t of tasks) {
+    if (t.parent !== undefined && !byItem.has(t.parent)) flags.push({ item: t.item, code: 'unknown_parent', ref: t.parent })
+    if (inLoop.has(t.item)) {
+      const path = [refOf(t)]
+      for (let p = t.parent; ; p = byItem.get(p).parent) { path.push(refOf(byItem.get(p))); if (p === t.item) break }
+      flags.push({ item: t.item, code: 'parent_loop', ref: t.parent, path })
+    }
+    for (const d of Array.isArray(t.dependsOn) ? t.dependsOn : []) if (!byItem.has(d)) flags.push({ item: t.item, code: 'unknown_dependency', ref: d })
+    for (const d of dups) if (d.items.includes(String(t.item))) flags.push({ item: t.item, code: 'duplicate_' + d.field, ref: d.value, items: d.items })
+  }
+  return flags
+}
+
+/** A row's flag: "parent loop: #885 → #886 → #885", "blocked by 'x' (not on the board)", … */
+function flagText(f) {
+  if (f.code === 'parent_loop') return 'parent loop: ' + (f.path ?? []).join(' → ')
+  if (f.code === 'unknown_parent') return 'parent ' + f.ref + ' not on the board'
+  if (f.code === 'unknown_dependency') return "blocked by '" + f.ref + "' (not on the board)"
+  if (f.code === 'duplicate_issue' || f.code === 'duplicate_pr') return 'duplicate ' + f.code.slice(10) + ' ' + f.ref + ' (items ' + f.items.join(', ') + ')'
+  return f.code.replace(/_/g, ' ') + ' ' + f.ref
+}
+
+/**
+ * The board's problems, one per loop, unknown reference and shared value:
+ * [{ item, items, text }]; item is the row to show, items every row involved.
+ * "Parent loop: #885 ↔ #886", "Unknown dependency: 'release notes' on #887".
+ */
+function problems(tasks) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const out = []
+  const looped = new Set()
+  for (const f of boardFlags(tasks)) {
+    const on = refOf(byItem.get(f.item))
+    if (f.code === 'parent_loop') {
+      if (looped.has(f.item)) continue
+      const items = [f.item]
+      for (let p = f.ref; p !== f.item; p = byItem.get(p).parent) items.push(p)
+      items.forEach((i) => looped.add(i))
+      const loop = f.path.length === 3 ? f.path[0] + ' ↔ ' + f.path[1] : f.path.join(' → ')
+      out.push({ item: f.item, items, text: 'Parent loop: ' + loop })
+    } else if (f.code === 'unknown_parent') out.push({ item: f.item, items: [f.item], text: "Unknown parent: '" + f.ref + "' on " + on })
+    else if (f.code === 'unknown_dependency') out.push({ item: f.item, items: [f.item], text: "Unknown dependency: '" + f.ref + "' on " + on })
+    else if (f.items[0] === String(f.item)) out.push({ item: f.item, items: f.items, text: 'Duplicate ' + f.code.slice(10) + ': ' + f.ref + ' (items ' + f.items.join(', ') + ')' })
+  }
+  return out
 }
 
 /** waitingOn is "owner", ignoring case and surrounding space. */
@@ -175,7 +286,7 @@ const progressText = (p) => p.done + ' of ' + p.total + ' done' + (p.needsYou ? 
 /** "blocked by #884 (waiting), #885 (now)". */
 const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
 
-return { parentLoops, treeOrder, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText }
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText }
 })(),
 "../../lib/present.js": (() => {
 // Tool-card titles (GenericCallView / GenericResultView of dsh-tools): one
@@ -268,7 +379,7 @@ var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? _
 // Externals come from the shell's module table (react, ui-primitives).
 const React = require('react')
 const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
-const { blockedText, boardRows, needsYou, progressText, taskUrl, titleText, treeOrder } = require('../../lib/rows.js')
+const { blockedText, boardFlags, boardRows, flagText, needsYou, problems, progressText, taskUrl, titleText, treeOrder } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { StateDot, Tag } = primitives
 const h = React.createElement
@@ -281,13 +392,16 @@ const VIEW = 'api/dsh-cockpit/view'
 const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update']
 
 const DOT = { now: 'ongoing', waiting: 'warning', done: 'done', next: 'idle' }
-const FLAG_TEXT = { unknown_parent: 'unknown parent', unknown_dependency: 'unknown dependency', parent_loop: 'parent loop' }
 const muted = { color: 'var(--dsw-alias-label-tertiary)' }
 const secondary = { color: 'var(--dsw-alias-label-secondary)' }
 const primary = { color: 'var(--dsw-alias-label-primary)' }
 const mono = { fontFamily: 'var(--dsw-font-family-mono, ui-monospace, monospace)' }
 const small = { fontSize: 'var(--dsh-content-font-size-secondary, 12px)' }
-const STATUS_WIDTH = '7.5em'
+const STATUS_WIDTH = '8.5em'
+// The status dot's slot, kept on every row so the status words line up.
+const DOT_SLOT = { display: 'inline-flex', justifyContent: 'center', width: '1em', flex: 'none' }
+// Tree guides: thin and faint, scenery rather than content.
+const guideStyle = { color: 'var(--dsw-alias-label-tertiary)', opacity: 0.45 }
 const button = { font: 'inherit', fontSize: 11, padding: '0 6px', cursor: 'pointer' }
 
 function useView(sessionId) {
@@ -330,11 +444,11 @@ function whenText(iso, now = Date.now()) {
 /** Show the drift line only when drift is configured or the file holds a drift result. */
 const showDrift = (view) => Boolean(view.driftConfigured || view.board?.drift)
 
-const flagLabel = (f) => (FLAG_TEXT[f.code] || f.code) + (f.code === 'parent_loop' ? '' : ' ' + f.ref)
-
 function OpenLink({ url }) {
   if (!url) return null
-  return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url, style: { ...small, whiteSpace: 'nowrap' }, onClick: (e) => e.stopPropagation() }, 'Open')
+  // No title tooltip: it covered the next row's link. The browser's status bar
+  // shows the URL on hover, and the opened row lists it.
+  return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open ' + url, style: { ...muted, fontSize: 11, whiteSpace: 'nowrap', textDecoration: 'none' }, onClick: (e) => e.stopPropagation() }, 'Open')
 }
 
 function Command({ command, url }) {
@@ -364,10 +478,10 @@ function Detail({ row, flags, drift }) {
   if (row.done) add('after', row.after.join(', '))
   else if (!row.blockedBy.length) add('after', row.after.join(', '))
   add('waiting on', row.waitingOn)
-  if (!row.done) add('pr', row.pr, mono)
   add('model', row.model)
   add('branch', row.branch, mono)
   add('worktree', row.worktree, mono)
+  add('link', row.url, mono)
   if (drift) add('drift', (drift.status || '?') + (drift.note ? ' (' + drift.note + ')' : ''))
   return h('div', { 'data-detail': '', style: { ...small, padding: '2px 0 4px', paddingLeft: 'calc(' + row.idWidth + 'ch + ' + STATUS_WIDTH + ')' } },
     items,
@@ -375,22 +489,23 @@ function Detail({ row, flags, drift }) {
 }
 
 function Status({ row }) {
-  if (row.progress) return h('span', { style: { ...small, ...secondary } }, progressText(row.progress))
-  return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
-    row.done ? null : h(StateDot, { state: DOT[row.status] || 'idle' }), h('span', null, row.status))
+  const slot = row.progress ? null : row.done ? h('span', { style: { ...muted, fontSize: 11 } }, '✓') : h(StateDot, { state: DOT[row.status] || 'idle' })
+  return h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 6 } },
+    h('span', { 'aria-hidden': true, 'data-dot': '', style: DOT_SLOT }, slot),
+    row.progress ? h('span', { style: secondary }, progressText(row.progress)) : h('span', null, row.status))
 }
 
 function TaskRow({ row, flags, drift }) {
   const [open, setOpen] = React.useState(false)
   const toggle = () => setOpen(!open)
-  const hasDetail = row.others.length || (row.pr && !row.done) || row.model || row.branch || row.worktree || row.waitingOn || drift ||
+  const hasDetail = row.others.length || row.url || row.model || row.branch || row.worktree || row.waitingOn || drift ||
     (row.readyCommand && !row.needsYou) || (row.after.length && !row.blockedBy.length)
   const tone = row.done ? muted : primary
   const extras = []
   if (row.ready) extras.push(h(Tag, { key: 'ready' }, 'ready'))
   if (row.blockedBy.length) extras.push(h('span', { key: 'blocked', style: { ...small, ...secondary } }, blockedText(row.blockedBy)))
   if (row.needsYou) extras.push(h(Tag, { key: 'you' }, 'needs you'))
-  flags.forEach((f, i) => extras.push(h(Tag, { key: 'f' + i }, '! ' + flagLabel(f))))
+  flags.forEach((f, i) => extras.push(h(Tag, { key: 'f' + i }, '! ' + flagText(f))))
   if (drift) extras.push(h(Tag, { key: 'drift' }, 'drift: ' + (drift.status || '?')))
   return h('li', { 'data-item': row.item, 'data-done': row.done || undefined, style: { listStyle: 'none', borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
     h('div', {
@@ -400,12 +515,13 @@ function TaskRow({ row, flags, drift }) {
       style: { display: 'flex', alignItems: 'baseline', padding: '5px 0', cursor: hasDetail ? 'pointer' : 'default' },
     },
       h('span', { style: { ...mono, ...muted, whiteSpace: 'pre', width: row.idWidth + 'ch', flex: 'none' } },
-        h('span', { 'aria-hidden': true }, row.guide), h('span', { style: row.done ? muted : secondary }, row.item)),
+        h('span', { 'aria-hidden': true, style: guideStyle }, row.guide), h('span', { style: row.done ? muted : secondary }, row.item)),
       h('span', { style: { ...small, ...(row.done ? muted : secondary), width: STATUS_WIDTH, flex: 'none', whiteSpace: 'nowrap', overflow: 'visible' } }, h(Status, { row })),
       h('span', { style: { flex: 1, minWidth: 0 } },
         h('span', { style: tone }, row.title),
-        row.done && row.pr ? h('span', { style: { ...muted, ...small, marginLeft: 8 } }, 'PR ' + row.pr) : null,
-        row.line ? h('div', { style: { ...small, ...secondary, marginTop: 1 } }, row.line) : null,
+        row.pr ? h('span', { style: { ...muted, ...small, marginLeft: 8, whiteSpace: 'nowrap' } }, 'PR ' + row.pr) : null,
+        // A row in Needs you shows its action there only; here just the tag.
+        row.line && !row.needsYou ? h('div', { style: { ...small, ...secondary, marginTop: 1 } }, row.line) : null,
         extras.length ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 2 } }, extras) : null),
       h('span', { style: { flex: 'none', display: 'inline-flex', gap: 6, alignItems: 'baseline', marginLeft: 6 } },
         h(OpenLink, { url: row.url }),
@@ -430,13 +546,20 @@ function Boards({ boards, note }) {
       : h('p', { style: muted }, 'No boards yet.'))
 }
 
-function FlagCount({ flags }) {
-  if (!flags.length) return null
-  const jump = () => {
-    const el = typeof document !== 'undefined' && document.querySelector('[data-dsh-cockpit-board] li[data-item="' + String(flags[0].item).replace(/"/g, '\\"') + '"]')
-    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }
-  return h('button', { type: 'button', onClick: jump, title: 'Show the first flagged row', style: { ...button, marginLeft: 8 } }, flags.length + (flags.length === 1 ? ' flag' : ' flags'))
+function showRow(item) {
+  const el = typeof document !== 'undefined' && document.querySelector('[data-dsh-cockpit-board] li[data-item="' + String(item).replace(/["\\]/g, '\\$&') + '"]')
+  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+/** One line per problem under the header; each shows its row. None: nothing. */
+function Problems({ tasks }) {
+  const list = problems(tasks)
+  if (!list.length) return null
+  const warn = 'var(--dsw-alias-state-warn-label, #c90)'
+  return h('section', { 'data-problems': '', style: { ...small, margin: '6px 0', padding: '4px 8px', borderLeft: '2px solid ' + warn } },
+    list.map((p, i) => h('div', { key: i },
+      h('button', { type: 'button', onClick: () => showRow(p.item), title: 'Show the row', style: { font: 'inherit', background: 'none', border: 0, padding: '1px 0', cursor: 'pointer', textAlign: 'left', ...secondary } },
+        h('span', { 'aria-hidden': true, style: { color: warn, marginRight: 6 } }, '!'), p.text))))
 }
 
 /** Rows plus the id column's width in characters (guide and item). */
@@ -454,15 +577,17 @@ function BoardBody({ sessionId }) {
   if (!view.key) return wrap(h(Boards, { boards: view.boards }))
   if (!view.board) return wrap(h('div', null, h('p', { role: 'alert' }, view.key + ': ' + view.error), view.boards ? h(Boards, { boards: view.boards, note: 'Boards in the folder:' }) : null))
   const { board } = view
-  const flags = view.flags || []
+  // Flags from the shared rules, so the panel and the hub's text agree.
+  const flags = boardFlags(board.tasks)
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const driftOf = new Map(((board.drift && board.drift.items) || []).filter((i) => i.differs).map((i) => [i.item, i]))
   return wrap(h('div', null,
     h('header', { style: { marginBottom: 8 } },
-      h('div', { style: { fontWeight: 600, ...primary } }, board.key, h(FlagCount, { flags })),
+      h('div', { style: { fontWeight: 600, ...primary } }, board.key),
       h('div', { style: { ...muted, ...small } },
         [board.parent, 'revision ' + board.revision, board.updatedAt ? whenText(board.updatedAt) : ''].filter(Boolean).join(' · '))),
+    h(Problems, { tasks: board.tasks }),
     showDrift(view) ? h(Drift, { drift: board.drift }) : null,
     h(NeedsYou, { board }),
     board.tasks.length
@@ -542,7 +667,7 @@ function apply(ctx) {
   }
 }
 
-module.exports = { apply, inject, treeOrder, boardRows, needsYou, taskUrl, whenText, showDrift, toolCardModel, TOOLS }
+module.exports = { apply, inject, treeOrder, boardRows, needsYou, problems, taskUrl, whenText, showDrift, toolCardModel, TOOLS }
 
 return module.exports;
 } });

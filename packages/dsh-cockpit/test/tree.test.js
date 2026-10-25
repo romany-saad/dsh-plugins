@@ -12,12 +12,13 @@ test('roots, children in board order, after text', () => {
     t('2b', 'next', 'Bosla adopts the board', { parent: '2', dependsOn: ['2a', '9'] }),
   ] })
   assert.deepEqual(flags, [{ item: '2b', code: 'unknown_dependency', ref: '9' }])
-  const lines = tree.split('\n')
+  const lines = tree.split('\n').slice(3)
+  assert.equal(tree.split('\n')[1], "  Unknown dependency: '9' on 2b")
   assert.equal(lines.length, 4)
   assert.match(lines[0], /^1 +done +DSH profile/)
   assert.match(lines[1], /^2 +now +dsh-cockpit board +0 of 2 done$/)
   assert.match(lines[2], /^├─ 2a +waiting +Read DSH sessions in nightcost +after 1$/)
-  assert.match(lines[3], /^└─ 2b +next +Bosla adopts the board +blocked by 2a \(waiting\) +! unknown dependency 9$/)
+  assert.match(lines[3], /^└─ 2b +next +Bosla adopts the board +blocked by 2a \(waiting\) +! blocked by '9' \(not on the board\)$/)
 })
 
 test('the live layout: guides, aligned columns, one wait phrase, PR on done rows, what blocks', () => {
@@ -37,26 +38,69 @@ test('the live layout: guides, aligned columns, one wait phrase, PR on done rows
   ])
 })
 
-test('unknown parent becomes a root with a flag', () => {
-  const { tree, flags } = boardTree({ tasks: [t('1', 'next', 'a', { parent: 'x' })] })
+test('an unknown parent: drawn under the board root with the flag', () => {
+  const { tree, flags, problems } = boardTree({ tasks: [t('r', 'now', 'root'), t('a', 'next', 'a', { parent: 'r' }), t('1', 'next', 'lost', { parent: 'x' })] })
   assert.deepEqual(flags, [{ item: '1', code: 'unknown_parent', ref: 'x' }])
-  assert.match(tree, /^1 +next +a +! unknown parent x$/)
+  assert.deepEqual(problems.map((p) => p.text), ["Unknown parent: 'x' on 1"])
+  const rows = tree.split('\n').slice(3)
+  assert.match(rows[0], /^r +now +root +0 of 2 done$/)
+  assert.match(rows[2], /^└─ 1 +next +lost +! parent x not on the board$/)
 })
 
-test('self-parent and two-task loop are roots with parent_loop', () => {
+test('an unknown parent with no single board root: top level, after the real roots', () => {
+  const { tree } = boardTree({ tasks: [t('1', 'next', 'lost', { parent: 'x' }), t('r', 'now', 'r'), t('s', 'now', 's')] })
+  assert.deepEqual(tree.split('\n').slice(3).map((l) => l.split(' ')[0]), ['r', 's', '1'])
+})
+
+test('self-parent and two-task loop: under the board root, the path named, nothing lost', () => {
   const { tree, flags } = boardTree({ tasks: [
+    t('r', 'now', 'root'),
+    t('0', 'next', 'real child', { parent: 'r' }),
     t('1', 'next', 'self', { parent: '1' }),
-    t('2', 'next', 'a', { parent: '3' }),
+    t('2', 'next', 'a', { parent: '3', issue: '#2' }),
     t('3', 'next', 'b', { parent: '2' }),
     t('4', 'next', 'under 3', { parent: '3' }),
   ] })
-  assert.deepEqual(flags.map((f) => [f.item, f.code]), [['1', 'parent_loop'], ['2', 'parent_loop'], ['3', 'parent_loop']])
+  assert.deepEqual(flags.map((f) => [f.item, f.code, f.path.join(' → ')]), [['1', 'parent_loop', '1 → 1'], ['2', 'parent_loop', '#2 → 3 → #2'], ['3', 'parent_loop', '3 → #2 → 3']])
   const lines = tree.split('\n')
-  assert.equal(lines.length, 4, 'nothing is lost')
-  assert.match(lines[0], /^1 /)
-  assert.match(lines[1], /^2 /)
-  assert.match(lines[2], /^3 /)
-  assert.match(lines[3], /^└─ 4 /)
+  assert.deepEqual(lines.slice(0, 3), ['Problems:', '  Parent loop: 1 → 1', '  Parent loop: #2 ↔ 3'])
+  const rows = lines.slice(4)
+  assert.equal(rows.length, 6, 'nothing is lost')
+  assert.deepEqual(rows.map((l) => l.split(/(?<=\S)  +/)[0]), ['r', '├─ 0', '├─ 1', '├─ 2', '└─ 3', '   └─ 4'])
+  assert.match(rows[0], /0 of 4 done$/, 'the loop rows count toward the root they sit under')
+})
+
+test('a loop with no board root goes to the top level, after the real roots', () => {
+  const { tree } = boardTree({ tasks: [t('a', 'next', 'a', { parent: 'b' }), t('b', 'next', 'b', { parent: 'a' }), t('r', 'now', 'r'), t('s', 'now', 's')] })
+  assert.deepEqual(tree.split('\n').slice(3).map((l) => l.split(/(?<=\S)  +/)[0]), ['r', 's', 'a', 'b'])
+})
+
+test('the D2 case: #885 and #886 parent each other, drawn in place under #883, counted', () => {
+  const tasks = [
+    t('883', 'now', '#883 effort', { issue: '#883' }),
+    t('1', 'done', 'Profile and guard', { issue: '#884', pr: '#892', parent: '883' }),
+    t('3', 'done', 'Work reports', { issue: '#885', pr: '#890', parent: '4' }),
+    t('4', 'done', 'Nightcost', { issue: '#886', pr: '#891', parent: '3' }),
+    t('5', 'next', 'Live checks', { issue: '#887', parent: '883', dependsOn: ['1', 'release notes'] }),
+  ]
+  const { tree, problems } = boardTree({ parent: 'o/r#883', tasks })
+  assert.deepEqual(problems.map((p) => [p.item, p.text]), [['3', 'Parent loop: #885 ↔ #886'], ['5', "Unknown dependency: 'release notes' on #887"]])
+  const rows = tree.split('\n').slice(4)
+  assert.match(rows[0], /^883 +now +#883 effort +3 of 4 done$/)
+  assert.match(rows[2], /^├─ 3 +done +#885 Work reports +PR #890 +! parent loop: #885 → #886 → #885$/)
+  assert.match(rows[3], /^├─ 4 +done +#886 Nightcost +PR #891 +! parent loop: #886 → #885 → #886$/)
+  assert.match(rows[4], /^└─ 5 +next .*! blocked by 'release notes' \(not on the board\)$/)
+})
+
+test('two tasks sharing an issue or a pr are flagged, never refused', () => {
+  const { tree, flags, problems } = boardTree({ tasks: [t('3', 'done', 'a', { issue: '#885' }), t('7', 'next', 'b', { issue: '#885', pr: '#9' }), t('8', 'next', 'c', { pr: '#9' })] })
+  assert.deepEqual(flags.map((f) => [f.item, f.code]), [['3', 'duplicate_issue'], ['7', 'duplicate_issue'], ['7', 'duplicate_pr'], ['8', 'duplicate_pr']])
+  assert.deepEqual(problems.map((p) => p.text), ['Duplicate issue: #885 (items 3, 7)', 'Duplicate pr: #9 (items 7, 8)'])
+  assert.match(tree, /! duplicate issue #885 \(items 3, 7\)   ! duplicate pr #9 \(items 7, 8\)$/m)
+})
+
+test('no problems: no Problems block', () => {
+  assert.ok(!boardTree({ tasks: [t('1', 'now', 'a')] }).tree.includes('Problems'))
 })
 
 test('removing a parent flags its children', () => {

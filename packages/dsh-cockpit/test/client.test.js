@@ -113,9 +113,51 @@ test('blocked by names the unmet dependency with its status; the parent shows pr
   assert.ok(out.includes('blocked by #887 (next)'))
   assert.ok(out.includes('1 of 4 done · 1 needs you'))
   assert.ok(!out.includes('(ongoing)'), 'no status dot on the parent')
-  assert.equal(out.split('unknown dependency release notes').length, 2, out)
-  assert.ok(out.includes('1 flag'))
-  assert.ok(!out.includes('Flags:'))
+  assert.equal(out.split("! blocked by 'release notes' (not on the board)").length, 2, out)
+  assert.ok(!/\d flags?/.test(out), 'no flag count chip')
+})
+
+test('the problems strip: one line per problem under the header, each showing its row; none, no strip', () => {
+  const tasks = [
+    { item: '883', what: '#883 effort', status: 'now', issue: '#883' },
+    { item: '1', what: 'Profile and guard', status: 'done', issue: '#884', pr: '#892', parent: '883' },
+    { item: '3', what: 'Work reports', status: 'done', issue: '#885', pr: '#890', parent: '4' },
+    { item: '4', what: 'Nightcost', status: 'done', issue: '#886', pr: '#891', parent: '3' },
+    { item: '5', what: 'Live checks', status: 'next', issue: '#887', parent: '883', dependsOn: ['release notes'] },
+  ]
+  const view = { key: 'sim-883', board: { key: 'sim-883', parent: 'o/r#883', revision: 1, tasks } }
+  const out = render(view)
+  const strip = out.indexOf('Parent loop: #885 ↔ #886')
+  assert.ok(strip > 0 && strip < out.indexOf('#883 effort'), out)
+  assert.ok(out.includes("Unknown dependency: 'release notes' on #887"))
+  assert.ok(out.includes('3 of 4 done'), 'the loop rows count under #883')
+  assert.ok(out.includes('! parent loop: #885 → #886 → #885'))
+  const { exports } = load({ view })
+  const rows = exports.boardRows(view.board)
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((r) => r.guide + r.item))), ['883', '├─ 1', '├─ 3', '├─ 4', '└─ 5'])
+  const buttons = []
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    if (typeof n.type === 'function') return walk(n.type({ ...n.props, children: n.children.length ? n.children : n.props.children }))
+    if (n.type === 'section' && 'data-problems' in n.props) buttons.push(...[].concat(n.children).flat())
+    walk(n.children)
+  }
+  walk(register(exports).slots[0].Component({ sessionId: 's' }))
+  assert.equal(buttons.length, 2, 'one line per problem')
+  const clean = { ...view, board: { ...view.board, tasks: tasks.map((t) => ({ ...t, parent: t.item === '883' ? undefined : '883', dependsOn: undefined })) } }
+  assert.ok(!render(clean).includes('Parent loop'))
+})
+
+test('every row keeps the dot slot; done rows a muted check; a Needs-you row only tags', () => {
+  const out = render(live)
+  assert.match(out, /✓ done/)
+  const row1 = out.split('\n').filter((l) => l.includes('#884 Profile and guard'))
+  assert.equal(row1.length, 2, 'once in Needs you, once in the tree')
+  assert.equal(out.split('Owner: once CI is green, merge PR #892 by hand.').length, 2, 'the action shows only in Needs you')
+  assert.ok(out.includes('[needs you]'))
+  assert.match(out, /#887 Live checks and docs/)
+  assert.match(out, /#884 Profile and guard PR #892/, 'PR inline on open rows too')
 })
 
 test('the drift line shows only when drift is configured or a result exists', () => {
@@ -142,7 +184,7 @@ test('ids and statuses sit in fixed-width columns with tree guides', () => {
     walk(n.children)
   }
   walk(register(load({ view }).exports).slots[0].Component({ sessionId: 's' }))
-  assert.deepEqual([...new Set(widths)].sort(), ['7.5em', '7ch'], 'one id width and one status width for every row')
+  assert.deepEqual([...new Set(widths)].sort(), ['1em', '7ch', '8.5em'], 'one id, dot and status width for every row')
 })
 
 test('Open links the pr, else the issue, through the board parent\'s repo', () => {
@@ -197,8 +239,8 @@ test('an unbound session lists the boards', () => {
   assert.match(out, /a\s*\n?b/)
 })
 
-test('treeOrder nests children and draws loops as roots', () => {
+test('treeOrder nests children and draws loops and lost parents under the board root', () => {
   const { exports } = load({})
   const rows = exports.treeOrder([{ item: '1' }, { item: '2', parent: '1' }, { item: '3', parent: '3' }, { item: '4', parent: '9' }])
-  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((r) => [r.task.item, r.depth]))), [['1', 0], ['2', 1], ['3', 0], ['4', 0]])
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((r) => [r.task.item, r.depth]))), [['1', 0], ['2', 1], ['3', 1], ['4', 1]])
 })
