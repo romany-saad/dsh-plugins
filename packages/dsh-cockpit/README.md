@@ -15,7 +15,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
 - `lib/route.js`: the read routes for the Cockpit tab, `GET` and `HEAD` only, registered inside `ctx.inject(['connection'], …)` as exact Fetch routes on the host connection, which answers 403 to any Peer that is not the owner. Nothing registers on the raw web server. `route.enabled: false` registers none.
   - `/api/dsh-cockpit/boards`: `{ boards }`, the keys in the folder.
   - `/api/dsh-cockpit/board?key=K`: the board file as stored; 404 for an unknown key.
-  - `/api/dsh-cockpit/view?sessionId=S`: `{ key, board, tree, flags, problems, driftConfigured }` for the session's bound board, else `{ key: null, boards }`. A bound board that is missing or unreadable comes back as `{ key, error }`.
+  - `/api/dsh-cockpit/view?sessionId=S`: `{ key, board, tree, flags, problems, driftConfigured }` for the session's bound board, else `{ key: null, boards }`. A bound board that is missing, unreadable or cannot be drawn comes back as `{ key, error }`. An unexpected read error is a 500 that names its code, not its paths.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
 - `lib/present.js`: one-line titles for the tool cards.
 - `cordis.patch.yml`: the bundle patch (`dsh.bundle.patch`).

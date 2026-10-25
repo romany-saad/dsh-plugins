@@ -1,10 +1,10 @@
-import test from 'node:test'
+import test, { afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import * as plugin from '../index.js'
-import { METHODS, ROUTES, createRouteHandlers, driftConfigured } from '../lib/route.js'
-import { resolveConfig } from '../lib/config.js'
+import { METHODS, ROUTES, createRouteHandlers } from '../lib/route.js'
+import { driftConfigured, resolveConfig } from '../lib/config.js'
 import { boardTree } from '../lib/tree.js'
 import { createConnectionHost, guestPeer } from './connection-host.mjs'
 import { createHost, load } from './cordis-host.mjs'
@@ -32,6 +32,21 @@ async function home() {
   await writeFile(join(dataDir, 'sessions', 's1.json'), JSON.stringify({ version: 1, key: 'bosla-883' }))
   return { home: h, dataDir, text, routes: createRouteHandlers(dataDir) }
 }
+// Each test that mounts the plugin sets DSH_HOME, which the plugin reads when
+// it starts; afterEach disposes what the test started and restores DSH_HOME.
+const savedHome = process.env.DSH_HOME
+const started = []
+afterEach(async () => {
+  while (started.length) await started.pop().dispose()
+  if (savedHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = savedHome
+})
+const start = async (ctx, config) => {
+  const fork = await load(ctx, plugin, config)
+  started.push(fork)
+  return fork
+}
+
 const get = (path, query = '') => new Request('http://127.0.0.1' + path + query)
 
 /** Every file under dir with its mtime, to show the routes write nothing. */
@@ -87,7 +102,7 @@ test('view: a bound session gets its board, tree, flags, problems and whether dr
   assert.deepEqual(v.problems, expected.problems)
   assert.match(v.tree, /^Problems:\n  Unknown dependency: '1' on 2a\n/)
   assert.equal(v.driftConfigured, false)
-  const on = createRouteHandlers(dataDir, { driftConfigured: true })
+  const on = createRouteHandlers(dataDir, { drift: true })
   assert.equal((await (await on[ROUTES.view](get(ROUTES.view, '?sessionId=s1'))).json()).driftConfigured, true)
 })
 
@@ -125,7 +140,7 @@ async function mounted(config = {}) {
   const h = await home()
   process.env.DSH_HOME = h.home
   const host = createConnectionHost()
-  const fork = await load(host.ctx, plugin, config)
+  const fork = await start(host.ctx, config)
   return { ...h, ...host, fork }
 }
 
@@ -179,7 +194,7 @@ test('refusals: route.enabled false registers no routes, and the tools still reg
   assert.equal((await request(ROUTES.view + '?sessionId=s1')).status, 404)
   await fork.dispose()
   const { ctx: toolsCtx, tools } = createHost()
-  await load(toolsCtx, plugin, { route: { enabled: false } })
+  await start(toolsCtx, { route: { enabled: false } })
   assert.equal(tools.size, 4)
 })
 
@@ -188,7 +203,7 @@ test('tools.enabled false keeps the routes; a bad config registers neither', asy
   assert.equal(a.service().fetchRoutes.size, 3)
   await a.fork.dispose()
   const b = createConnectionHost()
-  await load(b.ctx, plugin, { route: { enabled: 'yes' } }).catch(() => {})
+  await start(b.ctx, { route: { enabled: 'yes' } }).catch(() => {})
   assert.equal(b.service().fetchRoutes.size, 0)
 })
 
@@ -209,8 +224,8 @@ test('the view follows the tools: a board the hub opens and changes shows on the
   process.env.DSH_HOME = h.home
   const conn = createConnectionHost()
   const { ctx, tools } = createHost()
-  await load(conn.ctx, plugin, {})
-  await load(ctx, plugin, {})
+  await start(conn.ctx, {})
+  await start(ctx, {})
   assert.equal((await (await conn.request(ROUTES.view + '?sessionId=hub')).json()).key, null)
   await tools.get('board_open').execute({ key: 'live' }, exec('hub'))
   await tools.get('board_add').execute({ what: 'first', waitingOn: 'owner' }, exec('hub'))
@@ -221,11 +236,39 @@ test('the view follows the tools: a board the hub opens and changes shows on the
   assert.deepEqual((await (await conn.request(ROUTES.boards)).json()).boards, ['bosla-883', 'live', 'other'])
 })
 
-test('an error while reading is a 500 with its message, not a thrown request', async () => {
-  const { request, dataDir, fork } = await mounted()
+test('an error while reading is a 500 that names its code and no path, not a thrown request', async () => {
+  const { request, dataDir, home: h, fork } = await mounted()
   await mkdir(join(dataDir, 'boards', 'dir.json'))
   const r = await request(ROUTES.board + '?key=dir')
   assert.equal(r.status, 500)
-  assert.match((await r.json()).error, /EISDIR/)
+  assert.deepEqual(await r.json(), { error: 'read failed: EISDIR' })
+  await writeFile(join(dataDir, 'sessions', 'sd.json'), JSON.stringify({ version: 1, key: 'dir' }))
+  const v = await (await request(ROUTES.view + '?sessionId=sd')).json()
+  assert.deepEqual(v, { key: 'dir', error: 'dir: cannot read the board (EISDIR)' })
+  assert.ok(!JSON.stringify(v).includes(h))
   await fork.dispose()
+})
+
+test('view: a board whose tasks cannot be drawn is reported as { key, error }, not a 500', async () => {
+  const { routes, dataDir } = await home()
+  await writeFile(join(dataDir, 'boards', 'bosla-883.json'), JSON.stringify({ ...BOARD, tasks: [null] }))
+  const r = await routes[ROUTES.view](get(ROUTES.view, '?sessionId=s1'))
+  assert.equal(r.status, 200)
+  const v = await r.json()
+  assert.deepEqual(Object.keys(v), ['key', 'error'])
+  assert.match(v.error, /^bosla-883: cannot draw the board \(/)
+})
+
+test('board: every key boards lists can be read, a fallback hub\'s file name that is not percent-encoded included', async () => {
+  const { routes, dataDir } = await home()
+  const fallback = JSON.stringify({ ...BOARD, key: '100%' })
+  await writeFile(join(dataDir, 'boards', '100%.json'), fallback)
+  await writeFile(join(dataDir, 'boards', encodeURIComponent('a/b') + '.json'), JSON.stringify({ ...BOARD, key: 'a/b' }))
+  const { boards } = await (await routes[ROUTES.boards](get(ROUTES.boards))).json()
+  assert.deepEqual(boards, ['100%', 'a/b', 'bosla-883', 'other'])
+  for (const key of boards) assert.equal((await routes[ROUTES.board](get(ROUTES.board, '?key=' + encodeURIComponent(key)))).status, 200, key)
+  assert.equal(await (await routes[ROUTES.board](get(ROUTES.board, '?key=100%25'))).text(), fallback)
+  assert.equal((await routes[ROUTES.board](get(ROUTES.board, '?key=' + encodeURIComponent('../100%')))).status, 404)
+  await writeFile(join(dataDir, 'sessions', 'sf.json'), JSON.stringify({ version: 1, key: '100%' }))
+  assert.equal((await (await routes[ROUTES.view](get(ROUTES.view, '?sessionId=sf'))).json()).board.key, '100%')
 })
