@@ -93,6 +93,13 @@ and line 39:
 |---|---|
 | `GET /api/dsh-cockpit/boards` | `{ boards: string[] }` |
 | `GET /api/dsh-cockpit/board?key=K` | the board file's bytes; 404 for an unknown key |
-| `GET /api/dsh-cockpit/view?sessionId=S` | `{ key, board, tree, flags }` for the session's bound board, else `{ key: null, boards }` |
+| `GET /api/dsh-cockpit/view?sessionId=S` | `{ key, board, tree, flags, driftConfigured }` for the session's bound board, else `{ key: null, boards }` |
 
 The panel polls `view` every 2 s for the tab's session.
+
+## Shared rules
+
+`client/build.mjs` inlines `lib/rows.js` (the row model: wait line, blocked by, progress, Needs you, Open link) and
+`lib/present.js` (tool card titles) into `client/client.js`, so the panel, the hub's tree text and the chat cards
+use one copy. Both files must stay import-free. The client also registers a `tool.call.toolview` view for
+`board_open`, `board_read`, `board_add` and `board_update`: one row, "Board · <title>", expandable to the result.

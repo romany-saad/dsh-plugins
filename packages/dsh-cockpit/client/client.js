@@ -1,26 +1,16 @@
-window.__ModuleLoader__.load({ id: "@romany-saad/dsh-cockpit", factory: (require) => {
+window.__ModuleLoader__.load({ id: "@romany-saad/dsh-cockpit", factory: (shellRequire) => {
 var module = { exports: {} }; var exports = module.exports;
-// dsh-cockpit's browser half: a read-only "Board" tab in the right sidebar.
-// Plain CommonJS body: client/build.mjs wraps it in the module-loader factory.
-// Externals come from the shell's module table (react, ui-primitives).
-const React = require('react')
-const { StateDot, Tag } = require('@deepseek-ai/dsh-client-ui-primitives')
-const h = React.createElement
+var __local = {
+"../../lib/rows.js": (() => {
+// What each board row says: one model shared by the tree text (lib/tree.js),
+// the Board panel (client/src/panel.js; client/build.mjs inlines this file) and
+// so the reader. Pure, no imports.
 
-const ID = '@romany-saad/dsh-cockpit'
-const KIND = 'dsh-cockpit-board'
-const POLL_MS = 2000
-// Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
-const VIEW = 'api/dsh-cockpit/view'
+const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+const same = (a, b) => a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase()
 
-const DOT = { now: 'ongoing', waiting: 'warning', done: 'done', next: 'idle' }
-const FLAG_TEXT = { unknown_parent: 'unknown parent', unknown_dependency: 'unknown dependency', parent_loop: 'parent loop' }
-const muted = { color: 'var(--dsw-alias-label-tertiary)' }
-const secondary = { color: 'var(--dsw-alias-label-secondary)' }
-const mono = { fontFamily: 'var(--dsw-font-family-mono, ui-monospace, monospace)' }
-
-/** Order tasks as a tree (the core's lib/tree.js rules): rows of { task, depth }. */
-function treeRows(tasks) {
+/** Items whose parent chain leads back to themselves. */
+function parentLoops(tasks) {
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const inLoop = new Set()
   for (const t of tasks) {
@@ -32,24 +22,273 @@ function treeRows(tasks) {
       p = byItem.get(p).parent
     }
   }
-  const isRoot = (t) => t.parent === undefined || !byItem.has(t.parent) || inLoop.has(t.item)
+  return inLoop
+}
+
+/**
+ * Tasks in tree order: [{ task, depth, guide, children }]. A task whose parent
+ * is unknown, in a loop, or not drawn (only) is a root. guide is the tree
+ * prefix ('├─ ', '│  └─ ', …); children are the drawn child tasks.
+ * @param {object[]} tasks
+ * @param {{only?: Set<string>}} [options]
+ */
+function treeOrder(tasks, { only } = {}) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const inLoop = parentLoops(tasks)
+  const drawn = tasks.filter((t) => !only || only.has(t.item))
+  const isRoot = (t) => t.parent === undefined || !byItem.has(t.parent) || inLoop.has(t.item) || (only && !only.has(t.parent))
   const children = new Map()
-  for (const t of tasks) {
+  for (const t of drawn) {
     if (isRoot(t)) continue
     if (!children.has(t.parent)) children.set(t.parent, [])
     children.get(t.parent).push(t)
   }
   const rows = []
   const visited = new Set()
-  const walk = (t, depth) => {
+  const walk = (t, depth, stem, guide) => {
     if (visited.has(t.item)) return
     visited.add(t.item)
-    rows.push({ task: t, depth })
-    for (const c of children.get(t.item) || []) walk(c, depth + 1)
+    const kids = (children.get(t.item) ?? []).filter((c) => !visited.has(c.item))
+    rows.push({ task: t, depth, guide, children: kids })
+    kids.forEach((c, i) => {
+      const last = i === kids.length - 1
+      walk(c, depth + 1, stem + (last ? '   ' : '│  '), stem + (last ? '└─ ' : '├─ '))
+    })
   }
-  for (const t of tasks) if (isRoot(t)) walk(t, 0)
+  for (const t of drawn) if (isRoot(t)) walk(t, 0, '', '')
   return rows
 }
+
+/** waitingOn is "owner", ignoring case and surrounding space. */
+const waitsOnOwner = (task) => text(task.waitingOn)?.toLowerCase() === 'owner'
+
+/**
+ * The open tasks that wait on the owner. With no waitingOn anywhere on the
+ * board, a guess: waiting tasks whose nextAction starts with "Owner".
+ * @returns {{ tasks: object[], guessed: boolean }}
+ */
+function needsYou(tasks) {
+  const open = tasks.filter((t) => t.status !== 'done')
+  if (tasks.some((t) => text(t.waitingOn))) return { tasks: open.filter(waitsOnOwner), guessed: false }
+  return { tasks: open.filter((t) => t.status === 'waiting' && /^owner/i.test(text(t.nextAction) ?? '')), guessed: true }
+}
+
+/** nextAction, why and extra.startCondition, present and each text once, in that order. */
+function notes(task) {
+  const extra = task.extra && typeof task.extra === 'object' ? task.extra : {}
+  const out = []
+  for (const [label, value] of [['next', task.nextAction], ['why', task.why], ['starts when', extra.startCondition]]) {
+    const t = text(value)
+    if (t && !out.some((n) => same(n.text, t))) out.push({ label, text: t })
+  }
+  return out
+}
+
+/** "model · effort"; the provider only when the model does not start with it, or it is not claude. */
+function modelText(task) {
+  const provider = text(task.provider)
+  const model = text(task.model)
+  const showProvider = provider && (!model || !model.startsWith(provider) || provider !== 'claude')
+  return [showProvider ? provider : undefined, model, text(task.effort)].filter(Boolean).join(' · ')
+}
+
+const REPO_REF = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)$/
+
+/**
+ * A link for an issue or PR reference: an https URL as stored, owner/repo#n,
+ * or #n with the repo of the board's parent (owner/repo#n). Else undefined.
+ * @param {string} ref
+ * @param {'pull'|'issues'} kind
+ * @param {string} [parent] the board's parent reference
+ */
+function refUrl(ref, kind, parent) {
+  const r = text(ref)
+  if (!r) return undefined
+  if (/^https:\/\/\S+$/.test(r)) return r
+  const full = REPO_REF.exec(r)
+  if (full) return 'https://github.com/' + full[1] + '/' + kind + '/' + full[2]
+  const short = /^#(\d+)$/.exec(r)
+  const repo = REPO_REF.exec(text(parent) ?? '')
+  if (short && repo) return 'https://github.com/' + repo[1] + '/' + kind + '/' + short[1]
+  return undefined
+}
+
+/** The task's link: its pr, else its issue. */
+const taskUrl = (task, parent) => refUrl(task.pr, 'pull', parent) ?? refUrl(task.issue, 'issues', parent)
+
+/** "#884 Profile and guard": the issue first, unless what already starts with it. */
+function titleText(task) {
+  const what = String(task.what ?? '')
+  const issue = text(task.issue)
+  return issue && !what.startsWith(issue) ? issue + ' ' + what : what
+}
+
+/**
+ * The board's rows in tree order, each with what it shows:
+ * - line: the one wait phrase of an open row (the first note); others: the rest;
+ * - blockedBy: on next and waiting rows, each dependency on the board not done yet;
+ * - ready: a next row whose dependencies are all on the board and done;
+ * - progress: on a row with children, { done, total, needsYou } of its children.
+ * @param {{tasks: object[], parent?: string}} board
+ * @param {{only?: Set<string>}} [options]
+ */
+function boardRows(board, options = {}) {
+  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const mine = new Set(needsYou(tasks).tasks.map((t) => t.item))
+  return treeOrder(tasks, options).map(({ task, depth, guide, children }) => {
+    const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
+    const done = task.status === 'done'
+    const all = notes(task)
+    const open = !done && all.length ? all[0] : undefined
+    const blocked = task.status === 'next' || task.status === 'waiting'
+    return {
+      item: task.item,
+      depth,
+      guide,
+      status: task.status,
+      done,
+      what: task.what,
+      title: titleText(task),
+      issue: task.issue,
+      pr: task.pr,
+      line: open?.text,
+      others: open ? all.slice(1) : all,
+      needsYou: mine.has(task.item),
+      ready: task.status === 'next' && deps.every((d) => byItem.get(d)?.status === 'done'),
+      blockedBy: blocked ? deps.filter((d) => byItem.has(d) && byItem.get(d).status !== 'done').map((d) => ({ ref: byItem.get(d).issue || d, status: byItem.get(d).status })) : [],
+      after: deps.map((d) => byItem.get(d)?.issue || d),
+      progress: children.length ? { done: children.filter((c) => c.status === 'done').length, total: children.length, needsYou: children.filter((c) => mine.has(c.item)).length } : undefined,
+      model: modelText(task),
+      url: taskUrl(task, board.parent),
+      readyCommand: text(task.readyCommand),
+      waitingOn: text(task.waitingOn),
+      branch: text(task.branch),
+      worktree: text(task.worktree),
+    }
+  })
+}
+
+/** "3 of 6 done · 1 needs you". */
+const progressText = (p) => p.done + ' of ' + p.total + ' done' + (p.needsYou ? ' · ' + p.needsYou + ' needs you' : '')
+
+/** "blocked by #884 (waiting), #885 (now)". */
+const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
+
+return { parentLoops, treeOrder, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText }
+})(),
+"../../lib/present.js": (() => {
+// Tool-card titles (GenericCallView / GenericResultView of dsh-tools): one
+// short line per call saying what it did. Pure: they depend only on the call's
+// args and, for the result, on the value's own presentationMeta projection.
+
+const MAX = 48
+const clip = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > MAX ? t.slice(0, MAX - 1) + '…' : t }
+const quote = (s) => '"' + clip(s) + '"'
+const KIND = { board_open: 'read', board_read: 'read', board_add: 'edit', board_update: 'edit' }
+
+function readFilters(args = {}) {
+  const parts = []
+  if (args.item !== undefined) parts.push('item ' + args.item)
+  if (Array.isArray(args.status) && args.status.length) parts.push(args.status.join(', '))
+  if (args.checkDrift) parts.push('drift check')
+  return parts
+}
+
+function addTitle(item, args) {
+  const parts = ['add ' + (item ?? 'next') + ' ' + quote(args.what ?? '')]
+  parts.push(args.status ?? 'next')
+  if (Array.isArray(args.dependsOn) && args.dependsOn.length) parts.push('after ' + args.dependsOn.join(', '))
+  return parts.join(' · ')
+}
+
+function updateTitle(args) {
+  if (args.remove) return 'remove ' + args.item
+  const set = args.set && typeof args.set === 'object' ? args.set : {}
+  const entries = Object.entries(set)
+  if (!entries.length) return 'update ' + args.item + ' (no change)'
+  let head = 'update ' + args.item
+  if (typeof set.status === 'string') head += ' → ' + set.status
+  const rest = entries.filter(([k, v]) => !(k === 'status' && typeof v === 'string')).map(([k, v]) => {
+    if (v === null) return 'clear ' + k
+    if (k === 'what') return quote(v)
+    if (k === 'dependsOn' && Array.isArray(v)) return 'after ' + (v.length ? v.join(', ') : 'nothing')
+    if (typeof v === 'object') return k
+    return k + ' ' + clip(v)
+  })
+  return rest.length ? head + ': ' + rest.join(', ') : head
+}
+
+/** The pending card's title, from the args alone. */
+function callTitle(name, args = {}) {
+  switch (name) {
+    case 'board_open': return 'open ' + args.key + (args.parent !== undefined ? ' · parent ' + clip(args.parent) : '')
+    case 'board_read': return ['read board', ...readFilters(args)].join(' · ')
+    case 'board_add': return addTitle(args.item, args)
+    case 'board_update': return updateTitle(args)
+    default: return name
+  }
+}
+
+/** The completed card's title, from the args and the result value; undefined keeps the call title. */
+function resultTitle(name, args = {}, value) {
+  if (!value || value.ok !== true) return undefined
+  switch (name) {
+    case 'board_open': return 'open ' + value.board.key + (value.created ? ' (new)' : '') + (args.parent !== undefined ? ' · parent ' + clip(args.parent) : '')
+    case 'board_read': return ['read ' + value.board.key, ...readFilters(args)].join(' · ')
+    case 'board_add': return addTitle(value.task.item, { ...args, status: value.task.status })
+    default: return undefined
+  }
+}
+
+/** defineTool fields: presentCall, presentResult and output.presentationMeta. */
+function presentation(name) {
+  return {
+    presentCall: (args) => ({ card: 'generic', title: callTitle(name, args), kind: KIND[name] ?? 'other' }),
+    presentResult: (_args, result) => {
+      const title = !result?.isError && typeof result?.meta?.title === 'string' ? result.meta.title : undefined
+      return title === undefined ? undefined : { card: 'generic', title }
+    },
+    presentationMeta: (args, value) => {
+      const title = resultTitle(name, args, value)
+      return title === undefined ? null : { title }
+    },
+  }
+}
+
+return { callTitle, resultTitle, presentation }
+})()
+};
+var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? __local[name] : shellRequire(name));
+// dsh-cockpit's browser half: a read-only "Board" tab in the right sidebar,
+// and one-line chat card titles for the four board tools.
+// Plain CommonJS body: client/build.mjs wraps it in the module-loader factory
+// and inlines the core's pure lib/rows.js and lib/present.js, so the panel,
+// the hub's tree text and the tool cards share their rules.
+// Externals come from the shell's module table (react, ui-primitives).
+const React = require('react')
+const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
+const { blockedText, boardRows, needsYou, progressText, taskUrl, titleText, treeOrder } = require('../../lib/rows.js')
+const { callTitle } = require('../../lib/present.js')
+const { StateDot, Tag } = primitives
+const h = React.createElement
+
+const ID = '@romany-saad/dsh-cockpit'
+const KIND = 'dsh-cockpit-board'
+const POLL_MS = 2000
+// Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
+const VIEW = 'api/dsh-cockpit/view'
+const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update']
+
+const DOT = { now: 'ongoing', waiting: 'warning', done: 'done', next: 'idle' }
+const FLAG_TEXT = { unknown_parent: 'unknown parent', unknown_dependency: 'unknown dependency', parent_loop: 'parent loop' }
+const muted = { color: 'var(--dsw-alias-label-tertiary)' }
+const secondary = { color: 'var(--dsw-alias-label-secondary)' }
+const primary = { color: 'var(--dsw-alias-label-primary)' }
+const mono = { fontFamily: 'var(--dsw-font-family-mono, ui-monospace, monospace)' }
+const small = { fontSize: 'var(--dsh-content-font-size-secondary, 12px)' }
+const STATUS_WIDTH = '7.5em'
+const button = { font: 'inherit', fontSize: 11, padding: '0 6px', cursor: 'pointer' }
 
 function useView(sessionId) {
   const [state, setState] = React.useState({ loading: true })
@@ -73,43 +312,6 @@ function useView(sessionId) {
   return state
 }
 
-function Field({ label, value }) {
-  if (value === undefined || value === null || value === '') return null
-  return h('span', { style: { marginRight: 10 } }, h('span', { style: muted }, label + ' '), h('span', { style: mono }, value))
-}
-
-/**
- * What one row shows, derived from the board only (pure; exported for tests).
- * ready: a next task whose dependsOn items are all on the board and done.
- * after: each dependency by its task's issue when it has one, else its item.
- */
-function rowModel(task, byItem) {
-  const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
-  const active = task.status === 'now' || task.status === 'waiting'
-  const extra = task.extra && typeof task.extra === 'object' ? task.extra : {}
-  return {
-    item: task.item,
-    status: task.status,
-    what: task.what,
-    ready: task.status === 'next' && deps.every((d) => byItem.get(d)?.status === 'done'),
-    issue: task.issue,
-    pr: task.pr,
-    model: [task.provider, task.model, task.effort].filter(Boolean).join(' · '),
-    after: deps.map((d) => byItem.get(d)?.issue || d),
-    why: task.status === 'waiting' ? task.why : undefined,
-    nextAction: active ? task.nextAction : undefined,
-    startCondition: typeof extra.startCondition === 'string' ? extra.startCondition : undefined,
-    readyCommand: task.readyCommand,
-  }
-}
-
-/** The board's rows in tree order: [{ depth, ...rowModel }]. */
-function boardRows(board) {
-  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  return treeRows(tasks).map(({ task, depth }) => ({ depth, ...rowModel(task, byItem) }))
-}
-
 const pad2 = (n) => String(n).padStart(2, '0')
 /** "15:22 · 2 min ago" in local time; the date is added when it is not today. */
 function whenText(iso, now = Date.now()) {
@@ -125,47 +327,97 @@ function whenText(iso, now = Date.now()) {
   return local + ' · ' + ago
 }
 
-const line = { paddingLeft: 28, fontSize: 'var(--dsh-content-font-size-secondary, 12px)', marginTop: 2 }
+/** Show the drift line only when drift is configured or the file holds a drift result. */
+const showDrift = (view) => Boolean(view.driftConfigured || view.board?.drift)
 
-function Note({ label, value }) {
-  if (!value) return null
-  return h('div', { style: line }, h('span', { style: muted }, label + ' '), h('span', { style: secondary }, value))
+const flagLabel = (f) => (FLAG_TEXT[f.code] || f.code) + (f.code === 'parent_loop' ? '' : ' ' + f.ref)
+
+function OpenLink({ url }) {
+  if (!url) return null
+  return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url, style: { ...small, whiteSpace: 'nowrap' }, onClick: (e) => e.stopPropagation() }, 'Open')
 }
 
-function Command({ command }) {
-  if (!command) return null
-  const copy = () => { navigator.clipboard?.writeText(command).catch(() => {}) }
-  return h('div', { style: { ...line, display: 'flex', alignItems: 'center', gap: 6 } },
-    h('span', { style: muted }, 'command '),
-    h('code', { style: { ...mono, whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, command),
-    h('button', { type: 'button', title: 'Copy the command', onClick: copy, style: { font: 'inherit', fontSize: 11, padding: '0 6px', cursor: 'pointer' } }, 'copy'))
+function Command({ command, url }) {
+  if (!command && !url) return null
+  const copy = (e) => { e.stopPropagation(); navigator.clipboard?.writeText(command).catch(() => {}) }
+  return h('div', { style: { ...small, display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 } },
+    command ? h('code', { style: { ...mono, whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 } }, command) : h('span', { style: { flex: 1 } }),
+    command ? h('button', { type: 'button', title: 'Copy the command', onClick: copy, style: button }, 'copy') : null,
+    h(OpenLink, { url }))
+}
+
+function NeedsYou({ board }) {
+  const { tasks, guessed } = needsYou(board.tasks)
+  if (!tasks.length) return null
+  return h('section', { 'data-needs-you': '', style: { margin: '8px 0', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dsw-alias-state-warn-label, #c90)' } },
+    h('div', { style: { fontWeight: 600, ...primary, marginBottom: 4 } }, 'Needs you', guessed ? h('span', { style: { ...muted, fontWeight: 400 } }, ' (guessed)') : null),
+    tasks.map((t) => h('div', { key: t.item, 'data-item': t.item, style: { padding: '4px 0' } },
+      h('div', null, h('span', { style: { ...mono, ...secondary, marginRight: 8 } }, t.item), h('span', { style: primary }, titleText(t))),
+      t.nextAction ? h('div', { style: { ...small, ...secondary } }, t.nextAction) : null,
+      h(Command, { command: t.readyCommand, url: taskUrl(t, board.parent) }))))
+}
+
+function Detail({ row, flags, drift }) {
+  const items = []
+  const add = (label, value, style) => { if (value) items.push(h('div', { key: label }, h('span', { style: muted }, label + ' '), h('span', { style: style || secondary }, value))) }
+  for (const n of row.others) add(n.label, n.text)
+  if (row.done) add('after', row.after.join(', '))
+  else if (!row.blockedBy.length) add('after', row.after.join(', '))
+  add('waiting on', row.waitingOn)
+  if (!row.done) add('pr', row.pr, mono)
+  add('model', row.model)
+  add('branch', row.branch, mono)
+  add('worktree', row.worktree, mono)
+  if (drift) add('drift', (drift.status || '?') + (drift.note ? ' (' + drift.note + ')' : ''))
+  return h('div', { 'data-detail': '', style: { ...small, padding: '2px 0 4px', paddingLeft: 'calc(' + row.idWidth + 'ch + ' + STATUS_WIDTH + ')' } },
+    items,
+    row.needsYou ? null : h(Command, { command: row.readyCommand }))
+}
+
+function Status({ row }) {
+  if (row.progress) return h('span', { style: { ...small, ...secondary } }, progressText(row.progress))
+  return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
+    row.done ? null : h(StateDot, { state: DOT[row.status] || 'idle' }), h('span', null, row.status))
 }
 
 function TaskRow({ row, flags, drift }) {
-  return h('li', { 'data-item': row.item, style: { listStyle: 'none', padding: '6px 0', paddingLeft: row.depth * 16, borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
-    h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-      row.ready ? h(Tag, null, 'ready') : h(StateDot, { state: DOT[row.status] || 'idle' }),
-      h('span', { style: { ...mono, ...secondary, minWidth: 24 } }, row.item),
-      h('span', { style: { ...secondary, minWidth: 56 } }, row.status),
-      h('span', { style: { color: 'var(--dsw-alias-label-primary)', flex: 1 } }, row.what)),
-    h('div', { style: line },
-      h(Field, { label: 'issue', value: row.issue }),
-      h(Field, { label: 'pr', value: row.pr }),
-      h(Field, { label: 'model', value: row.model }),
-      row.after.length ? h('span', { style: { ...muted, marginRight: 10 } }, 'after ' + row.after.join(', ')) : null,
-      flags.map((f, i) => h(Tag, { key: i }, '! ' + (FLAG_TEXT[f.code] || f.code) + (f.code === 'parent_loop' ? '' : ' ' + f.ref))),
-      drift ? h(Tag, null, 'drift: ' + (drift.status || '?') + (drift.note ? ' (' + drift.note + ')' : '')) : null),
-    h(Note, { label: 'why', value: row.why }),
-    h(Note, { label: 'starts when', value: row.startCondition }),
-    h(Note, { label: 'next', value: row.nextAction }),
-    h(Command, { command: row.readyCommand }))
+  const [open, setOpen] = React.useState(false)
+  const toggle = () => setOpen(!open)
+  const hasDetail = row.others.length || (row.pr && !row.done) || row.model || row.branch || row.worktree || row.waitingOn || drift ||
+    (row.readyCommand && !row.needsYou) || (row.after.length && !row.blockedBy.length)
+  const tone = row.done ? muted : primary
+  const extras = []
+  if (row.ready) extras.push(h(Tag, { key: 'ready' }, 'ready'))
+  if (row.blockedBy.length) extras.push(h('span', { key: 'blocked', style: { ...small, ...secondary } }, blockedText(row.blockedBy)))
+  if (row.needsYou) extras.push(h(Tag, { key: 'you' }, 'needs you'))
+  flags.forEach((f, i) => extras.push(h(Tag, { key: 'f' + i }, '! ' + flagLabel(f))))
+  if (drift) extras.push(h(Tag, { key: 'drift' }, 'drift: ' + (drift.status || '?')))
+  return h('li', { 'data-item': row.item, 'data-done': row.done || undefined, style: { listStyle: 'none', borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
+    h('div', {
+      role: hasDetail ? 'button' : undefined, tabIndex: hasDetail ? 0 : undefined, 'aria-expanded': hasDetail ? open : undefined,
+      onClick: hasDetail ? toggle : undefined,
+      onKeyDown: hasDetail ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } } : undefined,
+      style: { display: 'flex', alignItems: 'baseline', padding: '5px 0', cursor: hasDetail ? 'pointer' : 'default' },
+    },
+      h('span', { style: { ...mono, ...muted, whiteSpace: 'pre', width: row.idWidth + 'ch', flex: 'none' } },
+        h('span', { 'aria-hidden': true }, row.guide), h('span', { style: row.done ? muted : secondary }, row.item)),
+      h('span', { style: { ...small, ...(row.done ? muted : secondary), width: STATUS_WIDTH, flex: 'none', whiteSpace: 'nowrap', overflow: 'visible' } }, h(Status, { row })),
+      h('span', { style: { flex: 1, minWidth: 0 } },
+        h('span', { style: tone }, row.title),
+        row.done && row.pr ? h('span', { style: { ...muted, ...small, marginLeft: 8 } }, 'PR ' + row.pr) : null,
+        row.line ? h('div', { style: { ...small, ...secondary, marginTop: 1 } }, row.line) : null,
+        extras.length ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 2 } }, extras) : null),
+      h('span', { style: { flex: 'none', display: 'inline-flex', gap: 6, alignItems: 'baseline', marginLeft: 6 } },
+        h(OpenLink, { url: row.url }),
+        hasDetail ? h('span', { 'aria-hidden': true, style: { ...muted, ...small } }, open ? '▾' : '▸') : null)),
+    open ? h(Detail, { row, flags, drift }) : null)
 }
 
 function Drift({ drift }) {
-  if (!drift) return h('div', { style: muted }, 'Drift: never checked')
+  if (!drift) return h('div', { style: { ...muted, ...small } }, 'Drift: never checked')
   const differing = (drift.items || []).filter((i) => i.differs)
-  return h('div', null,
-    h('span', { style: muted }, 'Drift checked ' + drift.checkedAt + ': '),
+  return h('div', { style: small },
+    h('span', { style: muted }, 'Drift checked ' + whenText(drift.checkedAt) + ': '),
     drift.error ? h('span', { style: { color: 'var(--dsw-alias-state-error, #d33)' } }, String(drift.error.message || JSON.stringify(drift.error)))
       : h('span', null, differing.length ? differing.length + ' differing' : 'no differences'))
 }
@@ -178,6 +430,22 @@ function Boards({ boards, note }) {
       : h('p', { style: muted }, 'No boards yet.'))
 }
 
+function FlagCount({ flags }) {
+  if (!flags.length) return null
+  const jump = () => {
+    const el = typeof document !== 'undefined' && document.querySelector('[data-dsh-cockpit-board] li[data-item="' + String(flags[0].item).replace(/"/g, '\\"') + '"]')
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+  return h('button', { type: 'button', onClick: jump, title: 'Show the first flagged row', style: { ...button, marginLeft: 8 } }, flags.length + (flags.length === 1 ? ' flag' : ' flags'))
+}
+
+/** Rows plus the id column's width in characters (guide and item). */
+function panelRows(board) {
+  const rows = boardRows(board)
+  const idWidth = Math.max(0, ...rows.map((r) => (r.guide + r.item).length)) + 2
+  return rows.map((r) => ({ ...r, idWidth }))
+}
+
 function BoardBody({ sessionId }) {
   const { loading, view, error } = useView(sessionId)
   const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '', style: { padding: 12, overflow: 'auto', height: '100%', boxSizing: 'border-box' } }, child)
@@ -185,22 +453,74 @@ function BoardBody({ sessionId }) {
   if (error) return wrap(h('p', { role: 'alert' }, 'Board unavailable: ' + error))
   if (!view.key) return wrap(h(Boards, { boards: view.boards }))
   if (!view.board) return wrap(h('div', null, h('p', { role: 'alert' }, view.key + ': ' + view.error), view.boards ? h(Boards, { boards: view.boards, note: 'Boards in the folder:' }) : null))
-  const { board, flags } = view
+  const { board } = view
+  const flags = view.flags || []
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const driftOf = new Map(((board.drift && board.drift.items) || []).filter((i) => i.differs).map((i) => [i.item, i]))
   return wrap(h('div', null,
     h('header', { style: { marginBottom: 8 } },
-      h('div', { style: { fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, board.key),
-      h('div', { style: { ...muted, fontSize: 'var(--dsh-content-font-size-secondary, 12px)' } },
+      h('div', { style: { fontWeight: 600, ...primary } }, board.key, h(FlagCount, { flags })),
+      h('div', { style: { ...muted, ...small } },
         [board.parent, 'revision ' + board.revision, board.updatedAt ? whenText(board.updatedAt) : ''].filter(Boolean).join(' · '))),
-    flags.length ? h('div', { style: { marginBottom: 8 } }, h('span', { style: muted }, 'Flags: '),
-      flags.map((f, i) => h(Tag, { key: i }, f.item + ': ' + (FLAG_TEXT[f.code] || f.code) + (f.code === 'parent_loop' ? '' : ' ' + f.ref)))) : null,
-    h(Drift, { drift: board.drift }),
+    showDrift(view) ? h(Drift, { drift: board.drift }) : null,
+    h(NeedsYou, { board }),
     board.tasks.length
       ? h('ul', { style: { padding: 0, margin: '8px 0 0' } },
-        boardRows(board).map((row) => h(TaskRow, { key: row.item, row, flags: flagsOf.get(row.item) || [], drift: driftOf.get(row.item) })))
+        panelRows(board).map((row) => h(TaskRow, { key: row.item, row, flags: flagsOf.get(row.item) || [], drift: driftOf.get(row.item) })))
       : h('p', { style: muted }, 'No tasks yet.')))
+}
+
+// ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
+
+const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : {} } catch { return {} } }
+
+/**
+ * The card's one-line state and title (pure; exported for tests). The title is
+ * the result meta's title when the host recorded one, else lib/present.js's
+ * call title from the arguments.
+ */
+function toolCardModel(props) {
+  const name = props.toolName || props.block?.name
+  const block = props.block || {}
+  if (props.phase === 'preparing') return { state: 'running', title: 'Board', summary: name }
+  const settled = props.phase === 'result'
+  const args = parseArgs(settled ? block.call?.argsRaw ?? '' : block.argsRaw ?? '')
+  const metaTitle = settled && block.meta && typeof block.meta.title === 'string' ? block.meta.title : undefined
+  const state = !settled ? 'running' : block.error?.code === 'interrupted' ? 'stopped' : block.isError ? 'error' : 'ok'
+  let output = null
+  if (settled) {
+    const parts = (block.content || []).map((c) => (c.type === 'text' ? c.text : JSON.stringify(c)))
+    output = parts.join('\n') || null
+    if (output) { try { const v = JSON.parse(output); if (v && v.ok === false) return { state: 'error', title: 'Board', summary: callTitle(name, args) + ' · ' + v.code, output } } catch {} }
+  }
+  const summary = (metaTitle || callTitle(name, args)) + (state === 'error' ? ' · failed' : state === 'stopped' ? ' · stopped' : '')
+  return { state, title: 'Board', summary, output }
+}
+
+function pretty(output) {
+  try { const v = JSON.parse(output); return typeof v?.tree === 'string' ? v.tree : JSON.stringify(v, null, 2) } catch { return output }
+}
+
+function BoardToolRow(props) {
+  const model = toolCardModel(props)
+  const disclosure = props.useDisclosure ? props.useDisclosure() : null
+  const [localOpen, setLocalOpen] = React.useState(false)
+  const open = disclosure ? disclosure.expanded : localOpen
+  const toggle = disclosure ? disclosure.toggle : () => setLocalOpen(!localOpen)
+  const expandable = model.output !== null && model.output !== undefined
+  const summaryStyle = model.state === 'error' ? { color: 'var(--dsw-alias-state-error-primary)' } : model.state === 'stopped' ? { color: 'var(--dsw-alias-state-warn-label)' } : null
+  const Icon = primitives.IconChecklistOutlineRegular
+  const icon = Icon ? h(Icon, { size: 14 }) : null
+  const summary = h('span', { style: { ...small, ...summaryStyle, marginLeft: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, model.summary)
+  const body = open && expandable ? h('pre', { style: { ...mono, ...small, ...secondary, whiteSpace: 'pre-wrap', margin: '4px 0 4px 4px', maxHeight: 260, overflow: 'auto' } }, pretty(model.output)) : null
+  if (primitives.DisclosureRow) {
+    return h('div', { 'data-tool': props.toolName, 'data-state': model.state },
+      h(primitives.DisclosureRow, { icon, title: model.title, open: open && expandable, expandable, onToggle: toggle, running: model.state === 'running', expandOnRowClick: true, collapsedContent: summary, keepContentWhenOpen: true }, body))
+  }
+  return h('div', { 'data-tool': props.toolName, 'data-state': model.state, style: { ...muted } },
+    h('div', { onClick: expandable ? toggle : undefined, style: { cursor: expandable ? 'pointer' : 'default', display: 'flex', alignItems: 'center' } }, icon, h('span', { style: small }, model.title), summary),
+    body)
 }
 
 const inject = ['slots', 'sidebarRightTabs']
@@ -217,9 +537,12 @@ function apply(ctx) {
     key: ID,
     inject: (sessionId) => ({ sessionId }),
   }, BoardBody))
+  for (const key of TOOLS) {
+    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key }, BoardToolRow))
+  }
 }
 
-module.exports = { apply, inject, treeRows, rowModel, boardRows, whenText }
+module.exports = { apply, inject, treeOrder, boardRows, needsYou, taskUrl, whenText, showDrift, toolCardModel, TOOLS }
 
 return module.exports;
 } });
