@@ -1,0 +1,41 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { available } from './dsh-resolve.mjs'
+import { tempHome } from './helpers.mjs'
+import { join } from 'node:path'
+
+// Registers the real definitions through a stub ctx and checks the outputs
+// against the declared schemas with dsh-tools' own validator.
+test('apply registers four tools whose outputs validate', { skip: !available && 'DSH installation not found' }, async () => {
+  const { apply } = await import('../index.js')
+  const { validateJsonSchemaValue } = await import('@deepseek-ai/dsh-tools')
+  const home = await tempHome()
+  const registered = []
+  const ctx = { inject: (deps, fn) => { assert.deepEqual(deps, ['tools']); fn({ tools: { register: (d) => { registered.push(d); return () => {} } } }) } }
+  apply(ctx, { dataDir: join(home, 'data', 'dsh-cockpit') })
+  assert.deepEqual(registered.map((d) => d.name), ['board_open', 'board_read', 'board_add', 'board_update'])
+  const byName = Object.fromEntries(registered.map((d) => [d.name, d]))
+  const exec = { agent: { session: { id: 's' } }, signal: new AbortController().signal }
+  const calls = [
+    ['board_read', {}],
+    ['board_open', { key: 'k', parent: 'p' }],
+    ['board_add', { what: 'x', dependsOn: ['9'], readyCommand: 'echo' }],
+    ['board_update', { item: '1', set: { pr: null, status: 'waiting' } }],
+    ['board_update', { item: '9', set: {} }],
+    ['board_read', { status: ['waiting'] }],
+    ['board_update', { item: '1', remove: true }],
+  ]
+  for (const [name, args] of calls) {
+    const value = await byName[name].execute(args, exec)
+    assert.deepEqual(validateJsonSchemaValue(byName[name].output.schema, value, ''), [], name)
+  }
+  assert.equal(byName.board_read.isConcurrencySafe({}), true)
+  assert.equal(byName.board_read.isConcurrencySafe({ checkDrift: true }), false)
+  await assert.rejects(byName.board_add.execute({ what: 'x', status: 'later' }, exec), /status/)
+})
+
+test('tools.enabled false registers none', { skip: !available && 'DSH installation not found' }, async () => {
+  const { apply } = await import('../index.js')
+  const ctx = { inject: () => assert.fail('inject called') }
+  apply(ctx, { tools: { enabled: false }, dataDir: join(await tempHome(), 'd') })
+})
