@@ -174,6 +174,41 @@ test('filters narrow the result after the check; the stored drift is the whole b
   assert.equal(r.drift.items[0].item, '2a')
 })
 
+test('a change made while the command runs is kept, and is not held up by it', async () => {
+  // The command waits until the file a test write creates exists, then reports.
+  const d = await withCommand(`import { existsSync } from 'node:fs'
+const go = process.env.DSH_COCKPIT_FILE + '.go'
+const t = setInterval(() => {
+  if (!existsSync(go)) return
+  clearInterval(t)
+  process.stdout.write(JSON.stringify({ items: [{ item: '2a', status: 'done' }, { item: '1', status: 'now' }] }))
+}, 10)`, { mode: 'apply' })
+  const check = d.tools.board_read({ checkDrift: true }, exec())
+  await new Promise((r) => setTimeout(r, 50))
+  const added = await d.tools.board_add({ item: '3', what: 'added meanwhile' }, exec())
+  await d.tools.board_update({ item: '1', set: { status: 'now' } }, exec())
+  assert.equal(added.ok, true)
+  await writeFile(d.store.file('k') + '.go', '')
+  const r = await check
+  assert.deepEqual(r.tasks.map((x) => [x.item, x.status]), [['1', 'now'], ['2a', 'done'], ['3', 'next']])
+  assert.deepEqual(r.drift.items, [{ item: '2a', status: 'done' }], 'task 1 is compared as it is now')
+  assert.deepEqual((await fileOf(d)).tasks, r.tasks)
+})
+
+test('an unknown item is refused before the command runs', async () => {
+  const d = await withCommand(REPORT, { mode: 'apply' })
+  const before = await fileOf(d)
+  const r = await d.tools.board_read({ checkDrift: true, item: 'nope' }, exec())
+  assert.equal(r.code, 'item_unknown')
+  assert.deepEqual(await fileOf(d), before)
+})
+
+test('stderr is kept only to its end', async () => {
+  const run = await runDriftCommand({ command: `"${process.execPath}" -e "process.stderr.write('x'.repeat(100000) + 'END'); process.exit(2)"`, env: process.env, input: '' })
+  assert.ok(run.stderr.length <= 4096 && run.stderr.endsWith('END'))
+  assert.match(driftResult(board, run, { now }).drift.error, /^exit 2: …x+END$/)
+})
+
 test('an aborted call stops the command and the process it started', async () => {
   const d = await withCommand(`import { spawn } from 'node:child_process'
 const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' })

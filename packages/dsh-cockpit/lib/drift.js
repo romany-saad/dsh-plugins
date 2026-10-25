@@ -6,12 +6,15 @@ import { spawn } from 'node:child_process'
 import { STATUSES } from './task.js'
 
 const tail = (text, n = 400) => (text.length > n ? '…' + text.slice(-n) : text).trim()
+// More than tail() keeps, so tail() still marks a cut with "…".
+const STDERR_KEPT = 4096
 
 /**
  * Run the drift command through the system shell, with env and the board's
  * JSON on stdin. It runs in its own process group, so an abort stops the
- * shell and what it started; the promise then rejects with the abort reason.
- * A command that cannot start resolves with error set.
+ * shell and what it started (on Windows, only the shell); the promise then
+ * rejects with the abort reason. A command that cannot start resolves with
+ * error set. Only the end of stderr is kept, as driftResult stores no more.
  * @returns {Promise<{ code: number|null, signal: string|null, stdout: string, stderr: string, error?: string }>}
  */
 export function runDriftCommand({ command, cwd, env, input, signal }) {
@@ -30,7 +33,7 @@ export function runDriftCommand({ command, cwd, env, input, signal }) {
     let stdout = ''
     let stderr = ''
     child.stdout.setEncoding('utf8').on('data', (d) => { stdout += d })
-    child.stderr.setEncoding('utf8').on('data', (d) => { stderr += d })
+    child.stderr.setEncoding('utf8').on('data', (d) => { stderr = (stderr + d).slice(-STDERR_KEPT) })
     child.stdin.on('error', () => {}) // the command need not read stdin
     child.on('error', (error) => {
       signal?.removeEventListener('abort', onAbort)

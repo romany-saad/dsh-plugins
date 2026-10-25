@@ -189,4 +189,6 @@ test('reported: the last drift entry of a row whose status still differs, tagged
   assert.deepEqual(rows.map((r) => r.reported), [{ status: 'done', note: '#902 merged' }, undefined, undefined], 'a task since set to the reported status has no tag')
   assert.equal(reportedText(rows[0].reported), 'reported: done')
   assert.deepEqual(boardRows({ drift: { checkedAt: 'x', error: 'exit 3' }, tasks: [t('1', 'now', 'a')] })[0].reported, undefined)
+  const bad = { drift: { checkedAt: 'x', items: [null, 3, 'x', { item: 1, status: 'done' }, { item: '1', status: 'done' }] }, tasks: [t('1', 'now', 'a')] }
+  assert.deepEqual(boardRows(bad)[0].reported, { status: 'done' }, 'a hand-written entry that is not an object with a string item is skipped')
 })

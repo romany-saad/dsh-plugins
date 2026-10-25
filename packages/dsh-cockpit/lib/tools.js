@@ -236,23 +236,26 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
 
   const by = (exec) => sessionOf(exec) || undefined
 
-  // Run the drift command on the current board and store its result, in the
-  // board's write queue so that apply mode changes the tasks it was given.
-  // A report, or a failed run, changes no task, so revision stays (E1).
-  async function checkDrift(key, exec) {
-    const { board } = await change(key, async (current) => {
+  // Run the drift command on the board as read, outside the write queue, so a
+  // slow command does not hold up other writes. Its result is then applied
+  // to the board as it is when written, so a change made meanwhile is kept:
+  // a task added since is not in the report, one removed is skipped, and a
+  // status set since is compared as it now is. A report, or a failed run,
+  // changes no task, so revision stays (E1).
+  async function checkDrift(key, board, exec) {
+    const run = await runDriftCommand({
+      command: drift.command,
+      cwd: drift.cwd,
+      env: { ...env, ...(dshHome !== undefined ? { DSH_HOME: dshHome } : {}), DSH_COCKPIT_KEY: key, DSH_COCKPIT_FILE: store.file(key) },
+      input: JSON.stringify(board),
+      signal: exec.signal,
+    })
+    const { board: next } = await change(key, (current) => {
       existing(key, current)
-      const run = await runDriftCommand({
-        command: drift.command,
-        cwd: drift.cwd,
-        env: { ...env, ...(dshHome !== undefined ? { DSH_HOME: dshHome } : {}), DSH_COCKPIT_KEY: key, DSH_COCKPIT_FILE: store.file(key) },
-        input: JSON.stringify(current),
-        signal: exec.signal,
-      })
       const result = driftResult(current, run, { mode: drift.mode, now: store.now })
       return { board: { ...current, tasks: result.tasks, drift: result.drift }, write: true }
     }, { by: by(exec), signal: exec.signal })
-    return board
+    return next
   }
 
   return {
@@ -281,7 +284,10 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
     board_read: (args = {}, exec = {}) => guard(async () => {
       const key = await boundKey(exec)
       const runDrift = args.checkDrift === true && drift.command.trim() !== ''
-      const board = runDrift ? await checkDrift(key, exec) : existing(key, await read(key))
+      let board = existing(key, await read(key))
+      // An unknown item is refused before the command runs, so a refused call changes nothing.
+      if (args.item !== undefined && !board.tasks.some((t) => t.item === args.item)) return err('item_unknown', `No task ${JSON.stringify(args.item)} on board ${key}.`)
+      if (runDrift) board = await checkDrift(key, board, exec)
       let only
       if (args.item !== undefined) {
         if (!board.tasks.some((t) => t.item === args.item)) return err('item_unknown', `No task ${JSON.stringify(args.item)} on board ${key}.`)

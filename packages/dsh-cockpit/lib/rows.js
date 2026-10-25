@@ -255,7 +255,8 @@ export function boardRows(board, options = {}) {
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const mine = new Set(needsYou(tasks).map((t) => t.item))
   const childrenOf = new Map(treeOrder(tasks).map((r) => [r.task.item, r.children]))
-  const drifted = new Map((Array.isArray(board?.drift?.items) ? board.drift.items : []).map((e) => [e.item, e]))
+  // A hand-written file may hold anything in drift.items: only entries with a string item count.
+  const drifted = new Map((Array.isArray(board?.drift?.items) ? board.drift.items : []).filter((e) => typeof e?.item === 'string').map((e) => [e.item, e]))
   return treeOrder(tasks, { only: options.only }).map(({ task, depth, guide }) => {
     const d = drifted.get(task.item)
     const reported = d && typeof d.status === 'string' && d.status !== task.status

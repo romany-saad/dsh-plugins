@@ -43,12 +43,12 @@ A profile patch with the same id replaces the whole config, so it restates the f
 Drift is a task whose status no longer matches its linked work, such as a merged PR on a task that still says `waiting`. The plugin knows no tracker, so the check is a command you configure in `drift.command`. With no command, nothing runs.
 
 - **When.** Only on `board_read({ checkDrift: true })`. The command comes only from the profile config; no tool argument names it, and nothing runs on a timer.
-- **How.** Through the system shell, in `drift.cwd` (empty: the host's directory), with the host's environment plus `DSH_HOME`, `DSH_COCKPIT_KEY` and `DSH_COCKPIT_FILE`, and the board's JSON on stdin. It runs in its own process group, so cancelling the call stops it and what it started.
+- **How.** Through the system shell, in `drift.cwd` (empty: the host's directory), with the host's environment plus `DSH_HOME`, `DSH_COCKPIT_KEY` and `DSH_COCKPIT_FILE`, and the board's JSON on stdin. It runs in its own process group, so cancelling the call stops it and what it started (on Windows, only the shell). It runs outside the board's write queue, so other writes go on meanwhile; its result is then compared with the board as it is when stored.
 - **Output.** `{ "items": [ { "item", "status"?, "note"? } ] }` on stdout. The board's `drift` keeps only the entries whose status differs from their task's, plus `checked`, the number of entries reported, and `checkedAt`. A non-zero exit or output that is not JSON stores `drift.error` instead, and the tasks stay as they were.
 - **`drift.mode`.** `report` (the default) changes no task and does not bump `revision`; the hub decides and writes. `apply` sets each differing task's status and bumps `revision`.
 - **Shown.** The tree text ends a row whose status still differs with "reported: done".
 
-`examples/board-drift-gh.sh` is an example to copy and change. It reports `done` for each task whose `pr` `gh pr view` reports as merged, and needs `gh` and `jq`. The plugin never runs it unless you name it in `drift.command`, for example `drift: { command: 'bash /path/to/board-drift-gh.sh', cwd: '/path/to/repo', mode: report }`.
+`examples/board-drift-gh.sh` is an example to copy and change. It reports `done` for each open task whose `pr` `gh pr view` reports as merged, and needs `gh` and `jq`; it fails when either is missing or gh can read none of the PRs. The plugin never runs it unless you name it in `drift.command`, for example `drift: { command: 'bash /path/to/board-drift-gh.sh', cwd: '/path/to/repo', mode: report }`.
 
 The peers are `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths`, which the profile's DSH provides.
 
