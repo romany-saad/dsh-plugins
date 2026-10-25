@@ -195,12 +195,12 @@ function notes(task) {
   return out
 }
 
-/** "model · effort"; the provider only when the model does not start with it, or it is not claude. */
-function modelText(task) {
+/** "model · effort" (sep between); the provider only when the model does not start with it, or it is not claude. */
+function modelText(task, sep = ' · ') {
   const provider = text(task.provider)
   const model = text(task.model)
   const showProvider = provider && (!model || !model.startsWith(provider) || provider !== 'claude')
-  return [showProvider ? provider : undefined, model, text(task.effort)].filter(Boolean).join(' · ')
+  return [showProvider ? provider : undefined, model, text(task.effort)].filter(Boolean).join(sep)
 }
 
 const REPO_REF = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)$/
@@ -288,44 +288,68 @@ const progressText = (p) => p.done + ' of ' + p.total + ' done' + (p.needsYou ? 
 /** "blocked by #884 (waiting), #885 (now)". */
 const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
 
+/** Above this many work tasks the bar is one continuous fill: segments get too thin. */
+const SEGMENT_MAX = 24
+
 /**
  * The whole board's progress, for the bar at the chat input. done and total
  * count the work tasks: those with no children (a parent's own progress is
- * its children's). needsYou counts needsYou(). focus is the most important
- * open work task, in tree order, the first present of: one that waits on the
- * owner, one next or waiting that is blocked (a dependency on the board not
- * done, or one not on the board), one now; else undefined.
+ * its children's). needsYou counts needsYou().
+ *
+ * segments: one per work task, in tree order, { item, kind, tooltip }; kind is
+ * done, 'needs you' (an open task needsYou() lists), now, waiting, ready (next,
+ * every dependency on the board and done) or blocked (next, else). tooltip:
+ * "#887 Live checks and docs · next · blocked by #884". A task's blockers are
+ * its row's blockedBy (by issue, else item) and, on a next or waiting task,
+ * each dependency not on the board: "'release notes' (not on the board)".
+ * continuous: more than SEGMENT_MAX work tasks, so the bar draws one fill.
+ *
+ * focus is the most important open work, in tree order, the first present of:
+ * one that needs you ("#884 Profile and guard"), one with blockers ("#887
+ * blocked by #884"), the ones now ("in progress: #885 Work reports", "2 in
+ * progress: #885, #886"); else undefined.
  * @param {{tasks: object[], parent?: string}} board
- * @returns {{ done: number, total: number, needsYou: number, focus?: { kind: 'needs you'|'blocked'|'now', item: string, title: string } }}
+ * @returns {{ done: number, total: number, needsYou: number, continuous: boolean,
+ *   segments: { item: string, kind: string, tooltip: string }[],
+ *   focus?: { kind: 'needs you'|'blocked'|'now', item: string, title: string, text: string } }}
  */
 function boardProgress(board) {
   const tasks = Array.isArray(board?.tasks) ? board.tasks : []
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const rows = boardRows(board).filter((r) => !r.progress)
-  const open = rows.filter((r) => !r.done)
-  const deps = (r) => { const d = byItem.get(r.item).dependsOn; return Array.isArray(d) ? d : [] }
-  const waits = (r) => r.status === 'next' || r.status === 'waiting'
-  const pick = [
-    ['needs you', (r) => r.needsYou],
-    ['blocked', (r) => waits(r) && (r.blockedBy.length > 0 || deps(r).some((d) => !byItem.has(d)))],
-    ['now', (r) => r.status === 'now'],
-  ]
+  const work = rows.map((r) => {
+    const task = byItem.get(r.item)
+    const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
+    const waits = r.status === 'next' || r.status === 'waiting'
+    const blockers = r.blockedBy.map((b) => b.ref).concat(waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : [])
+    const kind = r.done ? 'done' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now' : r.status === 'waiting' ? 'waiting' : r.ready ? 'ready' : 'blocked'
+    const runner = r.status === 'now' ? modelText(task, ' ') : ''
+    const tooltip = [r.title, r.status, runner, blockers.length ? 'blocked by ' + blockers.join(', ') : '', kind === 'ready' ? 'ready' : '', r.needsYou && !r.done ? 'needs you' : ''].filter(Boolean).join(' · ')
+    return { row: r, blockers, segment: { item: r.item, kind, tooltip } }
+  })
+  const open = work.filter((w) => !w.row.done)
+  const at = (w, kind, text) => ({ kind, item: w.row.item, title: w.row.title, text })
   let focus
-  for (const [kind, test] of pick) {
-    const r = open.find(test)
-    if (r) { focus = { kind, item: r.item, title: r.title }; break }
+  const mine = open.find((w) => w.row.needsYou)
+  const blocked = open.find((w) => w.blockers.length)
+  const now = open.filter((w) => w.row.status === 'now')
+  if (mine) focus = at(mine, 'needs you', mine.row.title)
+  else if (blocked) focus = at(blocked, 'blocked', refOf(blocked.row) + ' blocked by ' + blocked.blockers.join(', '))
+  else if (now.length === 1) focus = at(now[0], 'now', 'in progress: ' + now[0].row.title)
+  else if (now.length) focus = at(now[0], 'now', now.length + ' in progress: ' + now.map((w) => refOf(w.row)).join(', '))
+  return {
+    done: rows.length - open.length, total: rows.length, needsYou: needsYou(tasks).tasks.length,
+    segments: work.map((w) => w.segment), continuous: rows.length > SEGMENT_MAX, focus,
   }
-  return { done: rows.length - open.length, total: rows.length, needsYou: needsYou(tasks).tasks.length, focus }
 }
 
-/** "4 of 6 done · 1 needs you", then the focus: "#884 Profile and guard" when it needs you, else "blocked: …" or "now: …". */
+/** "4 of 6 done · 1 needs you", then the focus's text. */
 function boardProgressText(p) {
   const head = progressText(p)
-  if (!p.focus) return head
-  return head + ' · ' + (p.focus.kind === 'needs you' ? '' : p.focus.kind + ': ') + p.focus.title
+  return p.focus ? head + ' · ' + p.focus.text : head
 }
 
-return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText, boardProgress, boardProgressText }
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText, SEGMENT_MAX, boardProgress, boardProgressText }
 })(),
 "../../lib/present.js": (() => {
 // Tool-card titles (GenericCallView / GenericResultView of dsh-tools): one
@@ -611,8 +635,28 @@ function panelRows(board) {
   return rows.map((r) => ({ ...r, idWidth }))
 }
 
-function BoardBody({ sessionId }) {
+// Tab id -> the navigation revision already scrolled to, so a remounted body
+// does not jump back to an old click.
+const scrolledTo = new Map()
+
+/**
+ * A dock segment opens the tab with params { item }; the body scrolls to that
+ * row once the board has rendered, once per navigation.
+ */
+function useShowRow(useTabInfo, ready) {
+  const tab = useTabInfo ? useTabInfo().tab : undefined
+  const nav = tab && tab.navigation
+  const item = nav && nav.params && nav.params.item
+  React.useEffect(() => {
+    if (!ready || item === undefined || scrolledTo.get(tab.id) === nav.revision) return
+    scrolledTo.set(tab.id, nav.revision)
+    showRow(item)
+  }, [ready, item, nav && nav.revision])
+}
+
+function BoardBody({ sessionId, useTabInfo }) {
   const { loading, view, error } = useView(sessionId)
+  useShowRow(useTabInfo, Boolean(view && view.board))
   const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '', style: { padding: 12, overflow: 'auto', height: '100%', boxSizing: 'border-box' } }, child)
   if (loading) return wrap(h('p', { style: muted }, 'Loading board…'))
   if (error) return wrap(h('p', { role: 'alert' }, 'Board unavailable: ' + error))
@@ -652,12 +696,30 @@ const DOCK_BAR = {
   background: 'var(--dsw-specific-menu, var(--dsw-alias-bg-l1, transparent))', boxShadow: 'var(--dsw-elevation-panel)',
   '--dsw-elevation-stroke-color': 'var(--dsw-alias-border-l1)',
 }
-const TRACK = { flex: 'none', width: 72, height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-fill-l2, rgba(127,127,127,0.25))' }
+// The bar: one segment per work task, a 2 px gap between; above SEGMENT_MAX one fill.
+const TRACK = { flex: 'none', height: 6, display: 'flex', gap: 2, alignItems: 'stretch' }
+const SEGMENT = { flex: '1 1 0', minWidth: 3, borderRadius: 1.5, boxSizing: 'border-box', cursor: 'pointer' }
+const SUCCESS = 'var(--dsw-alias-state-success-primary, #3a3)'
+const ACCENT = 'var(--dsw-alias-brand-primary, #36f)'
+const WARN = 'var(--dsw-alias-state-warn-primary, #c90)'
+const LIGHT = 'var(--dsw-alias-label-tertiary, rgba(127,127,127,0.6))'
+const FAINT = 'var(--dsw-alias-fill-l2, rgba(127,127,127,0.25))'
+// Status by fill and shape, never moving: the bar polls and sits by the input.
+// now is half filled with the accent (started, not finished); needs you is
+// the warn fill with an outline; the tooltip and phrase say it in words.
+const FILL = {
+  done: { background: SUCCESS },
+  now: { background: 'linear-gradient(to right, ' + ACCENT + ' 50%, ' + FAINT + ' 50%)', boxShadow: 'inset 0 0 0 1px ' + ACCENT },
+  waiting: { background: WARN },
+  'needs you': { background: WARN, boxShadow: 'inset 0 0 0 1px var(--dsw-alias-label-primary, #000)' },
+  ready: { background: LIGHT, opacity: 0.7 },
+  blocked: { background: FAINT },
+}
 
 /**
  * The dock's model (pure; exported for tests): undefined, so nothing renders,
- * unless the session has a bound board that parsed; else the progress, its
- * phrase and the done fraction.
+ * unless the session has a bound board that parsed; else the progress with its
+ * segments, its phrase and the done fraction.
  */
 function dockModel(view) {
   if (!view || !view.key || !view.board) return undefined
@@ -665,19 +727,39 @@ function dockModel(view) {
   return { ...p, text: boardProgressText(p), fraction: p.total ? p.done / p.total : 0 }
 }
 
+/** The bar as text, for tests and the hub: "[✓][✓][◐ now][·blocked][!waiting]". */
+const SEGMENT_TEXT = { done: '✓', now: '◐ now', waiting: '!waiting', 'needs you': '!!needs you', ready: '○ready', blocked: '·blocked' }
+const segmentsText = (m) => (m.continuous ? '[' + '█'.repeat(Math.round(m.fraction * 10)).padEnd(10, '░') + ']' : m.segments.map((g) => '[' + SEGMENT_TEXT[g.kind] + ']').join(''))
+
+function Bar({ m, openBoard }) {
+  if (m.continuous || !m.segments.length) {
+    return h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', title: progressText(m), style: { ...TRACK, width: 72, borderRadius: 2, overflow: 'hidden', background: FAINT } },
+      h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: SUCCESS } }))
+  }
+  const width = Math.min(180, Math.max(72, m.segments.length * 16))
+  return h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', style: { ...TRACK, width } },
+    m.segments.map((g) => h('span', {
+      key: g.item, 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip,
+      onClick: openBoard ? (e) => { e.stopPropagation(); openBoard(g.item) } : undefined,
+      style: { ...SEGMENT, ...FILL[g.kind], cursor: openBoard ? 'pointer' : 'default' },
+    })))
+}
+
 function BoardDock({ sessionId, openBoard }) {
   const { view } = useView(sessionId)
   const m = dockModel(view)
   if (!m) return null
   const label = m.text + (openBoard ? ' · open the Board' : '')
+  const open = openBoard ? () => openBoard() : undefined
   return h('div', { 'data-dsh-cockpit-dock': '', style: DOCK },
-    h('button', {
-      type: 'button', onClick: openBoard ? () => openBoard() : undefined, 'aria-label': label, title: openBoard ? 'Open the Board' : undefined,
+    // A div, not a button: the segments inside take their own clicks.
+    h('div', {
+      role: openBoard ? 'button' : undefined, tabIndex: openBoard ? 0 : undefined, onClick: open, 'aria-label': label,
+      onKeyDown: open ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } } : undefined,
       style: { ...DOCK_BAR, cursor: openBoard ? 'pointer' : 'default', ...primary },
     },
-      h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', style: TRACK },
-        h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: 'var(--dsw-alias-state-success-primary, #3a3)' } })),
-      h('span', { style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...secondary } },
+      h(Bar, { m, openBoard }),
+      h('span', { title: openBoard ? 'Open the Board' : undefined, style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...secondary } },
         h('span', { style: primary }, progressText(m)),
         m.text.length > progressText(m).length ? m.text.slice(progressText(m).length) : null)))
 }
@@ -752,16 +834,18 @@ function apply(ctx) {
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key }, BoardToolRow))
   }
   // Above the input box, after the Todo, Goal and Queue docks (orders 0, 10, 20).
-  // A click opens the Board tab: openTab acts on the on-screen session, the dock's.
+  // A click opens the Board tab: openTab acts on the on-screen session, the dock's;
+  // a segment's click also names its row.
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'dsh-cockpit-progress',
     order: 30,
-    inject: (sessionId) => ({ sessionId, openBoard: () => ctx.sidebarRight.openTab(KIND) }),
+    // With an item, the Board scrolls to its row (navigation params, see useShowRow).
+    inject: (sessionId) => ({ sessionId, openBoard: (item) => ctx.sidebarRight.openTab(KIND, item === undefined ? undefined : { params: { item } }) }),
   }, BoardDock))
 }
 
-module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, dockModel, toolCardModel, TOOLS }
+module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, dockModel, segmentsText, toolCardModel, TOOLS }
 
 return module.exports;
 } });

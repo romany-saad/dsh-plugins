@@ -199,8 +199,28 @@ function panelRows(board) {
   return rows.map((r) => ({ ...r, idWidth }))
 }
 
-function BoardBody({ sessionId }) {
+// Tab id -> the navigation revision already scrolled to, so a remounted body
+// does not jump back to an old click.
+const scrolledTo = new Map()
+
+/**
+ * A dock segment opens the tab with params { item }; the body scrolls to that
+ * row once the board has rendered, once per navigation.
+ */
+function useShowRow(useTabInfo, ready) {
+  const tab = useTabInfo ? useTabInfo().tab : undefined
+  const nav = tab && tab.navigation
+  const item = nav && nav.params && nav.params.item
+  React.useEffect(() => {
+    if (!ready || item === undefined || scrolledTo.get(tab.id) === nav.revision) return
+    scrolledTo.set(tab.id, nav.revision)
+    showRow(item)
+  }, [ready, item, nav && nav.revision])
+}
+
+function BoardBody({ sessionId, useTabInfo }) {
   const { loading, view, error } = useView(sessionId)
+  useShowRow(useTabInfo, Boolean(view && view.board))
   const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '', style: { padding: 12, overflow: 'auto', height: '100%', boxSizing: 'border-box' } }, child)
   if (loading) return wrap(h('p', { style: muted }, 'Loading board…'))
   if (error) return wrap(h('p', { role: 'alert' }, 'Board unavailable: ' + error))
@@ -240,12 +260,30 @@ const DOCK_BAR = {
   background: 'var(--dsw-specific-menu, var(--dsw-alias-bg-l1, transparent))', boxShadow: 'var(--dsw-elevation-panel)',
   '--dsw-elevation-stroke-color': 'var(--dsw-alias-border-l1)',
 }
-const TRACK = { flex: 'none', width: 72, height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-fill-l2, rgba(127,127,127,0.25))' }
+// The bar: one segment per work task, a 2 px gap between; above SEGMENT_MAX one fill.
+const TRACK = { flex: 'none', height: 6, display: 'flex', gap: 2, alignItems: 'stretch' }
+const SEGMENT = { flex: '1 1 0', minWidth: 3, borderRadius: 1.5, boxSizing: 'border-box', cursor: 'pointer' }
+const SUCCESS = 'var(--dsw-alias-state-success-primary, #3a3)'
+const ACCENT = 'var(--dsw-alias-brand-primary, #36f)'
+const WARN = 'var(--dsw-alias-state-warn-primary, #c90)'
+const LIGHT = 'var(--dsw-alias-label-tertiary, rgba(127,127,127,0.6))'
+const FAINT = 'var(--dsw-alias-fill-l2, rgba(127,127,127,0.25))'
+// Status by fill and shape, never moving: the bar polls and sits by the input.
+// now is half filled with the accent (started, not finished); needs you is
+// the warn fill with an outline; the tooltip and phrase say it in words.
+const FILL = {
+  done: { background: SUCCESS },
+  now: { background: 'linear-gradient(to right, ' + ACCENT + ' 50%, ' + FAINT + ' 50%)', boxShadow: 'inset 0 0 0 1px ' + ACCENT },
+  waiting: { background: WARN },
+  'needs you': { background: WARN, boxShadow: 'inset 0 0 0 1px var(--dsw-alias-label-primary, #000)' },
+  ready: { background: LIGHT, opacity: 0.7 },
+  blocked: { background: FAINT },
+}
 
 /**
  * The dock's model (pure; exported for tests): undefined, so nothing renders,
- * unless the session has a bound board that parsed; else the progress, its
- * phrase and the done fraction.
+ * unless the session has a bound board that parsed; else the progress with its
+ * segments, its phrase and the done fraction.
  */
 function dockModel(view) {
   if (!view || !view.key || !view.board) return undefined
@@ -253,19 +291,39 @@ function dockModel(view) {
   return { ...p, text: boardProgressText(p), fraction: p.total ? p.done / p.total : 0 }
 }
 
+/** The bar as text, for tests and the hub: "[✓][✓][◐ now][·blocked][!waiting]". */
+const SEGMENT_TEXT = { done: '✓', now: '◐ now', waiting: '!waiting', 'needs you': '!!needs you', ready: '○ready', blocked: '·blocked' }
+const segmentsText = (m) => (m.continuous ? '[' + '█'.repeat(Math.round(m.fraction * 10)).padEnd(10, '░') + ']' : m.segments.map((g) => '[' + SEGMENT_TEXT[g.kind] + ']').join(''))
+
+function Bar({ m, openBoard }) {
+  if (m.continuous || !m.segments.length) {
+    return h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', title: progressText(m), style: { ...TRACK, width: 72, borderRadius: 2, overflow: 'hidden', background: FAINT } },
+      h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: SUCCESS } }))
+  }
+  const width = Math.min(180, Math.max(72, m.segments.length * 16))
+  return h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', style: { ...TRACK, width } },
+    m.segments.map((g) => h('span', {
+      key: g.item, 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip,
+      onClick: openBoard ? (e) => { e.stopPropagation(); openBoard(g.item) } : undefined,
+      style: { ...SEGMENT, ...FILL[g.kind], cursor: openBoard ? 'pointer' : 'default' },
+    })))
+}
+
 function BoardDock({ sessionId, openBoard }) {
   const { view } = useView(sessionId)
   const m = dockModel(view)
   if (!m) return null
   const label = m.text + (openBoard ? ' · open the Board' : '')
+  const open = openBoard ? () => openBoard() : undefined
   return h('div', { 'data-dsh-cockpit-dock': '', style: DOCK },
-    h('button', {
-      type: 'button', onClick: openBoard ? () => openBoard() : undefined, 'aria-label': label, title: openBoard ? 'Open the Board' : undefined,
+    // A div, not a button: the segments inside take their own clicks.
+    h('div', {
+      role: openBoard ? 'button' : undefined, tabIndex: openBoard ? 0 : undefined, onClick: open, 'aria-label': label,
+      onKeyDown: open ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } } : undefined,
       style: { ...DOCK_BAR, cursor: openBoard ? 'pointer' : 'default', ...primary },
     },
-      h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', style: TRACK },
-        h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: 'var(--dsw-alias-state-success-primary, #3a3)' } })),
-      h('span', { style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...secondary } },
+      h(Bar, { m, openBoard }),
+      h('span', { title: openBoard ? 'Open the Board' : undefined, style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...secondary } },
         h('span', { style: primary }, progressText(m)),
         m.text.length > progressText(m).length ? m.text.slice(progressText(m).length) : null)))
 }
@@ -340,13 +398,15 @@ function apply(ctx) {
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key }, BoardToolRow))
   }
   // Above the input box, after the Todo, Goal and Queue docks (orders 0, 10, 20).
-  // A click opens the Board tab: openTab acts on the on-screen session, the dock's.
+  // A click opens the Board tab: openTab acts on the on-screen session, the dock's;
+  // a segment's click also names its row.
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'dsh-cockpit-progress',
     order: 30,
-    inject: (sessionId) => ({ sessionId, openBoard: () => ctx.sidebarRight.openTab(KIND) }),
+    // With an item, the Board scrolls to its row (navigation params, see useShowRow).
+    inject: (sessionId) => ({ sessionId, openBoard: (item) => ctx.sidebarRight.openTab(KIND, item === undefined ? undefined : { params: { item } }) }),
   }, BoardDock))
 }
 
-module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, dockModel, toolCardModel, TOOLS }
+module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, dockModel, segmentsText, toolCardModel, TOOLS }

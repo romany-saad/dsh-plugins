@@ -191,12 +191,12 @@ export function notes(task) {
   return out
 }
 
-/** "model · effort"; the provider only when the model does not start with it, or it is not claude. */
-export function modelText(task) {
+/** "model · effort" (sep between); the provider only when the model does not start with it, or it is not claude. */
+export function modelText(task, sep = ' · ') {
   const provider = text(task.provider)
   const model = text(task.model)
   const showProvider = provider && (!model || !model.startsWith(provider) || provider !== 'claude')
-  return [showProvider ? provider : undefined, model, text(task.effort)].filter(Boolean).join(' · ')
+  return [showProvider ? provider : undefined, model, text(task.effort)].filter(Boolean).join(sep)
 }
 
 const REPO_REF = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)$/
@@ -284,39 +284,63 @@ export const progressText = (p) => p.done + ' of ' + p.total + ' done' + (p.need
 /** "blocked by #884 (waiting), #885 (now)". */
 export const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
 
+/** Above this many work tasks the bar is one continuous fill: segments get too thin. */
+export const SEGMENT_MAX = 24
+
 /**
  * The whole board's progress, for the bar at the chat input. done and total
  * count the work tasks: those with no children (a parent's own progress is
- * its children's). needsYou counts needsYou(). focus is the most important
- * open work task, in tree order, the first present of: one that waits on the
- * owner, one next or waiting that is blocked (a dependency on the board not
- * done, or one not on the board), one now; else undefined.
+ * its children's). needsYou counts needsYou().
+ *
+ * segments: one per work task, in tree order, { item, kind, tooltip }; kind is
+ * done, 'needs you' (an open task needsYou() lists), now, waiting, ready (next,
+ * every dependency on the board and done) or blocked (next, else). tooltip:
+ * "#887 Live checks and docs · next · blocked by #884". A task's blockers are
+ * its row's blockedBy (by issue, else item) and, on a next or waiting task,
+ * each dependency not on the board: "'release notes' (not on the board)".
+ * continuous: more than SEGMENT_MAX work tasks, so the bar draws one fill.
+ *
+ * focus is the most important open work, in tree order, the first present of:
+ * one that needs you ("#884 Profile and guard"), one with blockers ("#887
+ * blocked by #884"), the ones now ("in progress: #885 Work reports", "2 in
+ * progress: #885, #886"); else undefined.
  * @param {{tasks: object[], parent?: string}} board
- * @returns {{ done: number, total: number, needsYou: number, focus?: { kind: 'needs you'|'blocked'|'now', item: string, title: string } }}
+ * @returns {{ done: number, total: number, needsYou: number, continuous: boolean,
+ *   segments: { item: string, kind: string, tooltip: string }[],
+ *   focus?: { kind: 'needs you'|'blocked'|'now', item: string, title: string, text: string } }}
  */
 export function boardProgress(board) {
   const tasks = Array.isArray(board?.tasks) ? board.tasks : []
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const rows = boardRows(board).filter((r) => !r.progress)
-  const open = rows.filter((r) => !r.done)
-  const deps = (r) => { const d = byItem.get(r.item).dependsOn; return Array.isArray(d) ? d : [] }
-  const waits = (r) => r.status === 'next' || r.status === 'waiting'
-  const pick = [
-    ['needs you', (r) => r.needsYou],
-    ['blocked', (r) => waits(r) && (r.blockedBy.length > 0 || deps(r).some((d) => !byItem.has(d)))],
-    ['now', (r) => r.status === 'now'],
-  ]
+  const work = rows.map((r) => {
+    const task = byItem.get(r.item)
+    const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
+    const waits = r.status === 'next' || r.status === 'waiting'
+    const blockers = r.blockedBy.map((b) => b.ref).concat(waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : [])
+    const kind = r.done ? 'done' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now' : r.status === 'waiting' ? 'waiting' : r.ready ? 'ready' : 'blocked'
+    const runner = r.status === 'now' ? modelText(task, ' ') : ''
+    const tooltip = [r.title, r.status, runner, blockers.length ? 'blocked by ' + blockers.join(', ') : '', kind === 'ready' ? 'ready' : '', r.needsYou && !r.done ? 'needs you' : ''].filter(Boolean).join(' · ')
+    return { row: r, blockers, segment: { item: r.item, kind, tooltip } }
+  })
+  const open = work.filter((w) => !w.row.done)
+  const at = (w, kind, text) => ({ kind, item: w.row.item, title: w.row.title, text })
   let focus
-  for (const [kind, test] of pick) {
-    const r = open.find(test)
-    if (r) { focus = { kind, item: r.item, title: r.title }; break }
+  const mine = open.find((w) => w.row.needsYou)
+  const blocked = open.find((w) => w.blockers.length)
+  const now = open.filter((w) => w.row.status === 'now')
+  if (mine) focus = at(mine, 'needs you', mine.row.title)
+  else if (blocked) focus = at(blocked, 'blocked', refOf(blocked.row) + ' blocked by ' + blocked.blockers.join(', '))
+  else if (now.length === 1) focus = at(now[0], 'now', 'in progress: ' + now[0].row.title)
+  else if (now.length) focus = at(now[0], 'now', now.length + ' in progress: ' + now.map((w) => refOf(w.row)).join(', '))
+  return {
+    done: rows.length - open.length, total: rows.length, needsYou: needsYou(tasks).tasks.length,
+    segments: work.map((w) => w.segment), continuous: rows.length > SEGMENT_MAX, focus,
   }
-  return { done: rows.length - open.length, total: rows.length, needsYou: needsYou(tasks).tasks.length, focus }
 }
 
-/** "4 of 6 done · 1 needs you", then the focus: "#884 Profile and guard" when it needs you, else "blocked: …" or "now: …". */
+/** "4 of 6 done · 1 needs you", then the focus's text. */
 export function boardProgressText(p) {
   const head = progressText(p)
-  if (!p.focus) return head
-  return head + ' · ' + (p.focus.kind === 'needs you' ? '' : p.focus.kind + ': ') + p.focus.title
+  return p.focus ? head + ' · ' + p.focus.text : head
 }

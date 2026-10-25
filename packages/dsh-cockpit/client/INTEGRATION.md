@@ -96,8 +96,12 @@ and line 39:
 | `GET /api/dsh-cockpit/view?sessionId=S` | `{ key, board, tree, flags, driftConfigured }` for the session's bound board, else `{ key: null, boards }` |
 
 The panel polls `view` every 2 s for the tab's session. So does the progress bar the client registers in
-`conversation.input.dock` (above the input box, after Todo, Goal and Queue): "4 of 6 done · 1 needs you" and the
-top open item, from `boardProgress` in `lib/rows.js`; a click opens the Board tab through `ctx.sidebarRight.openTab`;
+`conversation.input.dock` (above the input box, after Todo, Goal and Queue): one still segment per work task in tree
+order (done success, now half accent, waiting warn, needs you warn with an outline, ready light, blocked faint; one
+continuous fill above 24 tasks), each with a tooltip, then "4 of 6 done · 1 needs you" and the top open item ("#887
+blocked by #884", "2 in progress: #885, #886"), from `boardProgress` in `lib/rows.js`. A click opens the Board tab
+through `ctx.sidebarRight.openTab`; a segment's click passes `{ params: { item } }`, which the body reads from
+`useTabInfo().tab.navigation` and scrolls to that row once per navigation revision;
 it renders nothing when the session has no bound board. This adds `@deepseek-ai/dsh-client-ui-conversation` to `dsh.client.inject`.
 
 ## Shared rules

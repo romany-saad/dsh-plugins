@@ -36,7 +36,7 @@ function register(exports) {
   const ctx = {
     effect: (fn) => fn(),
     sidebarRightTabs: { register: (d) => { calls.tabs.push(d); return () => {} } },
-    sidebarRight: { openTab: (kind) => { calls.opened = (calls.opened || []).concat(kind) } },
+    sidebarRight: { openTab: (kind, options) => { calls.opened = (calls.opened || []).concat([[kind, options]]) } },
     slots: { inject: (_name, fn) => fn(), register: (entry, Component) => { calls.slots.push({ entry, Component }); return () => {} } },
   }
   exports.apply(ctx)
@@ -230,19 +230,76 @@ test('the dock: done of all work tasks, who needs you, the top open item; opens 
   const props = dock.entry.inject('s1')
   assert.equal(props.sessionId, 's1')
   props.openBoard()
-  assert.deepEqual(calls.opened, ['dsh-cockpit-board'])
+  assert.deepEqual(calls.opened, [['dsh-cockpit-board', undefined]])
   assert.equal(exports.dockModel(live).text, '1 of 4 done · 1 needs you · #884 Profile and guard')
   assert.equal(exports.dockModel(live).fraction, 0.25)
   const out = flat(text(dock.Component(props)))
   assert.ok(out.includes('1 of 4 done') && out.includes('#884 Profile and guard'), out)
   let tree
-  const find = (n) => { if (!n || typeof n !== 'object') return; if (Array.isArray(n)) return n.forEach(find); if (n.type === 'button') tree = n; else if (typeof n.type === 'function') find(n.type({ ...n.props, children: n.children })); else find(n.children) }
+  const find = (n) => { if (!n || typeof n !== 'object') return; if (Array.isArray(n)) return n.forEach(find); if (n.props.role === 'button') tree = n; else if (typeof n.type === 'function') find(n.type({ ...n.props, children: n.children })); else find(n.children) }
   find(dock.Component(props))
   assert.equal(typeof tree.props.onClick, 'function')
+  assert.equal(tree.props.tabIndex, 0, 'keyboard reachable')
   for (const view of [{ key: null, boards: ['a'] }, { key: 'k', error: 'no such board' }, undefined]) {
     assert.equal(exports.dockModel(view), undefined)
     assert.equal(load({ view }).exports && text(register(load({ view }).exports).slots.find((s) => s.entry.name === 'conversation.input.dock').Component({ sessionId: 's' })), '')
   }
+})
+
+/** The dock's segment nodes, rendered. */
+function segments(view, openBoard) {
+  const out = []
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    if (typeof n.type === 'function') return walk(n.type({ ...n.props, children: n.children.length ? n.children : n.props.children }))
+    if ('data-segment' in n.props) out.push(n)
+    walk(n.children)
+  }
+  const { exports } = load({ view })
+  const dock = register(exports).slots.find((s) => s.entry.name === 'conversation.input.dock')
+  walk(dock.Component({ sessionId: 's', openBoard }))
+  return out
+}
+
+test('the dock bar: one segment per work task in tree order, each with a status fill and tooltip; a click names its row', () => {
+  const { exports } = load({ view: live })
+  const now = { ...live, board: { ...live.board, tasks: live.board.tasks.map((t) => (t.item === '2' ? { ...t, status: 'now' } : t)) } }
+  assert.equal(exports.segmentsText(exports.dockModel(live)), '[!!needs you][✓][·blocked][!waiting]')
+  assert.equal(exports.segmentsText(exports.dockModel(now)), '[!!needs you][◐ now][·blocked][!waiting]')
+  const opened = []
+  const segs = segments(now, (item) => opened.push(item))
+  assert.deepEqual(segs.map((s) => [s.props['data-item'], s.props['data-segment']]), [['1', 'needs you'], ['2', 'now'], ['5', 'blocked'], ['6b', 'waiting']])
+  assert.equal(segs[1].props.title, '#888 Log reader · now · claude-opus-5-5 high')
+  assert.match(segs[1].props.style.background, /linear-gradient\(to right, var\(--dsw-alias-brand-primary[^)]*\) 50%/, 'now: half the accent')
+  assert.ok(segs[0].props.style.boxShadow, 'needs you: an outline as well as the warn fill')
+  assert.equal(segs[2].props.title, "#887 Live checks and docs · next · blocked by #884, #888, 'release notes' (not on the board)")
+  assert.ok(!Object.values(segs).some((s) => /animation|transition/.test(JSON.stringify(s.props.style))), 'nothing moves')
+  let stopped = false
+  segs[2].props.onClick({ stopPropagation: () => { stopped = true } })
+  assert.deepEqual(opened, ['5'])
+  assert.ok(stopped, 'the bar\'s own open-the-Board click does not also fire')
+  const calls = register(exports)
+  calls.slots.find((s) => s.entry.name === 'conversation.input.dock').entry.inject('s1').openBoard('5')
+  assert.equal(JSON.stringify(calls.opened), JSON.stringify([['dsh-cockpit-board', { params: { item: '5' } }]]))
+})
+
+test('the dock bar above 24 work tasks is one continuous fill, no segments', () => {
+  const tasks = Array.from({ length: 25 }, (_, i) => ({ item: String(i), what: 'w' + i, status: i < 5 ? 'done' : 'next' }))
+  const view = { key: 'big', board: { key: 'big', revision: 1, tasks } }
+  const { exports } = load({ view })
+  assert.equal(exports.dockModel(view).continuous, true)
+  assert.equal(segments(view).length, 0)
+  assert.equal(exports.segmentsText(exports.dockModel(view)), '[██░░░░░░░░]')
+  const at24 = { ...view, board: { ...view.board, tasks: tasks.slice(1) } }
+  assert.equal(segments(at24).length, 24)
+})
+
+test('the Board body reads its navigation and survives none', () => {
+  const { exports } = load({ view: live })
+  const body = register(exports).slots[0].Component
+  const nav = (params) => () => ({ tab: { id: 't1', navigation: { address: 'a', params, revision: 1 } } })
+  for (const useTabInfo of [undefined, nav(undefined), nav({ item: '5' })]) assert.ok(text(body({ sessionId: 's', useTabInfo })).includes('#887 Live checks and docs'))
 })
 
 test('Open links the pr, else the issue, through the board parent\'s repo', () => {

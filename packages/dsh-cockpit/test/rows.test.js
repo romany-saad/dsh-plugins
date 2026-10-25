@@ -102,12 +102,70 @@ test('board progress: work tasks only, needs you, then the first of needs you, b
   assert.deepEqual([p.done, p.total, p.needsYou], [1, 4, 1])
   assert.equal(boardProgressText(p), '1 of 4 done · 1 needs you · #4 Merge')
   const noOwner = tasks.map((x) => (x.item === '4' ? { ...x, waitingOn: 'CI' } : x))
-  assert.equal(boardProgressText(boardProgress({ tasks: noOwner })), '1 of 4 done · blocked: Check')
+  assert.equal(boardProgressText(boardProgress({ tasks: noOwner })), '1 of 4 done · 3 blocked by #2')
   const unknown = [t('1', 'now', 'a'), t('2', 'next', 'b', { dependsOn: ['ghost'] })]
-  assert.equal(boardProgressText(boardProgress({ tasks: unknown })), '0 of 2 done · blocked: b')
-  assert.equal(boardProgressText(boardProgress({ tasks: [t('1', 'now', 'a'), t('2', 'next', 'b')] })), '0 of 2 done · now: a')
+  assert.equal(boardProgressText(boardProgress({ tasks: unknown })), "0 of 2 done · 2 blocked by 'ghost' (not on the board)")
+  assert.equal(boardProgressText(boardProgress({ tasks: [t('1', 'now', 'a', { issue: '#1' }), t('2', 'next', 'b')] })), '0 of 2 done · in progress: #1 a')
+  const two = [t('3', 'now', 'Work reports', { issue: '#885' }), t('4', 'now', 'Nightcost', { issue: '#886' }), t('5', 'next', 'c')]
+  assert.equal(boardProgressText(boardProgress({ tasks: two })), '0 of 3 done · 2 in progress: #885, #886')
   assert.equal(boardProgressText(boardProgress({ tasks: [t('1', 'done', 'a')] })), '1 of 1 done')
   assert.equal(boardProgressText(boardProgress({ tasks: [] })), '0 of 0 done')
+})
+
+// The live sim-883 board as of batch 5.
+const sim = [
+  t('1', 'done', 'Profile and guard', { parent: '883', issue: '#884' }),
+  t('2', 'done', 'Log reader', { parent: '883', issue: '#888' }),
+  t('3', 'done', 'Work reports', { parent: '883', issue: '#885', dependsOn: ['2'] }),
+  t('4', 'done', 'Nightcost', { parent: '883', issue: '#886', dependsOn: ['2'] }),
+  t('5', 'next', 'Live checks and docs', { parent: '883', issue: '#887', dependsOn: ['1', '3', 'release notes'] }),
+  t('883', 'now', '#883 effort', { issue: '#883' }),
+  t('6b', 'waiting', 'Board rule in Bosla', { parent: '883', dependsOn: ['5'] }),
+]
+const kinds = (p) => p.segments.map((s) => s.item + ':' + s.kind)
+
+test('segments: one per work task, in tree order, with status and tooltip; the phrase names the blocker', () => {
+  const p = boardProgress({ tasks: sim })
+  assert.deepEqual(kinds(p), ['1:done', '2:done', '3:done', '4:done', '5:blocked', '6b:waiting'])
+  assert.equal(p.continuous, false)
+  assert.equal(p.segments[4].tooltip, "#887 Live checks and docs · next · blocked by 'release notes' (not on the board)")
+  assert.equal(p.segments[5].tooltip, 'Board rule in Bosla · waiting · blocked by #887')
+  assert.equal(boardProgressText(p), "4 of 6 done · #887 blocked by 'release notes' (not on the board)")
+  // Tree order, not board order: a child listed before its parent's sibling.
+  const order = boardProgress({ tasks: [t('r', 'now', 'r'), t('b', 'next', 'b', { parent: 'r' }), t('a1', 'done', 'a1', { parent: 'a' }), t('a', 'now', 'a', { parent: 'r' })] })
+  assert.deepEqual(kinds(order), ['b:ready', 'a1:done'])
+})
+
+test('segments: every status; a now segment names who runs it', () => {
+  const tasks = [
+    t('r', 'now', 'root'),
+    t('d', 'done', 'd', { parent: 'r', issue: '#1' }),
+    t('n', 'now', 'Work reports', { parent: 'r', issue: '#885', provider: 'claude', model: 'claude-opus-5-5', effort: 'high' }),
+    t('w', 'waiting', 'w', { parent: 'r', waitingOn: 'CI' }),
+    t('o', 'waiting', 'o', { parent: 'r', waitingOn: 'owner' }),
+    t('x', 'next', 'x', { parent: 'r', dependsOn: ['d'] }),
+    t('y', 'next', 'y', { parent: 'r', dependsOn: ['n'] }),
+  ]
+  const p = boardProgress({ tasks })
+  assert.deepEqual(kinds(p), ['d:done', 'n:now', 'w:waiting', 'o:needs you', 'x:ready', 'y:blocked'])
+  assert.equal(p.segments[1].tooltip, '#885 Work reports · now · claude-opus-5-5 high')
+  assert.equal(p.segments[3].tooltip, 'o · waiting · needs you')
+  assert.equal(p.segments[4].tooltip, 'x · next · ready')
+  assert.equal(p.segments[5].tooltip, 'y · next · blocked by #885')
+  // The live board with item 5 now: 6b is still blocked by it, so blocked wins.
+  const now5 = boardProgress({ tasks: sim.map((x) => (x.item === '5' ? { ...x, status: 'now' } : x)) })
+  assert.deepEqual(kinds(now5), ['1:done', '2:done', '3:done', '4:done', '5:now', '6b:waiting'])
+  assert.equal(boardProgressText(now5), '4 of 6 done · 6b blocked by #887')
+  // Nothing needs you or is blocked: what is in progress.
+  const free = boardProgress({ tasks: sim.filter((x) => x.item !== '6b').map((x) => (x.item === '5' ? { ...x, status: 'now', dependsOn: [] } : x)) })
+  assert.equal(boardProgressText(free), '4 of 5 done · in progress: #887 Live checks and docs')
+})
+
+test('segments: above 24 work tasks the bar is continuous; at 24 it is segmented', () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => t(String(i), 'next', 'w' + i))
+  assert.equal(boardProgress({ tasks: many(24) }).continuous, false)
+  assert.equal(boardProgress({ tasks: many(25) }).continuous, true)
+  assert.equal(boardProgress({ tasks: many(25) }).segments.length, 25, 'the model keeps them; the bar draws one fill')
 })
 
 test('tree guides per depth, last child closes', () => {
