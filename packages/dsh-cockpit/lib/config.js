@@ -11,10 +11,18 @@ const fail = (path, want, got) => {
   throw new Error(`dsh-cockpit: ${path} must be ${want}, got ${JSON.stringify(got)}`)
 }
 
+/** A key the config does not have, such as a misspelt one, fails instead of being ignored. */
+function onlyKnown(value, known, path) {
+  for (const k of Object.keys(value)) {
+    if (!(k in known)) throw new Error(`dsh-cockpit: unknown config key ${path}${k}; the keys are ${Object.keys(known).join(', ')}`)
+  }
+}
+
 function section(config, name) {
   const value = config[name]
   if (value === undefined || value === null) return { ...DEFAULT_CONFIG[name] }
   if (typeof value !== 'object' || Array.isArray(value)) fail(name, 'an object', value)
+  onlyKnown(value, DEFAULT_CONFIG[name], name + '.')
   const out = { ...DEFAULT_CONFIG[name], ...value }
   for (const [k, v] of Object.entries(DEFAULT_CONFIG[name])) {
     if (typeof out[k] !== typeof v) fail(`${name}.${k}`, `a ${typeof v}`, out[k])
@@ -32,6 +40,7 @@ function section(config, name) {
  */
 export function resolveConfig(config = {}) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) fail('config', 'an object', config)
+  onlyKnown(config, DEFAULT_CONFIG, '')
   const drift = section(config, 'drift')
   if (drift.mode !== 'report' && drift.mode !== 'apply') fail('drift.mode', 'report or apply', drift.mode)
   return {

@@ -29,6 +29,12 @@ test('a wrong type or drift.mode fails with its path', () => {
   assert.throws(() => resolveConfig({ links: 'x' }), /links must be an object/)
 })
 
+test('a misspelt key fails instead of being ignored', () => {
+  assert.throws(() => resolveConfig({ tools: { enable: false } }), /unknown config key tools.enable; the keys are enabled/)
+  assert.throws(() => resolveConfig({ drift: { mod: 'apply' } }), /unknown config key drift.mod/)
+  assert.throws(() => resolveConfig({ link: {} }), /unknown config key link; the keys are tools, route, drift, links/)
+})
+
 test('cordis.patch.yml restates every default', async () => {
   const text = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
   for (const line of ['id: dsh-cockpit', "name: '@romany-saad/dsh-cockpit'", 'enabled: true', "command: ''", "cwd: ''", 'mode: report', "issue: ''", "pr: ''"]) {

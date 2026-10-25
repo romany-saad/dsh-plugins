@@ -21,7 +21,8 @@ export async function setup({ home, config = {} } = {}) {
   const dataDir = join(home, 'data', 'dsh-cockpit')
   let tick = 0
   const store = createStore({ dataDir, now: () => new Date(Date.UTC(2026, 9, 25, 7, 0, tick++)).toISOString() })
-  const tools = createBoardTools({ store, config: resolveConfig(config) })
+  resolveConfig(config)
+  const tools = createBoardTools({ store })
   return { home, dataDir, store, tools, exec }
 }
 

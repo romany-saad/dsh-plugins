@@ -22,6 +22,11 @@ test('a list of items is named in the title', () => {
   assert.equal(callTitle('board_update', { item: ['4'], set: {} }), 'update 4 (no change)')
 })
 
+test('board_open is an edit card: it may create a board and writes the session binding', () => {
+  assert.equal(presentation('board_open').presentCall({ key: 'k' }).kind, 'edit')
+  assert.equal(presentation('board_read').presentCall({}).kind, 'read')
+})
+
 test('result titles name the board and the item it got', async () => {
   const { tools } = await setup()
   const open = await tools.board_open({ key: 'sim-883' }, exec())

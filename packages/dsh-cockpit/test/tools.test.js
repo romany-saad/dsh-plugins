@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { exec, setup } from './helpers.mjs'
 
 const fileOf = async (store, key) => JSON.parse(await readFile(store.file(key), 'utf8'))
@@ -136,9 +136,70 @@ test('a removal returns the removed tasks in previous; board_add from previous r
   assert.deepEqual(r.tasks, [])
   assert.deepEqual(r.previous, [before])
   assert.deepEqual((await tools.board_read({}, exec())).tasks.map((t) => t.item), ['1'])
-  const { updatedAt, ...back } = r.previous[0]
-  const re = await tools.board_add(back, exec())
-  assert.deepEqual({ ...re.task, updatedAt }, before, 'the re-added task deep-equals the removed one, but for updatedAt')
+  const re = await tools.board_add(r.previous[0], exec())
+  assert.deepEqual({ ...re.task, updatedAt: before.updatedAt }, before, 'the re-added task deep-equals the removed one, but for updatedAt')
+  assert.notEqual(re.task.updatedAt, before.updatedAt)
+})
+
+test('board_add refuses an unknown field, such as a misspelt one; updatedAt is accepted and replaced', async () => {
+  const { tools, store } = await setup()
+  await tools.board_open({ key: 'k' }, exec())
+  const before = await readFile(store.file('k'), 'utf8')
+  const r = await tools.board_add({ what: 'x', waiting_on: 'owner', notes: { a: 1 } }, exec())
+  assert.equal(r.code, 'invalid_input')
+  assert.match(r.message, /Unknown field "waiting_on", "notes"; the fields are item, what, status, .*waitingOn.*Use extra/)
+  assert.equal(await readFile(store.file('k'), 'utf8'), before)
+  const a = await tools.board_add({ what: 'x', updatedAt: '2000-01-01T00:00:00Z' }, exec())
+  assert.notEqual(a.task.updatedAt, '2000-01-01T00:00:00Z')
+})
+
+test('board_update refuses set together with remove, and changes nothing', async () => {
+  const { tools, store } = await setup()
+  await tools.board_open({ key: 'k' }, exec())
+  await tools.board_add({ what: 'x' }, exec())
+  const before = await readFile(store.file('k'), 'utf8')
+  const r = await tools.board_update({ item: '1', set: { status: 'done' }, remove: true }, exec())
+  assert.deepEqual([r.ok, r.code], [false, 'invalid_input'])
+  assert.equal(await readFile(store.file('k'), 'utf8'), before)
+})
+
+test('a fallback board without revision, updatedAt or parent opens and reads; the result has no undefined values', async () => {
+  const { tools, store } = await setup()
+  await mkdir(dirname(store.file('f')), { recursive: true })
+  await writeFile(store.file('f'), JSON.stringify({ format: 'dsh-cockpit.board', version: 1, key: 'f', tasks: [] }))
+  const opened = await tools.board_open({ key: 'f' }, exec())
+  assert.deepEqual(opened.board, { key: 'f' })
+  const read = await tools.board_read({}, exec())
+  assert.deepEqual(read.board, { key: 'f' })
+  assert.deepEqual(JSON.parse(JSON.stringify(read)), read, 'lossless JSON')
+})
+
+test('a board file that cannot be read is board_unreadable, not write_failed', async () => {
+  const { tools, store } = await setup()
+  await tools.board_open({ key: 'k' }, exec())
+  // A directory in the board file's place: reading it fails with EISDIR.
+  await rm(store.file('k'))
+  await mkdir(store.file('k'))
+  for (const call of [() => tools.board_read({}, exec()), () => tools.board_add({ what: 'x' }, exec()), () => tools.board_open({ key: 'k' }, exec())]) {
+    const r = await call()
+    assert.deepEqual([r.ok, r.code], [false, 'board_unreadable'])
+    assert.match(r.message, /cannot be read: EISDIR/)
+  }
+})
+
+test('board_open writes the binding before the board: a failed binding leaves no board behind', async (ctx) => {
+  if (process.getuid?.() === 0) return ctx.skip('root ignores permissions')
+  const { tools, store, dataDir } = await setup()
+  await mkdir(join(dataDir, 'sessions'), { recursive: true })
+  await chmod(join(dataDir, 'sessions'), 0o500)
+  try {
+    const r = await tools.board_open({ key: 'k', parent: 'o/r#1' }, exec())
+    assert.deepEqual([r.ok, r.code], [false, 'write_failed'])
+  } finally {
+    await chmod(join(dataDir, 'sessions'), 0o700)
+  }
+  assert.equal(await store.read('k'), undefined, 'no board was created')
+  assert.equal((await tools.board_add({ what: 'x' }, exec())).code, 'not_bound')
 })
 
 test('flags come back from add and update, never a refusal', async () => {

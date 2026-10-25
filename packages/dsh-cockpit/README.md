@@ -10,7 +10,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
 - `lib/tools.js`: the tool bodies. Results are `{ ok: true, … }` or `{ ok: false, code, message }`, with the codes `not_bound`, `item_exists`, `item_unknown`, `invalid_input`, `board_unreadable` and `write_failed`.
   - `board_open({ key, parent? })` creates or opens a board and binds the session to it, in memory and in `sessions/<sessionId>.json`, so a resumed session finds its board without reopening it.
   - `board_read({ item?, status? })`: the tasks, the tree text, the flags, and the file's path and format version. The filters narrow the result only.
-  - `board_add({ item?, what, status?, … })`: `item` defaults to the next integer, `status` to `next`.
+  - `board_add({ item?, what, status?, … })`: `item` defaults to the next integer, `status` to `next`. A field it does not know is refused (`invalid_input`); `extra` keeps anything else.
   - `board_update({ item, set? | remove? })`: `item` is one item or a list, changed in one write; one unknown item refuses the whole call. `null` in `set` clears a field. It returns `tasks` (after) and `previous` (before); a removal returns the removed tasks in `previous`, so `board_add` can put them back.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
 - `lib/present.js`: one-line titles for the tool cards.

@@ -7,7 +7,8 @@
 const MAX = 48
 const clip = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > MAX ? t.slice(0, MAX - 1) + '…' : t }
 const quote = (s) => '"' + clip(s) + '"'
-const KIND = { board_open: 'read', board_read: 'read', board_add: 'edit', board_update: 'edit' }
+// board_open may create a board, set its parent and write the session binding.
+const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit' }
 
 const itemsText = (item) => (Array.isArray(item) ? item.join(', ') : String(item))
 

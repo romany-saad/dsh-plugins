@@ -39,7 +39,7 @@ export function apply(ctx, rawConfig) {
   if (!config.tools.enabled) return
   // $DSH_HOME/data/dsh-cockpit, with the home resolved as the rest of DSH does.
   const store = createStore({ dataDir: dshHomePath('data', 'dsh-cockpit') })
-  const bodies = createBoardTools({ store, config })
+  const bodies = createBoardTools({ store })
   ctx.inject(['tools'], (toolsCtx) => {
     for (const definition of createDefinitions(bodies)) toolsCtx.tools.register(definition)
   })
