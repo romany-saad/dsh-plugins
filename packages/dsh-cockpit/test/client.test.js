@@ -70,10 +70,63 @@ test('a bound board renders the tree, fields, flags, drift and readyCommand', ()
   const Body = register(exports).slots[0].Component
   const out = text(Body({ sessionId: 's1' })).replace(/[ \t]+/g, ' ')
   for (const s of ['bosla-883', 'revision 8', '(ongoing)', '(warning)', 'issue #885', 'pr #902', 'codex · gpt-6.1-sol · high',
-    'after 1', '! unknown dependency 1', '2a: unknown dependency 1', 'drift: done (#902 merged)', '1 differing', 'ready gh pr merge 902']) {
+    'after 1', '! unknown dependency 1', '2a: unknown dependency 1', 'drift: done (#902 merged)', '1 differing', 'command gh pr merge 902', 'copy']) {
     assert.ok(out.includes(s), 'missing ' + JSON.stringify(s) + ' in\n' + out)
   }
   assert.ok(out.indexOf('board') < out.indexOf('reader'))
+})
+
+const liveLike = {
+  tasks: [
+    { item: '1', what: 'Profile', status: 'waiting', why: 'Blocker: X.', issue: '#884', nextAction: 'Owner: decide.', parent: '883' },
+    { item: '2', what: 'Log reader', status: 'done', issue: '#888', parent: '883' },
+    { item: '3', what: 'Reports', status: 'now', issue: '#885', nextAction: 'Builder: build #885.', parent: '883', dependsOn: ['2'] },
+    { item: '5', what: 'Docs', status: 'next', issue: '#887', parent: '883', dependsOn: ['1', '3'] },
+    { item: '883', what: 'effort', status: 'next', issue: '#883' },
+    { item: '7', what: 'After the reader', status: 'next', parent: '883', dependsOn: ['2'] },
+    { item: '8', what: 'After a ghost', status: 'next', dependsOn: ['ghost'] },
+    { item: '6b', what: 'Rule', status: 'waiting', why: 'Starts on release.', nextAction: 'Hub: start later.', dependsOn: ['5'], extra: { startCondition: 'released' }, readyCommand: 'gh issue create' },
+    { item: '9', what: 'Done one', status: 'done', nextAction: 'stale' },
+  ],
+}
+
+test('ready: a next task whose dependencies are all done, or that has none', () => {
+  const { exports } = load({})
+  const ready = Object.fromEntries(exports.boardRows(liveLike).map((r) => [r.item, r.ready]))
+  assert.deepEqual(ready, { 883: true, 1: false, 2: false, 3: false, 5: false, 7: true, 8: false, '6b': false, 9: false })
+})
+
+test('dependencies show the issue of the task they name, else the item', () => {
+  const { exports } = load({})
+  const after = Object.fromEntries(exports.boardRows(liveLike).map((r) => [r.item, r.after.join(', ')]))
+  assert.equal(after['3'], '#888')
+  assert.equal(after['5'], '#884, #885')
+  assert.equal(after['6b'], '#887')
+  assert.equal(after['8'], 'ghost')
+})
+
+test('why, nextAction and startCondition show where the brief asks', () => {
+  const { exports } = load({})
+  const rows = Object.fromEntries(exports.boardRows(liveLike).map((r) => [r.item, r]))
+  assert.equal(rows['1'].why, 'Blocker: X.')
+  assert.equal(rows['1'].nextAction, 'Owner: decide.')
+  assert.equal(rows['3'].nextAction, 'Builder: build #885.')
+  assert.equal(rows['3'].why, undefined)
+  assert.equal(rows['9'].nextAction, undefined)
+  assert.equal(rows['6b'].startCondition, 'released')
+  const bound = load({ view: { key: 'k', board: { key: 'k', revision: 1, tasks: liveLike.tasks }, flags: [] } }).exports
+  const out = text(register(bound).slots[0].Component({ sessionId: 's' })).replace(/[ \t]+/g, ' ')
+  for (const s of ['[ready]', 'after #888', 'why Starts on release.', 'starts when released', 'next Hub: start later.', 'command gh issue create']) {
+    assert.ok(out.includes(s), 'missing ' + JSON.stringify(s) + ' in\n' + out)
+  }
+})
+
+test('the header time is local time plus how long ago', () => {
+  const { exports } = load({})
+  const at = new Date(2026, 9, 25, 15, 22, 0)
+  assert.equal(exports.whenText(at.toISOString(), at.getTime() + 2 * 60000), '15:22 · 2 min ago')
+  assert.equal(exports.whenText(at.toISOString(), at.getTime() + 10000), '15:22 · just now')
+  assert.equal(exports.whenText(at.toISOString(), at.getTime() + 3 * 86400000), '2026-10-25 15:22 · 3 d ago')
 })
 
 test('an unbound session lists the boards', () => {
