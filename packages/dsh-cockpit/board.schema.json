@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-cockpit/board.schema.json",
+  "title": "dsh-cockpit board, format version 1",
+  "description": "One board file: $DSH_HOME/data/dsh-cockpit/boards/<encodeURIComponent(key)>.json. A hub without the plugin writes the same file (decision 14); write it to a temporary file, then rename it over the board file. Fields this schema does not name are allowed and kept.",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "key",
+    "tasks"
+  ],
+  "properties": {
+    "format": {
+      "const": "dsh-cockpit.board"
+    },
+    "version": {
+      "const": 1
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The board's key, named by the hub (decision 11)."
+    },
+    "parent": {
+      "type": "string",
+      "description": "Free-form reference to the parent ticket."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Counts changes to tasks or to parent. A drift check that changes no task does not bump it."
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string",
+      "description": "When revision last changed."
+    },
+    "updatedBy": {
+      "type": "string",
+      "description": "The writing session's id, or any identifier a fallback hub uses."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    },
+    "drift": {
+      "$ref": "#/$defs/drift"
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": [
+        "next",
+        "now",
+        "waiting",
+        "done",
+        "dropped"
+      ],
+      "description": "done and dropped are closed: a closed task blocks nothing. dropped is work that will not be done."
+    },
+    "task": {
+      "type": "object",
+      "required": [
+        "item",
+        "what",
+        "status"
+      ],
+      "properties": {
+        "item": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identity on the board, unique on it (decision 15)."
+        },
+        "what": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "why": {
+          "type": "string"
+        },
+        "issue": {
+          "type": "string",
+          "description": "Free-form: '#886', 'owner/repo#1', 'PROJ-12', a URL."
+        },
+        "pr": {
+          "type": "string",
+          "description": "Free-form pull request reference."
+        },
+        "branch": {
+          "type": "string"
+        },
+        "worktree": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "nextAction": {
+          "type": "string",
+          "description": "What happens next, and who acts."
+        },
+        "waitingOn": {
+          "type": "string",
+          "description": "Who or what a waiting task waits on. 'owner', in any case, puts the task in Needs you."
+        },
+        "readyCommand": {
+          "type": "string",
+          "description": "The command the owner runs. Stored and shown, never run."
+        },
+        "startWhen": {
+          "type": "string",
+          "description": "The condition for starting, shown as 'Start when'."
+        },
+        "parent": {
+          "type": "string",
+          "description": "The item of another task on this board."
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Items on this board that come first."
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Set by the plugin on every change."
+        }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "description": "The last drift check. items holds only the entries whose status differs from their task's; checked counts every entry the command reported. A failed check has error instead.",
+      "required": [
+        "checkedAt"
+      ],
+      "properties": {
+        "checkedAt": {
+          "type": "string"
+        },
+        "checked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "item",
+              "status"
+            ],
+            "properties": {
+              "item": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/status"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

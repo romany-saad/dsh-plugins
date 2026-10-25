@@ -1,0 +1,37 @@
+{
+  "format": "dsh-cockpit.board",
+  "version": 1,
+  "key": "bosla-883",
+  "parent": "Romany-Saad/resturants-app#883",
+  "revision": 8,
+  "createdAt": "2026-10-24T17:55:40Z",
+  "updatedAt": "2026-10-25T07:04:30Z",
+  "updatedBy": "93d1572b-0000-4000-8000-000000000000",
+  "tasks": [
+    {
+      "item": "2a",
+      "what": "Read DSH sessions in nightcost",
+      "status": "waiting",
+      "parent": "2",
+      "dependsOn": [
+        "1"
+      ],
+      "pr": "#902",
+      "waitingOn": "owner",
+      "nextAction": "merge #902",
+      "readyCommand": "gh pr merge 902 --squash",
+      "updatedAt": "2026-10-25T07:04:30Z"
+    }
+  ],
+  "drift": {
+    "checkedAt": "2026-10-25T07:04:30Z",
+    "checked": 6,
+    "items": [
+      {
+        "item": "2a",
+        "status": "done",
+        "note": "#902 merged"
+      }
+    ]
+  }
+}

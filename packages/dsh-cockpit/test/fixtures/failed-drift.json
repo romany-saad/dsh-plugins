@@ -1,0 +1,11 @@
+{
+  "format": "dsh-cockpit.board",
+  "version": 1,
+  "key": "f",
+  "revision": 1,
+  "tasks": [],
+  "drift": {
+    "checkedAt": "2026-10-25T07:00:00Z",
+    "error": "exit 3: boom"
+  }
+}
