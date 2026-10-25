@@ -1,0 +1,24 @@
+# Mounts the dsh-cockpit host plugin. A profile patch with the same id
+# replaces the whole config, so restate the fields you keep.
+- insert:
+    - id: dsh-cockpit
+      name: '@romany-saad/dsh-cockpit'
+      config:
+        # false: register no tools.
+        tools:
+          enabled: true
+        # false: no routes, so no panel data.
+        route:
+          enabled: true
+        # An optional command that reports the real state of linked work; empty: no check.
+        # mode: report (changes no task) or apply (sets each differing task's status).
+        drift:
+          command: ''
+          cwd: ''
+          mode: report
+        # URL patterns for issue and pr references that are not full URLs, with
+        # {ref}, {repo} and {number}; empty: only full http(s) URLs link.
+        # For example: issue: 'https://github.com/{repo}/issues/{number}'
+        links:
+          issue: ''
+          pr: ''

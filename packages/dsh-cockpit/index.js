@@ -1,5 +1,46 @@
-// @romany-saad/dsh-cockpit: placeholder until the design lands.
-// A DSH plugin exports its name and an apply(ctx, config) function.
+// @romany-saad/dsh-cockpit: the DSH host plugin. Registers the four board
+// tools inside ctx.inject(['tools'], …), so they come and go with the tools
+// service and with this plugin.
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import { resolveConfig } from './lib/config.js'
+import { presentation } from './lib/present.js'
+import { createStore } from './lib/store.js'
+import { RESULT_SPEC, TOOL_SPECS, createBoardTools } from './lib/tools.js'
+
 export const name = 'dsh-cockpit'
 
-export function apply() {}
+const render = (_args, value) => [{ type: 'text', text: JSON.stringify(value) }]
+
+/** The four tool definitions over these bodies; exported for tests. */
+export function createDefinitions(bodies) {
+  return Object.entries(TOOL_SPECS).map(([toolName, spec]) => {
+    const { presentCall, presentResult, presentationMeta } = presentation(toolName)
+    return defineTool({
+      name: toolName,
+      description: spec.description,
+      parameters: spec.parameters,
+      output: { schema: RESULT_SPEC, render, presentationMeta },
+      presentCall,
+      presentResult,
+      // board_read only reads the file.
+      ...(toolName === 'board_read' ? { isConcurrencySafe: () => true } : {}),
+      execute: (args, exec) => bodies[toolName](args, exec),
+    })
+  })
+}
+
+/**
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ * @param {object} [rawConfig] the profile's config (cordis.patch.yml)
+ */
+export function apply(ctx, rawConfig) {
+  const config = resolveConfig(rawConfig ?? {})
+  if (!config.tools.enabled) return
+  // $DSH_HOME/data/dsh-cockpit, with the home resolved as the rest of DSH does.
+  const store = createStore({ dataDir: dshHomePath('data', 'dsh-cockpit') })
+  const bodies = createBoardTools({ store, config })
+  ctx.inject(['tools'], (toolsCtx) => {
+    for (const definition of createDefinitions(bodies)) toolsCtx.tools.register(definition)
+  })
+}
