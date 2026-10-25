@@ -11,7 +11,7 @@ test('apply registers four tools whose outputs validate', { skip: !available && 
   const { validateJsonSchemaValue } = await import('@deepseek-ai/dsh-tools')
   const home = await tempHome()
   const registered = []
-  const ctx = { inject: (deps, fn) => { assert.deepEqual(deps, ['tools']); fn({ tools: { register: (d) => { registered.push(d); return () => {} } } }) } }
+  const ctx = { inject: (deps, fn) => { if (deps[0] === 'connection') return; assert.deepEqual(deps, ['tools']); fn({ tools: { register: (d) => { registered.push(d); return () => {} } } }) } }
   apply(ctx, { dataDir: join(home, 'data', 'dsh-cockpit') })
   assert.deepEqual(registered.map((d) => d.name), ['board_open', 'board_read', 'board_add', 'board_update'])
   const byName = Object.fromEntries(registered.map((d) => [d.name, d]))
@@ -36,6 +36,6 @@ test('apply registers four tools whose outputs validate', { skip: !available && 
 
 test('tools.enabled false registers none', { skip: !available && 'DSH installation not found' }, async () => {
   const { apply } = await import('../index.js')
-  const ctx = { inject: () => assert.fail('inject called') }
+  const ctx = { inject: (deps) => { if (deps[0] !== 'connection') assert.fail('inject called') } }
   apply(ctx, { tools: { enabled: false }, dataDir: join(await tempHome(), 'd') })
 })

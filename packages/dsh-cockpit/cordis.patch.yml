@@ -6,6 +6,8 @@
       config:
         tools:
           enabled: true
+        route:
+          enabled: true
         drift:
           command: ''
           cwd: ''

@@ -5,6 +5,7 @@ import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { resolveConfig } from './lib/config.js'
 import { createStore } from './lib/store.js'
 import { RESULT_SPEC, TOOL_SPECS, createBoardTools } from './lib/tools.js'
+import { registerRoutes } from './lib/route.js'
 
 export const name = 'dsh-cockpit'
 
@@ -26,6 +27,7 @@ export function apply(ctx, rawConfig = {}) {
   const config = resolveConfig(rawConfig)
   const dataDir = config.dataDir ?? dshHomePath('data', 'dsh-cockpit')
   const store = createStore({ dataDir })
+  if (rawConfig.route?.enabled !== false) ctx.inject(['connection'], (connCtx) => registerRoutes(connCtx, dataDir))
   const bodies = createBoardTools({ store, config, dshHome: resolveDshHome() })
   if (!config.tools.enabled) return
   ctx.inject(['tools'], (toolsCtx) => {
