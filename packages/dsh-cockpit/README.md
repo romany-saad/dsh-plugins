@@ -2,7 +2,7 @@
 
 A durable task board for a DeepSeek Harness hub session: the session that coordinates builders across many pull requests. A board is a tree of steps, each linked to its work by free-form fields, and it is kept as one local JSON file that other processes can read.
 
-**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools and runs the optional drift check; the routes and the web panel follow in later pull requests.
+**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools and its read routes, and runs the optional drift check; the web panel follows in a later pull request.
 
 ## What is here
 
@@ -12,6 +12,10 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
   - `board_read({ item?, status?, checkDrift? })`: the tasks, the tree text, the flags, the last drift result, and the file's path and format version. The filters narrow the result only. `checkDrift: true` first runs the drift command (see Drift), and `driftCheck` says `ran`, `failed` or `not_configured`.
   - `board_add({ item?, what, status?, … })`: `item` defaults to the next integer, `status` to `next`. A field it does not know is refused (`invalid_input`); `extra` keeps anything else.
   - `board_update({ item, set? | remove? })`: `item` is one item or a list, changed in one write; one unknown item refuses the whole call. `null` in `set` clears a field. It returns `tasks` (after) and `previous` (before); a removal returns the removed tasks in `previous`, so `board_add` can put them back.
+- `lib/route.js`: the read routes for the Cockpit tab, `GET` and `HEAD` only, registered inside `ctx.inject(['connection'], …)` as exact Fetch routes on the host connection, which answers 403 to any Peer that is not the owner. Nothing registers on the raw web server. `route.enabled: false` registers none.
+  - `/api/dsh-cockpit/boards`: `{ boards }`, the keys in the folder.
+  - `/api/dsh-cockpit/board?key=K`: the board file as stored; 404 for an unknown key.
+  - `/api/dsh-cockpit/view?sessionId=S`: `{ key, board, tree, flags, problems, driftConfigured }` for the session's bound board, else `{ key: null, boards }`. A bound board that is missing or unreadable comes back as `{ key, error }`.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
 - `lib/present.js`: one-line titles for the tool cards.
 - `cordis.patch.yml`: the bundle patch (`dsh.bundle.patch`).
@@ -31,7 +35,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
   name: '@romany-saad/dsh-cockpit'
   config:
     tools: { enabled: true }      # false: register no tools
-    route: { enabled: true }      # false: no routes, so no panel data (the routes come in a later step)
+    route: { enabled: true }      # false: no routes, so no panel data
     drift: { command: '', cwd: '', mode: report }   # mode: report | apply; empty command: no check
     links: { issue: '', pr: '' }  # URL patterns with {ref}, {repo}, {number}; empty: only full URLs link
 ```
