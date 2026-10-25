@@ -17,6 +17,15 @@ test('open creates, then reads the same board', async () => {
   assert.equal(b.board.revision, 1)
 })
 
+test('open and read return the board file path and its format version', async () => {
+  const { tools, store, exec } = await setup()
+  const file = { path: store.file('sim-883'), format: 'dsh-cockpit.board', version: 1 }
+  assert.deepEqual((await tools.board_open({ key: 'sim-883' }, exec())).file, file)
+  assert.deepEqual((await tools.board_read({}, exec())).file, file)
+  assert.deepEqual((await tools.board_read({ status: ['done'] }, exec())).file, file)
+  assert.equal((await tools.board_add({ what: 'x' }, exec())).file, undefined)
+})
+
 test('not_bound before board_open', async () => {
   const { tools, exec } = await setup()
   assert.equal((await tools.board_read({}, exec())).code, 'not_bound')

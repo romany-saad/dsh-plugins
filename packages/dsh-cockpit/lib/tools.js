@@ -33,7 +33,23 @@ const fieldSpecs = (wrap) => {
 
 const resultSpec = {
   oneOf: [
-    { type: 'object', properties: { ok: { type: 'boolean', const: true, required: true } }, additionalProperties: true },
+    {
+      type: 'object',
+      properties: {
+        ok: { type: 'boolean', const: true, required: true },
+        // board_open and board_read: where the board lives and its format version.
+        file: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', required: true },
+            format: { type: 'string', required: true },
+            version: { type: 'integer', required: true },
+          },
+          additionalProperties: false,
+        },
+      },
+      additionalProperties: true,
+    },
     {
       type: 'object',
       properties: {
@@ -48,14 +64,14 @@ const resultSpec = {
 
 export const TOOL_SPECS = {
   board_open: {
-    description: `Open (or create) the dsh-cockpit board with this key and bind this session to it. The board is a local JSON file, the record of the hub's steps. Returns its tasks, the tree text and flags. ${DATA_NOTE}`,
+    description: `Open (or create) the dsh-cockpit board with this key and bind this session to it. The board is a local JSON file, the record of the hub's steps. Returns its tasks, the tree text, flags, and the file's path and format version. ${DATA_NOTE}`,
     parameters: {
       key: { type: 'string', required: true, description: 'Board key, e.g. bosla-883.' },
       parent: str('Free-form reference to the parent ticket; sets or replaces it.'),
     },
   },
   board_read: {
-    description: `Read the bound board again from its file: tasks, tree text, flags and the last drift result. Filters narrow the result only. ${DATA_NOTE}`,
+    description: `Read the bound board again from its file: tasks, tree text, flags, the last drift result, and the file's path and format version. Filters narrow the result only. ${DATA_NOTE}`,
     parameters: {
       item: str('Return only this task and its subtree.'),
       status: { type: 'array', items: statusSpec, description: 'Return only tasks with these statuses.' },
@@ -98,10 +114,10 @@ const meta = (board) => {
   return m
 }
 
-function view(board, { only } = {}) {
+function view(board, path, { only } = {}) {
   const tasks = only ? board.tasks.filter((t) => only.has(t.item)) : board.tasks
   const { tree, flags } = boardTree(board, only ? { only } : {})
-  const out = { board: meta(board), tasks, tree, flags }
+  const out = { board: meta(board), file: { path, format: board.format, version: board.version }, tasks, tree, flags }
   if (board.drift !== undefined) out.drift = board.drift
   return out
 }
@@ -175,7 +191,7 @@ export function createBoardTools({ store, config, env = process.env, dshHome }) 
       }, { by: sid || undefined, signal: exec.signal })
       bound.set(sid, args.key)
       if (sid) await store.writeBinding(sid, args.key)
-      return ok({ created, ...view(board) })
+      return ok({ created, ...view(board, store.file(args.key)) })
     }),
 
     board_read: (args = {}, exec = {}) => guard(async () => {
@@ -211,7 +227,7 @@ export function createBoardTools({ store, config, env = process.env, dshHome }) 
         const keep = new Set(args.status)
         only = new Set(board.tasks.filter((t) => keep.has(t.status) && (!only || only.has(t.item))).map((t) => t.item))
       }
-      const out = ok(view(board, { only }))
+      const out = ok(view(board, store.file(key), { only }))
       if (args.checkDrift) out.driftCheck = driftRan ? (board.drift.error ? 'failed' : 'ran') : 'not_configured'
       return out
     }),
