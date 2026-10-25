@@ -32,7 +32,17 @@ export async function listBoards(dir = defaultDataDir()) {
     if (error.code === 'ENOENT') return []
     throw error
   }
-  return names.filter((n) => n.endsWith('.json') && !n.startsWith('.')).map((n) => decodeURIComponent(n.slice(0, -5))).sort()
+  // Temp files end in .tmp, so .json alone selects the boards. A name that is
+  // not percent-encoded (a fallback hub's "100%.json") is listed as it is.
+  return names.filter((n) => n.endsWith('.json')).map((n) => decodeKey(n.slice(0, -5))).sort()
+}
+
+function decodeKey(name) {
+  try {
+    return decodeURIComponent(name)
+  } catch {
+    return name
+  }
 }
 
 /**

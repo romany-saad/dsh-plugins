@@ -53,9 +53,13 @@ export async function writeJsonAtomic(file, value) {
   const dir = dirname(file)
   const base = basename(file)
   await mkdir(dir, { recursive: true })
-  // A crash between write and rename leaves a temp file: remove it now.
+  // A crash between write and rename leaves a temp file: remove it now. The
+  // name carries its writer's pid, so a temp file of a live process (which
+  // may still be writing it) is left alone.
   for (const name of await readdir(dir)) {
-    if (name.startsWith(`.${base}.`) && name.endsWith('.tmp')) await rm(join(dir, name), { force: true })
+    if (!name.startsWith(`.${base}.`) || !name.endsWith('.tmp')) continue
+    const pid = Number(name.slice(base.length + 2).split('.')[0])
+    if (pid === process.pid || !alive(pid)) await rm(join(dir, name), { force: true })
   }
   const tmp = join(dir, `.${base}.${process.pid}.${randomUUID()}.tmp`)
   const fh = await open(tmp, 'wx')
@@ -71,11 +75,29 @@ export async function writeJsonAtomic(file, value) {
     await rm(tmp, { force: true })
     throw error
   }
-  const dh = await open(dir, 'r')
+  // The rename has published the file. Some platforms (Windows) cannot open
+  // or fsync a directory; that must not turn a published write into a failure.
+  let dh
   try {
+    dh = await open(dir, 'r')
     await dh.sync()
+  } catch (error) {
+    if (!DIR_SYNC_UNSUPPORTED.has(error?.code)) throw error
   } finally {
-    await dh.close()
+    await dh?.close()
+  }
+}
+
+const DIR_SYNC_UNSUPPORTED = new Set(['EISDIR', 'EPERM', 'EINVAL', 'ENOTSUP', 'EBADF'])
+
+/** Whether a process with this pid exists; a pid that is not a number is not. */
+function alive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error.code === 'EPERM'
   }
 }
 

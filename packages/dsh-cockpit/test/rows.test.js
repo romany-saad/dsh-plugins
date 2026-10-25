@@ -127,10 +127,24 @@ test('model text hides a provider the model name already carries', () => {
   assert.equal(modelText({}), '')
 })
 
-test('the title leads with the issue unless what already does', () => {
+test('the title leads with the issue unless what already does, as a word', () => {
   assert.equal(titleText({ what: 'Log reader', issue: '#888' }), '#888 Log reader')
   assert.equal(titleText({ what: '#883 effort', issue: '#883' }), '#883 effort')
+  assert.equal(titleText({ what: '#883', issue: '#883' }), '#883')
+  assert.equal(titleText({ what: '#884 thing', issue: '#88' }), '#88 #884 thing')
   assert.equal(titleText({ what: 'x' }), 'x')
+})
+
+test('progress counts every child on the board, also those a filter hides', () => {
+  const tasks = [t('r', 'now', 'r'), t('a', 'done', 'a', { parent: 'r' }), t('b', 'next', 'b', { parent: 'r' })]
+  const [root] = boardRows({ tasks }, { only: new Set(['r', 'b']) })
+  assert.equal(progressText(root.progress), '1 of 2 done')
+})
+
+test('a dependency is named as in flags: its trimmed issue, else its item', () => {
+  const [, row] = boardRows({ tasks: [t('1', 'now', 'a', { issue: '  ' }), t('2', 'next', 'b', { dependsOn: ['1'] })] })
+  assert.equal(blockedText(row.blockedBy), 'blocked by 1 (now)')
+  assert.deepEqual(row.after, ['1'])
 })
 
 test('refUrl with no links config: only full http(s) URLs link; no tracker is built in', () => {

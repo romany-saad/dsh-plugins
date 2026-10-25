@@ -105,6 +105,19 @@ test('a leftover temp file is removed on the next write; the old file survives a
   assert.deepEqual(await readdir(join(dataDir, 'boards')), ['k.json'])
 })
 
+test('a temp file of a live process is left alone; its own and dead ones are removed', async () => {
+  const { dataDir } = await setup()
+  const dir = join(dataDir, 'boards')
+  const file = join(dir, 'k.json')
+  await writeJsonAtomic(file, { a: 1 })
+  const live = `.k.json.${process.ppid}.other.tmp`
+  const own = `.k.json.${process.pid}.old.tmp`
+  await writeFile(join(dir, live), '{')
+  await writeFile(join(dir, own), '{')
+  await writeJsonAtomic(file, { a: 2 })
+  assert.deepEqual((await readdir(dir)).sort(), [live, 'k.json'].sort())
+})
+
 test('a filesystem error rejects with its code and leaves the old file', async (ctx) => {
   if (process.getuid?.() === 0) return ctx.skip('root ignores permissions')
   const { store } = await setup()

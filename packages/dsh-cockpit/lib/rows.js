@@ -29,10 +29,10 @@ const refOf = (task) => text(task.issue) ?? String(task.item)
 /**
  * Where each task is drawn: Map item -> parent item, or undefined at the top.
  * A task with a known parent outside a loop sits under it. A task in a parent
- * loop sits under its nearest ancestor outside the loop; with none, or with a
- * parent not on the board, under the board's root task (the one root task
- * with children, when there is exactly one), else at the top, after the real
- * roots (misplaced lists those).
+ * loop, or with a parent not on the board, sits under the board's root task
+ * (the one root task with children, when there is exactly one), else at the
+ * top, after the real roots (misplaced lists those). A loop has no ancestor
+ * outside it: every task up a looped task's parent chain is in the same loop.
  * @returns {{ parentOf: Map<string, string|undefined>, misplaced: Set<string> }}
  */
 export function placement(tasks) {
@@ -45,15 +45,8 @@ export function placement(tasks) {
   for (const t of tasks) {
     if (t.parent === undefined) { parentOf.set(t.item, undefined); continue }
     if (byItem.has(t.parent) && !inLoop.has(t.item)) { parentOf.set(t.item, t.parent); continue }
-    let at
-    const seen = new Set([t.item])
-    for (let p = t.parent; p !== undefined && byItem.has(p) && !seen.has(p); p = byItem.get(p).parent) {
-      if (!inLoop.has(p)) { at = p; break }
-      seen.add(p)
-    }
-    at = at ?? boardRoot
-    parentOf.set(t.item, at)
-    if (at === undefined) misplaced.add(t.item)
+    parentOf.set(t.item, boardRoot)
+    if (boardRoot === undefined) misplaced.add(t.item)
   }
   return { parentOf, misplaced }
 }
@@ -147,12 +140,14 @@ export function flagText(f) {
  * The board's problems, one per loop, unknown reference and shared value:
  * [{ item, items, text }]; item is the row to show, items every row involved.
  * "Parent loop: #885 ↔ #886", "Unknown dependency: 'release notes' on #887".
+ * @param {object[]} tasks
+ * @param {object[]} [flags] boardFlags(tasks), when the caller has them
  */
-export function problems(tasks) {
+export function problems(tasks, flags = boardFlags(tasks)) {
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const out = []
   const looped = new Set()
-  for (const f of boardFlags(tasks)) {
+  for (const f of flags) {
     const on = refOf(byItem.get(f.item))
     if (f.code === 'parent_loop') {
       if (looped.has(f.item)) continue
@@ -231,11 +226,12 @@ export function refUrl(ref, kind, { links, parent } = {}) {
   return !missing && WEB_URL.test(url) ? url : undefined
 }
 
-/** "#884 Profile and guard": the issue first, unless what already starts with it. */
+/** "#884 Profile and guard": the issue first, unless what already starts with it as a word. */
 export function titleText(task) {
   const what = String(task.what ?? '')
   const issue = text(task.issue)
-  return issue && !what.startsWith(issue) ? issue + ' ' + what : what
+  const leads = issue && (what === issue || (what.startsWith(issue) && /^\s/.test(what.slice(issue.length))))
+  return issue && !leads ? issue + ' ' + what : what
 }
 
 /**
@@ -245,7 +241,8 @@ export function titleText(task) {
  * - blockedBy: on next and waiting rows, each dependency on the board still open;
  * - ready: a next row whose dependencies are all on the board and closed;
  * - after: its dependencies on the board, by issue, else item;
- * - progress: on a row with children, { done, dropped, total, needsYou } of its children;
+ * - progress: on a row with children, { done, dropped, total, needsYou } of all
+ *   its children on the board, drawn or not (only filters the rows, not the counts);
  * - issueUrl, prUrl: refUrl() of issue and pr, with options.links and the board's parent.
  * @param {{tasks: object[], parent?: string}} board
  * @param {{only?: Set<string>, links?: {issue?: string, pr?: string}}} [options]
@@ -255,7 +252,9 @@ export function boardRows(board, options = {}) {
   const tasks = Array.isArray(board?.tasks) ? board.tasks : []
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const mine = new Set(needsYou(tasks).map((t) => t.item))
-  return treeOrder(tasks, { only: options.only }).map(({ task, depth, guide, children }) => {
+  const childrenOf = new Map(treeOrder(tasks).map((r) => [r.task.item, r.children]))
+  return treeOrder(tasks, { only: options.only }).map(({ task, depth, guide }) => {
+    const children = childrenOf.get(task.item) ?? []
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
     const isClosed = closed(task.status)
     const all = notes(task)
@@ -278,9 +277,9 @@ export function boardRows(board, options = {}) {
       others: open ? all.slice(1) : all,
       needsYou: mine.has(task.item),
       ready: task.status === 'next' && deps.every((d) => byItem.has(d) && closed(byItem.get(d).status)),
-      blockedBy: blocked ? deps.filter((d) => byItem.has(d) && !closed(byItem.get(d).status)).map((d) => ({ ref: byItem.get(d).issue || d, status: byItem.get(d).status })) : [],
+      blockedBy: blocked ? deps.filter((d) => byItem.has(d) && !closed(byItem.get(d).status)).map((d) => ({ ref: refOf(byItem.get(d)), status: byItem.get(d).status })) : [],
       // Only dependencies on the board; an unknown one shows in its flag alone.
-      after: deps.filter((d) => byItem.has(d)).map((d) => byItem.get(d).issue || d),
+      after: deps.filter((d) => byItem.has(d)).map((d) => refOf(byItem.get(d))),
       progress: children.length
         ? {
             done: children.filter((c) => c.status === 'done').length,

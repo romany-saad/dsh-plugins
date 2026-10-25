@@ -51,13 +51,15 @@ test('dataDirSource: a blank DSH_HOME is unset; ~ expands', () => {
   assert.deepEqual(dataDirSource({ DSH_HOME: '~/h' }), { dir: join(homedir(), 'h', 'data', 'dsh-cockpit'), source: 'from DSH_HOME=~/h' })
 })
 
-test('listBoards: no folder is no boards; temp files are skipped', async () => {
+test('listBoards: no folder is no boards; temp files are skipped; keys starting with a dot and unencoded names are listed', async () => {
   const { dataDir } = await setup()
   assert.deepEqual(await listBoards(dataDir), [])
   await mkdir(join(dataDir, 'boards'), { recursive: true })
   await writeFile(join(dataDir, 'boards', '.k.json.1.x.tmp'), '')
   await writeFile(join(dataDir, 'boards', 'b%2Fc.json'), '{}')
-  assert.deepEqual(await listBoards(dataDir), ['b/c'])
+  await writeFile(join(dataDir, 'boards', '.hidden.json'), '{}')
+  await writeFile(join(dataDir, 'boards', '100%.json'), '{}')
+  assert.deepEqual(await listBoards(dataDir), ['.hidden', '100%', 'b/c'])
 })
 
 test('unknown version is an error', async () => {

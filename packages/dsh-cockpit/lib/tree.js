@@ -38,7 +38,8 @@ export function boardTree(board, options = {}) {
   })
   const width = Math.max(0, ...lines.filter((l) => l.suffix).map((l) => l.prefix.length))
   const body = lines.map((l) => (l.suffix ? l.prefix.padEnd(width) + '   ' + l.suffix : l.prefix)).join('\n')
-  const shown = only ? problems(tasks).filter((p) => p.items.some((i) => only.has(i))) : problems(tasks)
+  const all = problems(tasks, flags)
+  const shown = only ? all.filter((p) => p.items.some((i) => only.has(i))) : all
   const top = shown.length ? 'Problems:\n' + shown.map((p) => '  ' + p.text).join('\n') + '\n\n' : ''
   return { tree: top + body, flags: only ? flags.filter((f) => only.has(f.item)) : flags, problems: shown }
 }
