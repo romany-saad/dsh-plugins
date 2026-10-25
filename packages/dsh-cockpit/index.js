@@ -2,7 +2,7 @@
 // tools inside ctx.inject(['tools'], …), so they come and go with the tools
 // service and with this plugin.
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { resolveConfig } from './lib/config.js'
 import { presentation } from './lib/present.js'
 import { createStore } from './lib/store.js'
@@ -23,8 +23,8 @@ export function createDefinitions(bodies) {
       output: { schema: RESULT_SPEC, render, presentationMeta },
       presentCall,
       presentResult,
-      // board_read only reads the file.
-      ...(toolName === 'board_read' ? { isConcurrencySafe: () => true } : {}),
+      // board_read only reads the file, unless it runs the drift command.
+      ...(toolName === 'board_read' ? { isConcurrencySafe: (args) => args?.checkDrift !== true } : {}),
       execute: (args, exec) => bodies[toolName](args, exec),
     })
   })
@@ -39,7 +39,7 @@ export function apply(ctx, rawConfig) {
   if (!config.tools.enabled) return
   // $DSH_HOME/data/dsh-cockpit, with the home resolved as the rest of DSH does.
   const store = createStore({ dataDir: dshHomePath('data', 'dsh-cockpit') })
-  const bodies = createBoardTools({ store })
+  const bodies = createBoardTools({ store, drift: config.drift, dshHome: resolveDshHome() })
   ctx.inject(['tools'], (toolsCtx) => {
     for (const definition of createDefinitions(bodies)) toolsCtx.tools.register(definition)
   })

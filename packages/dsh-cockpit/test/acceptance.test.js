@@ -1,11 +1,11 @@
-// The acceptance tests of design section 9 that this step can run. Number 6
-// (a fixture drift command) comes with the drift runner, step 3; number 7
-// (no network) is test/network.test.js and the --import setup file.
+// The acceptance tests of design section 9. Number 7 (no network) is
+// test/network.test.js and the --import setup file.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import * as plugin from '../index.js'
 import { createHost, load } from './cordis-host.mjs'
 import { exec, tempHome } from './helpers.mjs'
@@ -141,4 +141,39 @@ test('5. a board written by plain Node reads through the reader, and the plugin 
   const after = await fileOf('acc-5')
   assert.deepEqual([after.revision, after.updatedBy, after.tasks.length], [6, 'hub-5', 3])
   await fork.dispose()
+})
+
+test('6. a fixture drift command\'s difference shows in the result and in the file', async () => {
+  const fixture = fileURLToPath(new URL('./fixtures/drift-report.mjs', import.meta.url))
+  const command = JSON.stringify(process.execPath) + ' ' + JSON.stringify(fixture)
+  for (const mode of ['report', 'apply']) {
+    const key = 'acc-6-' + mode
+    const { fork, call } = await start({ drift: { command, cwd: '', mode } })
+    await call('board_open', { key })
+    await call('board_add', { item: '1', what: 'Log reader', status: 'done', issue: '#888' })
+    await call('board_add', { item: '2', what: 'Checks', status: 'waiting', issue: '#886', pr: '#891' })
+    await call('board_add', { item: '3', what: 'Docs', status: 'next', issue: '#887', dependsOn: ['2'] })
+    const before = await fileOf(key)
+    const r = await call('board_read', { checkDrift: true })
+    const file = await fileOf(key)
+    const difference = [{ item: '2', status: 'done', note: '#891 merged' }]
+    assert.equal(r.driftCheck, 'ran', mode)
+    assert.deepEqual([r.drift.checked, r.drift.items], [3, difference], mode)
+    assert.deepEqual(file.drift, r.drift, mode)
+    if (mode === 'report') {
+      assert.deepEqual([file.revision, file.tasks], [before.revision, before.tasks], 'report changes no task and keeps revision')
+      assert.match(r.tree, /#886 Checks .*reported: done/)
+    } else {
+      assert.equal(file.revision, before.revision + 1, 'apply bumps revision')
+      assert.equal(file.tasks.find((t) => t.item === '2').status, 'done')
+      assert.deepEqual(r.tasks, file.tasks)
+      assert.doesNotMatch(r.tree, /reported/)
+    }
+    // A second process reads the same drift result through the reader.
+    const seen = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
+      'import(' + JSON.stringify(readerUrl) + ').then(async r => process.stdout.write(JSON.stringify((await r.readBoard(' + JSON.stringify(key) + ')).drift)))'],
+    { env: { DSH_HOME: home }, encoding: 'utf8' }))
+    assert.deepEqual(seen, file.drift, mode)
+    await fork.dispose()
+  }
 })

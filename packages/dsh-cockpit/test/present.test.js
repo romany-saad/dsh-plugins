@@ -46,3 +46,8 @@ test('presentation wires meta into presentResult as a generic card', () => {
   assert.equal(p.presentResult({}, { content: [], isError: false }), undefined)
   assert.equal(p.presentationMeta({}, { ok: false }), null)
 })
+
+test('a read with checkDrift says so', () => {
+  assert.equal(callTitle('board_read', { checkDrift: true }), 'read board · drift check')
+  assert.equal(resultTitle('board_read', { checkDrift: true, status: ['done'] }, { ok: true, board: { key: 'k' } }), 'read k · done · drift check')
+})

@@ -11,6 +11,7 @@
         route:
           enabled: true
         # An optional command that reports the real state of linked work; empty: no check.
+        # It runs only on board_read({ checkDrift: true }), in cwd. See examples/board-drift-gh.sh.
         # mode: report (changes no task) or apply (sets each differing task's status).
         drift:
           command: ''

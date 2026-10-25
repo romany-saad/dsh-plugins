@@ -1,5 +1,6 @@
 // The four board tools (design section 3), as plain specs and bodies.
 // index.js wraps them with defineTool; tests call the bodies directly.
+import { driftResult, runDriftCommand } from './drift.js'
 import { BoardError, FORMAT, VERSION } from './store.js'
 import { STATUSES, STRING_FIELDS, nextItem, orderTask } from './task.js'
 import { boardFlags, boardTree } from './tree.js'
@@ -84,10 +85,11 @@ export const TOOL_SPECS = {
     },
   },
   board_read: {
-    description: `Read the bound board again from its file: tasks, tree text, flags, the last drift result, and the file's path and format version. Filters narrow the result only. ${DATA_NOTE}`,
+    description: `Read the bound board again from its file: tasks, tree text, flags, the last drift result, and the file's path and format version. Filters narrow the result only. checkDrift: true first runs the drift command the profile configures and stores its result in drift: only the tasks whose reported status differs, and checked, the number of entries it reported; driftCheck then says ran, failed or not_configured. ${DATA_NOTE}`,
     parameters: {
       item: str('Return only this task and its subtree.'),
       status: { type: 'array', items: statusSpec, description: 'Return only tasks with these statuses.' },
+      checkDrift: { type: 'boolean', description: 'Run the configured drift command first (default false).' },
     },
   },
   board_add: {
@@ -168,8 +170,12 @@ const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(e
  * session or a new plugin instance finds its board without reopening it.
  * @param {object} options
  * @param {ReturnType<import('./store.js').createStore>} options.store
+ * @param {{ command: string, cwd: string, mode: 'report'|'apply' }} [options.drift]
+ *   the profile's drift config; an empty command means no check
+ * @param {Record<string, string|undefined>} [options.env] the drift command's base environment
+ * @param {string} [options.dshHome] DSH_HOME for the drift command
  */
-export function createBoardTools({ store }) {
+export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome }) {
   const bound = new Map() // sessionId ('' without an agent) -> key
   const sessionOf = (exec) => exec?.agent?.session?.id ?? ''
 
@@ -230,6 +236,25 @@ export function createBoardTools({ store }) {
 
   const by = (exec) => sessionOf(exec) || undefined
 
+  // Run the drift command on the current board and store its result, in the
+  // board's write queue so that apply mode changes the tasks it was given.
+  // A report, or a failed run, changes no task, so revision stays (E1).
+  async function checkDrift(key, exec) {
+    const { board } = await change(key, async (current) => {
+      existing(key, current)
+      const run = await runDriftCommand({
+        command: drift.command,
+        cwd: drift.cwd,
+        env: { ...env, ...(dshHome !== undefined ? { DSH_HOME: dshHome } : {}), DSH_COCKPIT_KEY: key, DSH_COCKPIT_FILE: store.file(key) },
+        input: JSON.stringify(current),
+        signal: exec.signal,
+      })
+      const result = driftResult(current, run, { mode: drift.mode, now: store.now })
+      return { board: { ...current, tasks: result.tasks, drift: result.drift }, write: true }
+    }, { by: by(exec), signal: exec.signal })
+    return board
+  }
+
   return {
     board_open: (args, exec = {}) => guard(async () => {
       if (typeof args.key !== 'string' || args.key === '') return err('invalid_input', 'key must be a non-empty string.')
@@ -255,7 +280,8 @@ export function createBoardTools({ store }) {
 
     board_read: (args = {}, exec = {}) => guard(async () => {
       const key = await boundKey(exec)
-      const board = existing(key, await read(key))
+      const runDrift = args.checkDrift === true && drift.command.trim() !== ''
+      const board = runDrift ? await checkDrift(key, exec) : existing(key, await read(key))
       let only
       if (args.item !== undefined) {
         if (!board.tasks.some((t) => t.item === args.item)) return err('item_unknown', `No task ${JSON.stringify(args.item)} on board ${key}.`)
@@ -265,7 +291,9 @@ export function createBoardTools({ store }) {
         const keep = new Set(args.status)
         only = new Set(board.tasks.filter((t) => keep.has(t.status) && (!only || only.has(t.item))).map((t) => t.item))
       }
-      return ok(view(board, store.file(key), { only }))
+      const out = ok(view(board, store.file(key), { only }))
+      if (args.checkDrift === true) out.driftCheck = runDrift ? (board.drift.error !== undefined ? 'failed' : 'ran') : 'not_configured'
+      return out
     }),
 
     board_add: (args, exec = {}) => guard(async () => {

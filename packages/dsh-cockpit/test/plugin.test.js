@@ -43,6 +43,7 @@ test('every output validates against the declared schema; arguments are validate
     ['board_update', { item: ['1', 'nope'], set: { status: 'done' } }],
     ['board_update', { item: '9', set: {} }],
     ['board_read', { status: ['waiting'] }],
+    ['board_read', { checkDrift: true }],
     ['board_update', { item: ['1', '2'], remove: true }],
   ]
   for (const [name, args] of calls) {
@@ -61,6 +62,8 @@ test('presentation and concurrency: board_read is concurrency-safe; titles come 
   const { ctx, tools } = createHost()
   await load(ctx, plugin, {})
   assert.equal(tools.get('board_read').isConcurrencySafe({}), true)
+  assert.equal(tools.get('board_read').isConcurrencySafe({ checkDrift: false }), true)
+  assert.equal(tools.get('board_read').isConcurrencySafe({ checkDrift: true }), false, 'a drift check runs a command and writes the file')
   for (const name of ['board_open', 'board_add', 'board_update']) assert.equal(tools.get(name).isConcurrencySafe, undefined, name)
   assert.deepEqual(tools.get('board_update').presentCall({ item: ['2', '3'], set: { status: 'done' } }), { card: 'generic', title: 'update 2, 3 → done', kind: 'edit' })
   const opened = await tools.get('board_open').execute({ key: 'pres' }, exec('pres-s'))

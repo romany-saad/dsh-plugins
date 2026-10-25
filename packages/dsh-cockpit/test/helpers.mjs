@@ -16,13 +16,13 @@ export async function tempHome() {
  * call, and the tool bodies over it. exec(sessionId) is a tool call's
  * execution as the agent loop passes it.
  */
-export async function setup({ home, config = {} } = {}) {
+export async function setup({ home, config = {}, env } = {}) {
   home ??= await tempHome()
   const dataDir = join(home, 'data', 'dsh-cockpit')
   let tick = 0
   const store = createStore({ dataDir, now: () => new Date(Date.UTC(2026, 9, 25, 7, 0, tick++)).toISOString() })
-  resolveConfig(config)
-  const tools = createBoardTools({ store })
+  const { drift } = resolveConfig(config)
+  const tools = createBoardTools({ store, drift, dshHome: home, ...(env ? { env } : {}) })
   return { home, dataDir, store, tools, exec }
 }
 
