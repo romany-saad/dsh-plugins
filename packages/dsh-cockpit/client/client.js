@@ -239,6 +239,7 @@ function titleText(task) {
  * - line: the one wait phrase of an open row (the first note); others: the rest;
  * - blockedBy: on next and waiting rows, each dependency on the board not done yet;
  * - ready: a next row whose dependencies are all on the board and done;
+ * - after: its dependencies on the board, by issue, else item;
  * - progress: on a row with children, { done, total, needsYou } of its children.
  * @param {{tasks: object[], parent?: string}} board
  * @param {{only?: Set<string>}} [options]
@@ -268,7 +269,8 @@ function boardRows(board, options = {}) {
       needsYou: mine.has(task.item),
       ready: task.status === 'next' && deps.every((d) => byItem.get(d)?.status === 'done'),
       blockedBy: blocked ? deps.filter((d) => byItem.has(d) && byItem.get(d).status !== 'done').map((d) => ({ ref: byItem.get(d).issue || d, status: byItem.get(d).status })) : [],
-      after: deps.map((d) => byItem.get(d)?.issue || d),
+      // Only dependencies on the board; an unknown one shows in its flag alone.
+      after: deps.filter((d) => byItem.has(d)).map((d) => byItem.get(d).issue || d),
       progress: children.length ? { done: children.filter((c) => c.status === 'done').length, total: children.length, needsYou: children.filter((c) => mine.has(c.item)).length } : undefined,
       model: modelText(task),
       url: taskUrl(task, board.parent),
@@ -286,7 +288,44 @@ const progressText = (p) => p.done + ' of ' + p.total + ' done' + (p.needsYou ? 
 /** "blocked by #884 (waiting), #885 (now)". */
 const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
 
-return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText }
+/**
+ * The whole board's progress, for the bar at the chat input. done and total
+ * count the work tasks: those with no children (a parent's own progress is
+ * its children's). needsYou counts needsYou(). focus is the most important
+ * open work task, in tree order, the first present of: one that waits on the
+ * owner, one next or waiting that is blocked (a dependency on the board not
+ * done, or one not on the board), one now; else undefined.
+ * @param {{tasks: object[], parent?: string}} board
+ * @returns {{ done: number, total: number, needsYou: number, focus?: { kind: 'needs you'|'blocked'|'now', item: string, title: string } }}
+ */
+function boardProgress(board) {
+  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const rows = boardRows(board).filter((r) => !r.progress)
+  const open = rows.filter((r) => !r.done)
+  const deps = (r) => { const d = byItem.get(r.item).dependsOn; return Array.isArray(d) ? d : [] }
+  const waits = (r) => r.status === 'next' || r.status === 'waiting'
+  const pick = [
+    ['needs you', (r) => r.needsYou],
+    ['blocked', (r) => waits(r) && (r.blockedBy.length > 0 || deps(r).some((d) => !byItem.has(d)))],
+    ['now', (r) => r.status === 'now'],
+  ]
+  let focus
+  for (const [kind, test] of pick) {
+    const r = open.find(test)
+    if (r) { focus = { kind, item: r.item, title: r.title }; break }
+  }
+  return { done: rows.length - open.length, total: rows.length, needsYou: needsYou(tasks).tasks.length, focus }
+}
+
+/** "4 of 6 done · 1 needs you", then the focus: "#884 Profile and guard" when it needs you, else "blocked: …" or "now: …". */
+function boardProgressText(p) {
+  const head = progressText(p)
+  if (!p.focus) return head
+  return head + ' · ' + (p.focus.kind === 'needs you' ? '' : p.focus.kind + ': ') + p.focus.title
+}
+
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText, boardProgress, boardProgressText }
 })(),
 "../../lib/present.js": (() => {
 // Tool-card titles (GenericCallView / GenericResultView of dsh-tools): one
@@ -372,14 +411,15 @@ return { callTitle, resultTitle, presentation }
 };
 var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? __local[name] : shellRequire(name));
 // dsh-cockpit's browser half: a read-only "Board" tab in the right sidebar,
-// and one-line chat card titles for the four board tools.
+// a progress bar above the chat input, and one-line chat card titles for the
+// four board tools.
 // Plain CommonJS body: client/build.mjs wraps it in the module-loader factory
 // and inlines the core's pure lib/rows.js and lib/present.js, so the panel,
 // the hub's tree text and the tool cards share their rules.
 // Externals come from the shell's module table (react, ui-primitives).
 const React = require('react')
 const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
-const { blockedText, boardFlags, boardRows, flagText, needsYou, problems, progressText, taskUrl, titleText, treeOrder } = require('../../lib/rows.js')
+const { blockedText, boardFlags, boardProgress, boardProgressText, boardRows, flagText, needsYou, problems, progressText, taskUrl, titleText, treeOrder } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { StateDot, Tag } = primitives
 const h = React.createElement
@@ -403,6 +443,9 @@ const DOT_SLOT = { display: 'inline-flex', justifyContent: 'center', width: '1em
 // Tree guides: thin and faint, scenery rather than content.
 const guideStyle = { color: 'var(--dsw-alias-label-tertiary)', opacity: 0.45 }
 const button = { font: 'inherit', fontSize: 11, padding: '0 6px', cursor: 'pointer' }
+// The row's right-hand columns, fixed so every row's right edge lines up.
+const OPEN_SLOT = { display: 'inline-block', width: '3em', textAlign: 'right', flex: 'none' }
+const OPENER_SLOT = { display: 'inline-block', width: '1em', textAlign: 'center', flex: 'none' }
 
 function useView(sessionId) {
   const [state, setState] = React.useState({ loading: true })
@@ -441,13 +484,13 @@ function whenText(iso, now = Date.now()) {
   return local + ' · ' + ago
 }
 
-/** Show the drift line only when drift is configured or the file holds a drift result. */
+/** Show the drift line when drift is configured or the file holds a drift result; else hide it. */
 const showDrift = (view) => Boolean(view.driftConfigured || view.board?.drift)
 
 function OpenLink({ url }) {
   if (!url) return null
   // No title tooltip: it covered the next row's link. The browser's status bar
-  // shows the URL on hover, and the opened row lists it.
+  // shows the URL on hover.
   return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open ' + url, style: { ...muted, fontSize: 11, whiteSpace: 'nowrap', textDecoration: 'none' }, onClick: (e) => e.stopPropagation() }, 'Open')
 }
 
@@ -481,7 +524,6 @@ function Detail({ row, flags, drift }) {
   add('model', row.model)
   add('branch', row.branch, mono)
   add('worktree', row.worktree, mono)
-  add('link', row.url, mono)
   if (drift) add('drift', (drift.status || '?') + (drift.note ? ' (' + drift.note + ')' : ''))
   return h('div', { 'data-detail': '', style: { ...small, padding: '2px 0 4px', paddingLeft: 'calc(' + row.idWidth + 'ch + ' + STATUS_WIDTH + ')' } },
     items,
@@ -498,7 +540,7 @@ function Status({ row }) {
 function TaskRow({ row, flags, drift }) {
   const [open, setOpen] = React.useState(false)
   const toggle = () => setOpen(!open)
-  const hasDetail = row.others.length || row.url || row.model || row.branch || row.worktree || row.waitingOn || drift ||
+  const hasDetail = row.others.length || row.model || row.branch || row.worktree || row.waitingOn || drift ||
     (row.readyCommand && !row.needsYou) || (row.after.length && !row.blockedBy.length)
   const tone = row.done ? muted : primary
   const extras = []
@@ -524,13 +566,13 @@ function TaskRow({ row, flags, drift }) {
         row.line && !row.needsYou ? h('div', { style: { ...small, ...secondary, marginTop: 1 } }, row.line) : null,
         extras.length ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 2 } }, extras) : null),
       h('span', { style: { flex: 'none', display: 'inline-flex', gap: 6, alignItems: 'baseline', marginLeft: 6 } },
-        h(OpenLink, { url: row.url }),
-        hasDetail ? h('span', { 'aria-hidden': true, style: { ...muted, ...small } }, open ? '▾' : '▸') : null)),
+        h('span', { 'data-open-slot': '', style: OPEN_SLOT }, h(OpenLink, { url: row.url })),
+        h('span', { 'data-opener': '', 'aria-hidden': true, style: { ...OPENER_SLOT, ...muted, ...small } }, hasDetail ? (open ? '▾' : '▸') : null))),
     open ? h(Detail, { row, flags, drift }) : null)
 }
 
 function Drift({ drift }) {
-  if (!drift) return h('div', { style: { ...muted, ...small } }, 'Drift: never checked')
+  if (!drift) return h('div', { style: { ...muted, ...small } }, 'Drift check available · not run yet')
   const differing = (drift.items || []).filter((i) => i.differs)
   return h('div', { style: small },
     h('span', { style: muted }, 'Drift checked ' + whenText(drift.checkedAt) + ': '),
@@ -596,6 +638,50 @@ function BoardBody({ sessionId }) {
       : h('p', { style: muted }, 'No tasks yet.')))
 }
 
+// ---- The progress bar above the chat input (conversation.input.dock) ----
+
+// Sized like the other composer docks (the goal strip): the composer's width, its panel elevation.
+const DOCK = {
+  boxSizing: 'border-box', margin: '0 auto',
+  width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 0px) - 4 * var(--dsh-composer-dock-inset, 0px))',
+}
+const DOCK_BAR = {
+  boxSizing: 'border-box', width: '100%', maxWidth: 'calc(var(--dsh-composer-card-max-width, 100%) - 4 * var(--dsh-composer-dock-inset, 0px))',
+  margin: '0 auto', height: 32, padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 10,
+  font: 'inherit', fontSize: 13, textAlign: 'left', border: 0, borderRadius: 'var(--dsw-radius-md, 8px)',
+  background: 'var(--dsw-specific-menu, var(--dsw-alias-bg-l1, transparent))', boxShadow: 'var(--dsw-elevation-panel)',
+  '--dsw-elevation-stroke-color': 'var(--dsw-alias-border-l1)',
+}
+const TRACK = { flex: 'none', width: 72, height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-fill-l2, rgba(127,127,127,0.25))' }
+
+/**
+ * The dock's model (pure; exported for tests): undefined, so nothing renders,
+ * unless the session has a bound board that parsed; else the progress, its
+ * phrase and the done fraction.
+ */
+function dockModel(view) {
+  if (!view || !view.key || !view.board) return undefined
+  const p = boardProgress(view.board)
+  return { ...p, text: boardProgressText(p), fraction: p.total ? p.done / p.total : 0 }
+}
+
+function BoardDock({ sessionId, openBoard }) {
+  const { view } = useView(sessionId)
+  const m = dockModel(view)
+  if (!m) return null
+  const label = m.text + (openBoard ? ' · open the Board' : '')
+  return h('div', { 'data-dsh-cockpit-dock': '', style: DOCK },
+    h('button', {
+      type: 'button', onClick: openBoard ? () => openBoard() : undefined, 'aria-label': label, title: openBoard ? 'Open the Board' : undefined,
+      style: { ...DOCK_BAR, cursor: openBoard ? 'pointer' : 'default', ...primary },
+    },
+      h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', style: TRACK },
+        h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: 'var(--dsw-alias-state-success-primary, #3a3)' } })),
+      h('span', { style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...secondary } },
+        h('span', { style: primary }, progressText(m)),
+        m.text.length > progressText(m).length ? m.text.slice(progressText(m).length) : null)))
+}
+
 // ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
 
 const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : {} } catch { return {} } }
@@ -648,7 +734,7 @@ function BoardToolRow(props) {
     body)
 }
 
-const inject = ['slots', 'sidebarRightTabs']
+const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
 
 function apply(ctx) {
   ctx.effect(() => ctx.sidebarRightTabs.register({
@@ -665,9 +751,17 @@ function apply(ctx) {
   for (const key of TOOLS) {
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key }, BoardToolRow))
   }
+  // Above the input box, after the Todo, Goal and Queue docks (orders 0, 10, 20).
+  // A click opens the Board tab: openTab acts on the on-screen session, the dock's.
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'dsh-cockpit-progress',
+    order: 30,
+    inject: (sessionId) => ({ sessionId, openBoard: () => ctx.sidebarRight.openTab(KIND) }),
+  }, BoardDock))
 }
 
-module.exports = { apply, inject, treeOrder, boardRows, needsYou, problems, taskUrl, whenText, showDrift, toolCardModel, TOOLS }
+module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, dockModel, toolCardModel, TOOLS }
 
 return module.exports;
 } });

@@ -50,7 +50,7 @@ test('view: a bound session gets its board, tree, flags and drift', async () => 
   assert.equal(v.key, 'bosla-883')
   assert.equal(v.board.revision, 8)
   assert.deepEqual(v.flags, [{ item: '2a', code: 'unknown_dependency', ref: '1' }])
-  assert.match(v.tree, /^Problems:\n  Unknown dependency: '1' on 2a\n\n2 +now +dsh-cockpit board +0 of 1 done\n└─ 2a +waiting +Read DSH sessions +after 1 +! blocked by '1' \(not on the board\)$/)
+  assert.match(v.tree, /^Problems:\n  Unknown dependency: '1' on 2a\n\n2 +now +dsh-cockpit board +0 of 1 done\n└─ 2a +waiting +Read DSH sessions +! blocked by '1' \(not on the board\)$/)
   assert.equal(v.board.drift.items[0].differs, true)
   assert.equal(v.driftConfigured, false)
   const on = createRouteHandlers(dataDir, { driftConfigured: true })

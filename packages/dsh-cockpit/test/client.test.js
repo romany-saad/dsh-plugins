@@ -36,6 +36,7 @@ function register(exports) {
   const ctx = {
     effect: (fn) => fn(),
     sidebarRightTabs: { register: (d) => { calls.tabs.push(d); return () => {} } },
+    sidebarRight: { openTab: (kind) => { calls.opened = (calls.opened || []).concat(kind) } },
     slots: { inject: (_name, fn) => fn(), register: (entry, Component) => { calls.slots.push({ entry, Component }); return () => {} } },
   }
   exports.apply(ctx)
@@ -45,14 +46,15 @@ function register(exports) {
 test('the bundle registers under the package id with a Board tab and its body', () => {
   const { row, exports } = load({ loading: true })
   assert.equal(row.id, '@romany-saad/dsh-cockpit')
-  assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs'])
+  assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight'])
   const { tabs, slots } = register(exports)
   assert.equal(tabs[0].id, '@romany-saad/dsh-cockpit')
   assert.equal(tabs[0].title(), 'Board')
   assert.equal(slots[0].entry.name, 'sidebar.right.pane.tab')
   assert.equal(slots[0].entry.key, tabs[0].id)
   assert.equal(slots[0].entry.inject('s1').sessionId, 's1')
-  assert.deepEqual(slots.slice(1).map((s) => [s.entry.name, s.entry.key]), ['board_open', 'board_read', 'board_add', 'board_update'].map((k) => ['tool.call.toolview', k]))
+  assert.deepEqual(slots.slice(1, 5).map((s) => [s.entry.name, s.entry.key]), ['board_open', 'board_read', 'board_add', 'board_update'].map((k) => ['tool.call.toolview', k]))
+  assert.equal(slots[5].entry.name, 'conversation.input.dock')
 })
 
 const flat = (out) => out.replace(/[ \t]+/g, ' ')
@@ -160,9 +162,11 @@ test('every row keeps the dot slot; done rows a muted check; a Needs-you row onl
   assert.match(out, /#884 Profile and guard PR #892/, 'PR inline on open rows too')
 })
 
-test('the drift line shows only when drift is configured or a result exists', () => {
+test('the drift line: hidden when off with no result; "not run yet" when configured; else the result', () => {
   assert.ok(!render(live).includes('Drift'))
-  assert.ok(render({ ...live, driftConfigured: true }).includes('Drift: never checked'))
+  assert.ok(!render(live).includes('drift'))
+  assert.ok(render({ ...live, driftConfigured: true }).includes('Drift check available · not run yet'))
+  assert.ok(!render({ ...live, driftConfigured: true }).includes('never checked'))
   const drift = { checkedAt: '2026-10-25T07:00:00Z', items: [{ item: '1', status: 'done', note: '#892 merged', differs: true }] }
   const out = render({ ...live, board: { ...live.board, drift } })
   assert.ok(out.includes('1 differing') && out.includes('[drift: done]'))
@@ -184,7 +188,61 @@ test('ids and statuses sit in fixed-width columns with tree guides', () => {
     walk(n.children)
   }
   walk(register(load({ view }).exports).slots[0].Component({ sessionId: 's' }))
-  assert.deepEqual([...new Set(widths)].sort(), ['1em', '7ch', '8.5em'], 'one id, dot and status width for every row')
+  assert.deepEqual([...new Set(widths)].sort(), ['1em', '3em', '7ch', '8.5em'], 'one id, dot, status, Open and opener width for every row')
+})
+
+test('the opener and Open sit in fixed right-hand slots on every row, linked or not', () => {
+  const slots = []
+  const walk = (n, li) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach((x) => walk(x, li))
+    if (typeof n.type === 'function') return walk(n.type({ ...n.props, children: n.children.length ? n.children : n.props.children }), li)
+    if (n.type === 'li') li = n.props['data-item']
+    if ('data-open-slot' in n.props || 'data-opener' in n.props) slots.push([li, 'data-opener' in n.props ? 'opener' : 'open', n.props.style.width])
+    walk(n.children, li)
+  }
+  const view = { ...live, board: { ...live.board, parent: 'PROJ-883' } } // no links at all
+  walk(register(load({ view }).exports).slots[0].Component({ sessionId: 's' }))
+  walk(register(load({ view: live }).exports).slots[0].Component({ sessionId: 's' }))
+  const rows = live.board.tasks.length * 2
+  assert.equal(slots.filter((s) => s[1] === 'open').length, rows, 'every row has the Open slot')
+  assert.equal(slots.filter((s) => s[1] === 'opener').length, rows, 'every row has the opener slot')
+  assert.deepEqual([...new Set(slots.map((s) => s[1] + ' ' + s[2]))].sort(), ['open 3em', 'opener 1em'])
+})
+
+test('an opened row shows no link line; after lists only dependencies on the board; stored text as stored', () => {
+  const open = render(live, { open: true })
+  assert.ok(!/\blink /.test(open), open)
+  assert.ok(!open.includes('https://github.com'), 'no URL in the text')
+  const done = { ...live, board: { ...live.board, tasks: live.board.tasks.map((t) => (t.item === '1' || t.item === '2' ? { ...t, status: 'done' } : t)) } }
+  const out = render(done, { open: true })
+  assert.ok(out.includes('after #884, #888'), out)
+  assert.ok(!/after[^\n]*release notes/.test(out), 'the unknown dependency is not in after')
+  assert.equal(out.split("! blocked by 'release notes' (not on the board)").length, 2, 'only in its flag')
+  assert.ok(out.includes('why Needs item 1 merged.'), 'why as stored')
+})
+
+test('the dock: done of all work tasks, who needs you, the top open item; opens the Board; hidden unbound', () => {
+  const { exports } = load({ view: live })
+  const calls = register(exports)
+  const dock = calls.slots.find((s) => s.entry.name === 'conversation.input.dock')
+  assert.equal(dock.entry.order, 30)
+  const props = dock.entry.inject('s1')
+  assert.equal(props.sessionId, 's1')
+  props.openBoard()
+  assert.deepEqual(calls.opened, ['dsh-cockpit-board'])
+  assert.equal(exports.dockModel(live).text, '1 of 4 done · 1 needs you · #884 Profile and guard')
+  assert.equal(exports.dockModel(live).fraction, 0.25)
+  const out = flat(text(dock.Component(props)))
+  assert.ok(out.includes('1 of 4 done') && out.includes('#884 Profile and guard'), out)
+  let tree
+  const find = (n) => { if (!n || typeof n !== 'object') return; if (Array.isArray(n)) return n.forEach(find); if (n.type === 'button') tree = n; else if (typeof n.type === 'function') find(n.type({ ...n.props, children: n.children })); else find(n.children) }
+  find(dock.Component(props))
+  assert.equal(typeof tree.props.onClick, 'function')
+  for (const view of [{ key: null, boards: ['a'] }, { key: 'k', error: 'no such board' }, undefined]) {
+    assert.equal(exports.dockModel(view), undefined)
+    assert.equal(load({ view }).exports && text(register(load({ view }).exports).slots.find((s) => s.entry.name === 'conversation.input.dock').Component({ sessionId: 's' })), '')
+  }
 })
 
 test('Open links the pr, else the issue, through the board parent\'s repo', () => {

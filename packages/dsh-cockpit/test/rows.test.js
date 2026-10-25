@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { boardRows, blockedText, modelText, needsYou, notes, progressText, refUrl, taskUrl, titleText } from '../lib/rows.js'
+import { boardProgress, boardProgressText, boardRows, blockedText, modelText, needsYou, notes, progressText, refUrl, taskUrl, titleText } from '../lib/rows.js'
 
 const t = (item, status, what, more = {}) => ({ item, status, what, ...more })
 
@@ -77,6 +77,37 @@ test('a parent shows its children\'s progress, needs-you by the same rule', () =
   assert.equal(progressText(rows[0].progress), '2 of 3 done · 1 needs you')
   assert.equal(progressText(rows.find((r) => r.item === '2').progress), '0 of 1 done')
   assert.equal(rows.find((r) => r.item === '1').progress, undefined)
+})
+
+test('after lists only dependencies on the board, by issue; notes stay as stored', () => {
+  const why = "Still blocked by 'release notes' (not on the board)."
+  const [, , row] = boardRows({ tasks: [
+    t('1', 'done', 'a', { issue: '#884' }),
+    t('2', 'done', 'b'),
+    t('5', 'next', 'c', { dependsOn: ['1', '2', 'release notes'], why }),
+  ] })
+  assert.deepEqual(row.after, ['#884', '2'])
+  assert.equal(row.line, why)
+})
+
+test('board progress: work tasks only, needs you, then the first of needs you, blocked, now', () => {
+  const tasks = [
+    t('883', 'now', '#883 effort', { issue: '#883' }),
+    t('1', 'done', 'a', { parent: '883' }),
+    t('2', 'now', 'Write', { parent: '883', issue: '#2' }),
+    t('3', 'next', 'Check', { parent: '883', dependsOn: ['2'] }),
+    t('4', 'waiting', 'Merge', { parent: '883', issue: '#4', waitingOn: 'owner' }),
+  ]
+  const p = boardProgress({ tasks })
+  assert.deepEqual([p.done, p.total, p.needsYou], [1, 4, 1])
+  assert.equal(boardProgressText(p), '1 of 4 done · 1 needs you · #4 Merge')
+  const noOwner = tasks.map((x) => (x.item === '4' ? { ...x, waitingOn: 'CI' } : x))
+  assert.equal(boardProgressText(boardProgress({ tasks: noOwner })), '1 of 4 done · blocked: Check')
+  const unknown = [t('1', 'now', 'a'), t('2', 'next', 'b', { dependsOn: ['ghost'] })]
+  assert.equal(boardProgressText(boardProgress({ tasks: unknown })), '0 of 2 done · blocked: b')
+  assert.equal(boardProgressText(boardProgress({ tasks: [t('1', 'now', 'a'), t('2', 'next', 'b')] })), '0 of 2 done · now: a')
+  assert.equal(boardProgressText(boardProgress({ tasks: [t('1', 'done', 'a')] })), '1 of 1 done')
+  assert.equal(boardProgressText(boardProgress({ tasks: [] })), '0 of 0 done')
 })
 
 test('tree guides per depth, last child closes', () => {

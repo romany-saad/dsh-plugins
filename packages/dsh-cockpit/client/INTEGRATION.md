@@ -95,7 +95,10 @@ and line 39:
 | `GET /api/dsh-cockpit/board?key=K` | the board file's bytes; 404 for an unknown key |
 | `GET /api/dsh-cockpit/view?sessionId=S` | `{ key, board, tree, flags, driftConfigured }` for the session's bound board, else `{ key: null, boards }` |
 
-The panel polls `view` every 2 s for the tab's session.
+The panel polls `view` every 2 s for the tab's session. So does the progress bar the client registers in
+`conversation.input.dock` (above the input box, after Todo, Goal and Queue): "4 of 6 done · 1 needs you" and the
+top open item, from `boardProgress` in `lib/rows.js`; a click opens the Board tab through `ctx.sidebarRight.openTab`;
+it renders nothing when the session has no bound board. This adds `@deepseek-ai/dsh-client-ui-conversation` to `dsh.client.inject`.
 
 ## Shared rules
 

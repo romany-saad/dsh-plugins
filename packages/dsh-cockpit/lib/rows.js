@@ -235,6 +235,7 @@ export function titleText(task) {
  * - line: the one wait phrase of an open row (the first note); others: the rest;
  * - blockedBy: on next and waiting rows, each dependency on the board not done yet;
  * - ready: a next row whose dependencies are all on the board and done;
+ * - after: its dependencies on the board, by issue, else item;
  * - progress: on a row with children, { done, total, needsYou } of its children.
  * @param {{tasks: object[], parent?: string}} board
  * @param {{only?: Set<string>}} [options]
@@ -264,7 +265,8 @@ export function boardRows(board, options = {}) {
       needsYou: mine.has(task.item),
       ready: task.status === 'next' && deps.every((d) => byItem.get(d)?.status === 'done'),
       blockedBy: blocked ? deps.filter((d) => byItem.has(d) && byItem.get(d).status !== 'done').map((d) => ({ ref: byItem.get(d).issue || d, status: byItem.get(d).status })) : [],
-      after: deps.map((d) => byItem.get(d)?.issue || d),
+      // Only dependencies on the board; an unknown one shows in its flag alone.
+      after: deps.filter((d) => byItem.has(d)).map((d) => byItem.get(d).issue || d),
       progress: children.length ? { done: children.filter((c) => c.status === 'done').length, total: children.length, needsYou: children.filter((c) => mine.has(c.item)).length } : undefined,
       model: modelText(task),
       url: taskUrl(task, board.parent),
@@ -281,3 +283,40 @@ export const progressText = (p) => p.done + ' of ' + p.total + ' done' + (p.need
 
 /** "blocked by #884 (waiting), #885 (now)". */
 export const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
+
+/**
+ * The whole board's progress, for the bar at the chat input. done and total
+ * count the work tasks: those with no children (a parent's own progress is
+ * its children's). needsYou counts needsYou(). focus is the most important
+ * open work task, in tree order, the first present of: one that waits on the
+ * owner, one next or waiting that is blocked (a dependency on the board not
+ * done, or one not on the board), one now; else undefined.
+ * @param {{tasks: object[], parent?: string}} board
+ * @returns {{ done: number, total: number, needsYou: number, focus?: { kind: 'needs you'|'blocked'|'now', item: string, title: string } }}
+ */
+export function boardProgress(board) {
+  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const rows = boardRows(board).filter((r) => !r.progress)
+  const open = rows.filter((r) => !r.done)
+  const deps = (r) => { const d = byItem.get(r.item).dependsOn; return Array.isArray(d) ? d : [] }
+  const waits = (r) => r.status === 'next' || r.status === 'waiting'
+  const pick = [
+    ['needs you', (r) => r.needsYou],
+    ['blocked', (r) => waits(r) && (r.blockedBy.length > 0 || deps(r).some((d) => !byItem.has(d)))],
+    ['now', (r) => r.status === 'now'],
+  ]
+  let focus
+  for (const [kind, test] of pick) {
+    const r = open.find(test)
+    if (r) { focus = { kind, item: r.item, title: r.title }; break }
+  }
+  return { done: rows.length - open.length, total: rows.length, needsYou: needsYou(tasks).tasks.length, focus }
+}
+
+/** "4 of 6 done · 1 needs you", then the focus: "#884 Profile and guard" when it needs you, else "blocked: …" or "now: …". */
+export function boardProgressText(p) {
+  const head = progressText(p)
+  if (!p.focus) return head
+  return head + ' · ' + (p.focus.kind === 'needs you' ? '' : p.focus.kind + ': ') + p.focus.title
+}
