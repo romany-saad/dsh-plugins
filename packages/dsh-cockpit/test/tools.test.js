@@ -57,6 +57,16 @@ test('null clears, extra and readyCommand round-trip, remove returns null', asyn
   assert.deepEqual((await tools.board_read({}, exec())).tasks, [])
 })
 
+test('waitingOn is stored by add, changed and cleared by update', async () => {
+  const { tools, exec } = await setup()
+  await tools.board_open({ key: 'k' }, exec())
+  const a = await tools.board_add({ what: 'x', status: 'waiting', waitingOn: 'owner' }, exec())
+  assert.equal(a.task.waitingOn, 'owner')
+  assert.deepEqual(Object.keys(a.task), ['item', 'what', 'status', 'waitingOn', 'updatedAt'])
+  assert.equal((await tools.board_update({ item: '1', set: { waitingOn: 'CI' } }, exec())).task.waitingOn, 'CI')
+  assert.equal((await tools.board_update({ item: '1', set: { waitingOn: null } }, exec())).task.waitingOn, undefined)
+})
+
 test('flags come back from add, never a refusal', async () => {
   const { tools, exec } = await setup()
   await tools.board_open({ key: 'k' }, exec())

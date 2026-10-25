@@ -12,7 +12,7 @@ A durable task board for a DeepSeek Harness hub session: a tree of steps, each l
 - `lib/drift.js`: the optional `drift.command`, run only on `board_read({ checkDrift: true })`, with the board on stdin and `DSH_HOME`, `DSH_COCKPIT_KEY`, `DSH_COCKPIT_FILE` in its environment.
 - `reader.js` (`@romany-saad/dsh-cockpit/reader`): `listBoards(dir?)`, `readBoard(keyOrFile, dir?)`, `boardTree(board)`, with no DSH imports.
 
-Task fields: item, what, status (next | now | waiting | done), why, issue, pr, branch, worktree, provider, model, effort, nextAction, readyCommand, parent, dependsOn, extra, updatedAt.
+Task fields: item, what, status (next | now | waiting | done), why, issue, pr, branch, worktree, provider, model, effort, nextAction, waitingOn, readyCommand, parent, dependsOn, extra, updatedAt.
 
 ## Config
 

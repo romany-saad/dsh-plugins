@@ -6,7 +6,7 @@ export const STATUSES = ['next', 'now', 'waiting', 'done']
 /** Optional free-form string fields, in file order. */
 export const STRING_FIELDS = [
   'why', 'issue', 'pr', 'branch', 'worktree', 'provider', 'model', 'effort',
-  'nextAction', 'readyCommand', 'parent',
+  'nextAction', 'waitingOn', 'readyCommand', 'parent',
 ]
 
 /** Every task field, in the order the file stores them. */

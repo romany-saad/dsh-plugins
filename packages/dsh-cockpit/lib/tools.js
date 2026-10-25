@@ -20,6 +20,7 @@ const FIELD_DOCS = {
   model: 'Model of the builder.',
   effort: 'Reasoning effort of the builder.',
   nextAction: 'What happens next, and who acts.',
+  waitingOn: 'Who or what a waiting task waits on, free-form, e.g. owner, release, #887 or CI.',
   readyCommand: 'The exact command the owner runs to act on this item. Stored and shown, never run.',
   parent: 'Item of the parent task on this board.',
 }
@@ -79,7 +80,7 @@ export const TOOL_SPECS = {
     },
   },
   board_add: {
-    description: 'Add a task to the bound board. item defaults to the next integer. Unknown parent or dependency items are stored and flagged, never refused.',
+    description: 'Add a task to the bound board. item defaults to the next integer. Unknown parent or dependency items are stored and flagged, never refused. waitingOn: who or what a waiting task waits on.',
     parameters: {
       item: str('Identity on the board, any non-empty string; omit for the next integer.'),
       what: { type: 'string', required: true, description: 'What the task is.' },
@@ -88,7 +89,7 @@ export const TOOL_SPECS = {
     },
   },
   board_update: {
-    description: 'Change or remove one task of the bound board. In set, null clears a field.',
+    description: 'Change or remove one task of the bound board. In set, null clears a field. waitingOn: who or what a waiting task waits on.',
     parameters: {
       item: { type: 'string', required: true, description: 'The task to change.' },
       set: {

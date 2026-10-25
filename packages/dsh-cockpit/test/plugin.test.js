@@ -20,7 +20,8 @@ test('apply registers four tools whose outputs validate', { skip: !available && 
     ['board_read', {}],
     ['board_open', { key: 'k', parent: 'p' }],
     ['board_add', { what: 'x', dependsOn: ['9'], readyCommand: 'echo' }],
-    ['board_update', { item: '1', set: { pr: null, status: 'waiting' } }],
+    ['board_update', { item: '1', set: { pr: null, status: 'waiting', waitingOn: 'owner' } }],
+    ['board_update', { item: '1', set: { waitingOn: null } }],
     ['board_update', { item: '9', set: {} }],
     ['board_read', { status: ['waiting'] }],
     ['board_update', { item: '1', remove: true }],
@@ -37,6 +38,8 @@ test('apply registers four tools whose outputs validate', { skip: !available && 
   assert.equal(byName.board_read.isConcurrencySafe({}), true)
   assert.equal(byName.board_read.isConcurrencySafe({ checkDrift: true }), false)
   await assert.rejects(byName.board_add.execute({ what: 'x', status: 'later' }, exec), /status/)
+  await assert.rejects(byName.board_add.execute({ what: 'x', waitingOn: 3 }, exec), /waitingOn/)
+  for (const name of ['board_add', 'board_update']) assert.match(byName[name].description, /waitingOn: who or what a waiting task waits on/)
 })
 
 test('tools.enabled false registers none', { skip: !available && 'DSH installation not found' }, async () => {
