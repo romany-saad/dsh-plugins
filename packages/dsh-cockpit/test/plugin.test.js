@@ -29,6 +29,11 @@ test('apply registers four tools whose outputs validate', { skip: !available && 
     const value = await byName[name].execute(args, exec)
     assert.deepEqual(validateJsonSchemaValue(byName[name].output.schema, value, ''), [], name)
   }
+  assert.deepEqual(byName.board_update.presentCall({ item: '2', set: { status: 'done' } }), { card: 'generic', title: 'update 2 → done', kind: 'edit' })
+  const opened = await byName.board_open.execute({ key: 'k' }, exec)
+  assert.equal(opened.file.version, 1)
+  const meta = byName.board_open.output.presentationMeta({ key: 'k' }, opened)
+  assert.deepEqual(byName.board_open.presentResult({ key: 'k' }, { content: [], isError: false, meta }), { card: 'generic', title: 'open k' })
   assert.equal(byName.board_read.isConcurrencySafe({}), true)
   assert.equal(byName.board_read.isConcurrencySafe({ checkDrift: true }), false)
   await assert.rejects(byName.board_add.execute({ what: 'x', status: 'later' }, exec), /status/)

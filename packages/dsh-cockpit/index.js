@@ -6,6 +6,7 @@ import { resolveConfig } from './lib/config.js'
 import { createStore } from './lib/store.js'
 import { RESULT_SPEC, TOOL_SPECS, createBoardTools } from './lib/tools.js'
 import { registerRoutes } from './lib/route.js'
+import { presentation } from './lib/present.js'
 
 export const name = 'dsh-cockpit'
 
@@ -13,14 +14,19 @@ const render = (_args, value) => [{ type: 'text', text: JSON.stringify(value) }]
 
 /** Build the four tool definitions; exported for tests. */
 export function createDefinitions(bodies) {
-  return Object.entries(TOOL_SPECS).map(([toolName, spec]) => defineTool({
-    name: toolName,
-    description: spec.description,
-    parameters: spec.parameters,
-    output: { schema: RESULT_SPEC, render },
-    ...(toolName === 'board_read' ? { isConcurrencySafe: (args) => !args.checkDrift } : {}),
-    execute: (args, exec) => bodies[toolName](args, exec),
-  }))
+  return Object.entries(TOOL_SPECS).map(([toolName, spec]) => {
+    const { presentCall, presentResult, presentationMeta } = presentation(toolName)
+    return defineTool({
+      name: toolName,
+      description: spec.description,
+      parameters: spec.parameters,
+      output: { schema: RESULT_SPEC, render, presentationMeta },
+      presentCall,
+      presentResult,
+      ...(toolName === 'board_read' ? { isConcurrencySafe: (args) => !args.checkDrift } : {}),
+      execute: (args, exec) => bodies[toolName](args, exec),
+    })
+  })
 }
 
 export function apply(ctx, rawConfig = {}) {
