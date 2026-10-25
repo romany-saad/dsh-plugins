@@ -15,8 +15,26 @@ test('roots, children in board order, after text', () => {
   const lines = tree.split('\n')
   assert.equal(lines.length, 4)
   assert.match(lines[0], /^1 +done +DSH profile/)
-  assert.match(lines[2], /^ {2}2a +waiting +Read DSH sessions in nightcost +after 1$/)
-  assert.match(lines[3], /after 2a, 9 +! unknown dependency 9$/)
+  assert.match(lines[1], /^2 +now +dsh-cockpit board +0 of 2 done$/)
+  assert.match(lines[2], /^├─ 2a +waiting +Read DSH sessions in nightcost +after 1$/)
+  assert.match(lines[3], /^└─ 2b +next +Bosla adopts the board +blocked by 2a \(waiting\) +! unknown dependency 9$/)
+})
+
+test('the live layout: guides, aligned columns, one wait phrase, PR on done rows, what blocks', () => {
+  const { tree } = boardTree({ parent: 'o/r#883', tasks: [
+    t('1', 'waiting', 'Profile and guard', { issue: '#884', pr: '#892', parent: '883', why: 'CI running.', nextAction: 'Owner: merge PR #892.', waitingOn: 'owner' }),
+    t('2', 'done', 'Log reader', { issue: '#888', pr: '#889', parent: '883', provider: 'claude', model: 'claude-opus-5-5', nextAction: 'stale' }),
+    t('5', 'next', 'Live checks and docs', { issue: '#887', parent: '883', dependsOn: ['1', '2'] }),
+    t('883', 'now', '#883 effort', { issue: '#883' }),
+    t('6b', 'waiting', 'Board rule in Bosla', { parent: '883', dependsOn: ['5'], why: 'Starts on release.', extra: { startCondition: 'Starts on release.' } }),
+  ] })
+  assert.deepEqual(tree.split('\n'), [
+    '883    now      #883 effort                 1 of 4 done · 1 needs you',
+    '├─ 1   waiting  #884 Profile and guard      Owner: merge PR #892.',
+    '├─ 2   done     #888 Log reader             PR #889',
+    '├─ 5   next     #887 Live checks and docs   blocked by #884 (waiting)',
+    '└─ 6b  waiting  Board rule in Bosla         Starts on release.   blocked by #887 (next)',
+  ])
 })
 
 test('unknown parent becomes a root with a flag', () => {
@@ -38,7 +56,7 @@ test('self-parent and two-task loop are roots with parent_loop', () => {
   assert.match(lines[0], /^1 /)
   assert.match(lines[1], /^2 /)
   assert.match(lines[2], /^3 /)
-  assert.match(lines[3], /^ {2}4 /)
+  assert.match(lines[3], /^└─ 4 /)
 })
 
 test('removing a parent flags its children', () => {

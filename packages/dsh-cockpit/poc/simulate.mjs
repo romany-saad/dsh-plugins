@@ -114,7 +114,7 @@ const ASKS = [
     const b = await s.read()
     s.check('a root task for #883', b.tasks.some((t) => t.issue === '#883' && t.parent === undefined))
     s.check('the five have parent = its item', FIVE.every(([i]) => b.tasks.find((t) => t.issue === i).parent === '0'))
-    s.check('drawn indented under it', b.tree.split('\n').slice(1).every((l) => l.startsWith('  ')))
+    s.check('drawn indented under it', b.tree.split('\n').slice(1).every((l) => /^[├└]─ /.test(l)))
   } },
   { id: 'A4', needs: ['A3'], ask: 'Add step 6b, the board rule in Bosla, under #883, depending on #887. Start condition: dsh-cockpit 0.1 released.', async run(s) {
     const r = await s.call('board_add', { ...SIX_B, parent: '0', dependsOn: [await s.itemOf('#887')] })
