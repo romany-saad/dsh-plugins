@@ -5,7 +5,7 @@
 // hub's tree text and the chat card titles share one copy of their rules.
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const LOCAL = ['../../lib/rows.js', '../../lib/present.js']
+const LOCAL = ['../../lib/rows.js', '../../lib/present.js', './command-box.js']
 
 /** An import-free ES module as an expression of its exports. */
 function inline(spec) {

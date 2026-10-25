@@ -104,6 +104,16 @@ through `ctx.sidebarRight.openTab`; a segment's click passes `{ params: { item }
 `useTabInfo().tab.navigation` and scrolls to that row once per navigation revision;
 it renders nothing when the session has no bound board. This adds `@deepseek-ai/dsh-client-ui-conversation` to `dsh.client.inject`.
 
+## The Board panel and strip (batch 6: design C, Outline, refined)
+
+The panel draws a header (key and parent; revision and time, the relative time ticking once a minute), a Needs you
+block (one card per owner task: title, next step, Open PR ↗, CommandBox), a Board data problems section (↓ focuses
+the row), the parent row (progress in words plus the thin segmented bar), then one grid row per task in fixed
+columns 36 · 68 · 1fr · 60 · 20 px (id · status · title · PR · chevron). Its classes live in one injected
+stylesheet (`#dsh-cockpit-style`) on host tokens only. Row cells come from `rowCells` and the strip from
+`stripModel` / `stripText` in `lib/rows.js`; the CommandBox and its copy state machine are
+`client/src/command-box.js`, inlined by `client/build.mjs` like the lib files.
+
 ## Shared rules
 
 `client/build.mjs` inlines `lib/rows.js` (the row model: wait line, blocked by, progress, Needs you, Open link) and

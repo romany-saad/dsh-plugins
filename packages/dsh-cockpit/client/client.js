@@ -265,6 +265,7 @@ function boardRows(board, options = {}) {
       issue: task.issue,
       pr: task.pr,
       line: open?.text,
+      lineLabel: open?.label,
       others: open ? all.slice(1) : all,
       needsYou: mine.has(task.item),
       ready: task.status === 'next' && deps.every((d) => byItem.get(d)?.status === 'done'),
@@ -274,6 +275,7 @@ function boardRows(board, options = {}) {
       progress: children.length ? { done: children.filter((c) => c.status === 'done').length, total: children.length, needsYou: children.filter((c) => mine.has(c.item)).length } : undefined,
       model: modelText(task),
       url: taskUrl(task, board.parent),
+      prUrl: refUrl(task.pr, 'pull', board.parent),
       readyCommand: text(task.readyCommand),
       waitingOn: text(task.waitingOn),
       branch: text(task.branch),
@@ -306,7 +308,7 @@ const SEGMENT_MAX = 24
  *
  * focus is the most important open work, in tree order, the first present of:
  * one that needs you ("#884 Profile and guard"), one with blockers ("#887
- * blocked by #884"), the ones now ("in progress: #885 Work reports", "2 in
+ * blocked by #886 (waiting)"), the ones now ("in progress: #885 Work reports", "2 in
  * progress: #885, #886"); else undefined.
  * @param {{tasks: object[], parent?: string}} board
  * @returns {{ done: number, total: number, needsYou: number, continuous: boolean,
@@ -321,11 +323,14 @@ function boardProgress(board) {
     const task = byItem.get(r.item)
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
     const waits = r.status === 'next' || r.status === 'waiting'
-    const blockers = r.blockedBy.map((b) => b.ref).concat(waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : [])
+    const unknown = waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : []
+    const blockers = r.blockedBy.map((b) => b.ref).concat(unknown)
+    // The phrase names each blocker's status too: "#886 (waiting)".
+    const blockersWithStatus = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
     const kind = r.done ? 'done' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now' : r.status === 'waiting' ? 'waiting' : r.ready ? 'ready' : 'blocked'
     const runner = r.status === 'now' ? modelText(task, ' ') : ''
     const tooltip = [r.title, r.status, runner, blockers.length ? 'blocked by ' + blockers.join(', ') : '', kind === 'ready' ? 'ready' : '', r.needsYou && !r.done ? 'needs you' : ''].filter(Boolean).join(' · ')
-    return { row: r, blockers, segment: { item: r.item, kind, tooltip } }
+    return { row: r, blockers, blockersWithStatus, segment: { item: r.item, kind, tooltip } }
   })
   const open = work.filter((w) => !w.row.done)
   const at = (w, kind, text) => ({ kind, item: w.row.item, title: w.row.title, text })
@@ -334,7 +339,7 @@ function boardProgress(board) {
   const blocked = open.find((w) => w.blockers.length)
   const now = open.filter((w) => w.row.status === 'now')
   if (mine) focus = at(mine, 'needs you', mine.row.title)
-  else if (blocked) focus = at(blocked, 'blocked', refOf(blocked.row) + ' blocked by ' + blocked.blockers.join(', '))
+  else if (blocked) focus = at(blocked, 'blocked', refOf(blocked.row) + ' blocked by ' + blocked.blockersWithStatus.join(', '))
   else if (now.length === 1) focus = at(now[0], 'now', 'in progress: ' + now[0].row.title)
   else if (now.length) focus = at(now[0], 'now', now.length + ' in progress: ' + now.map((w) => refOf(w.row)).join(', '))
   return {
@@ -349,7 +354,130 @@ function boardProgressText(p) {
   return p.focus ? head + ' · ' + p.focus.text : head
 }
 
-return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText, SEGMENT_MAX, boardProgress, boardProgressText }
+// ---- Batch 6: what the Board panel (design C, Outline) and the strip show ----
+
+/** The row's status mark: a check for done, a ring for next, else a dot (now: accent, waiting: grey). */
+const STATUS_MARK = { done: 'check', next: 'ring', now: 'dot-now', waiting: 'dot-waiting' }
+
+/** The meta line's label for each note: "Next:", "Reason:", "Start when:". */
+const NOTE_LABEL = { next: 'Next:', why: 'Reason:', 'starts when': 'Start when:', 'waiting on': 'Waiting on' }
+/** The detail grid's key for each note. */
+const DETAIL_KEY = { next: 'Next', why: 'Reason', 'starts when': 'Start when' }
+
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/** "PR #892" from "#892", "o/r#892" or ".../pull/892"; "PR" for anything else. */
+function prText(pr) {
+  const v = text(pr)
+  if (!v) return undefined
+  const n = /(?:#|\/pull\/)(\d+)\/?$/.exec(v)
+  return n ? 'PR #' + n[1] : 'PR'
+}
+
+/**
+ * One row's cells in the fixed columns (id · status · title · PR · chevron),
+ * from a boardRows() row and its boardFlags():
+ * - parent: a top row with children, drawn as the parent row (progress, no status);
+ * - mark: STATUS_MARK; wrap: open titles wrap, done titles truncate (tooltip: the title);
+ * - indent: 16 px steps inside the title cell, depth below the parent row; elbow: └ from depth 2;
+ * - pr: "PR #892", linked by prUrl;
+ * - next: the one meta line of an open row not in Needs you, { label, text }:
+ *   "Waiting on <who>" on a waiting row with waitingOn (not the owner), else its first note;
+ * - blockedBy, ready, needsYou ("Needs you · see top"); problems: each flag's text, in place;
+ * - detail: [{ key, value, mono }] (the other notes, waiting on, model, branch, worktree);
+ * - command: the ready command, unless the row is in Needs you (the card has it);
+ * - expandable: detail or a command to show.
+ */
+function rowCells(row, flags = []) {
+  const parent = Boolean(row.progress) && row.depth === 0
+  // The one meta line: an open row's first note, unless Needs you holds it.
+  // A waiting row that names who it waits on (not the owner) says so: "Waiting on CI".
+  const waitsOn = row.status === 'waiting' && row.waitingOn && row.waitingOn.toLowerCase() !== 'owner' ? row.waitingOn : undefined
+  const open = !row.done && !row.needsYou
+  const shown = open && waitsOn ? { label: 'waiting on', text: waitsOn } : open && row.line ? { label: row.lineLabel, text: row.line } : undefined
+  const notesLeft = row.line && (!shown || waitsOn) ? [{ label: row.lineLabel, text: row.line }, ...row.others] : row.others
+  const detail = notesLeft.map((n) => ({ key: DETAIL_KEY[n.label] ?? capital(n.label), value: n.text, mono: false }))
+  if (row.waitingOn && row.waitingOn.toLowerCase() !== 'owner' && !waitsOn) detail.push({ key: 'Waiting on', value: row.waitingOn, mono: false })
+  if (row.model) detail.push({ key: 'Model', value: row.model, mono: true })
+  if (row.branch) detail.push({ key: 'Branch', value: row.branch, mono: true })
+  if (row.worktree) detail.push({ key: 'Worktree', value: row.worktree, mono: true })
+  const command = row.needsYou ? undefined : row.readyCommand
+  return {
+    item: row.item,
+    parent,
+    status: parent ? undefined : row.status,
+    mark: parent ? undefined : STATUS_MARK[row.status] ?? 'dot-waiting',
+    title: row.title,
+    wrap: !row.done,
+    indent: parent ? 0 : Math.max(0, row.depth - 1),
+    elbow: !parent && row.depth >= 2,
+    pr: prText(row.pr),
+    prUrl: row.prUrl,
+    progress: parent ? progressText({ done: row.progress.done, total: row.progress.total }) : undefined,
+    progressNeedsYou: parent && row.progress.needsYou ? row.progress.needsYou + ' needs you' : undefined,
+    next: shown ? { label: NOTE_LABEL[shown.label] ?? capital(shown.label) + ':', text: shown.text } : undefined,
+    needsYou: !row.done && row.needsYou,
+    blockedBy: row.blockedBy,
+    ready: row.ready,
+    problems: flags.map((f) => capital(flagText(f))),
+    detail,
+    command,
+    expandable: detail.length > 0 || Boolean(command),
+  }
+}
+
+/**
+ * A problems-section line from a problems() entry: { item, kind, refs, text };
+ * kind is the text before its colon ("Parent loop"), refs the rows involved,
+ * by issue, else item ("#885, #886"), text the full problem (the tooltip).
+ */
+function problemLine(p, tasks = []) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const i = p.text.indexOf(': ')
+  const refs = p.items.map((it) => (byItem.has(it) ? refOf(byItem.get(it)) : String(it))).join(', ')
+  return { item: p.item, kind: i < 0 ? p.text : p.text.slice(0, i), refs, text: p.text }
+}
+
+/** What the panel shows with no board: the design's title and one line. */
+const EMPTY_STATE = {
+  title: 'No board in this session',
+  line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
+}
+
+/**
+ * The owner's ask for the strip: the task's nextAction without its "Owner:"
+ * lead, first letter lower, final period dropped, "for" the task's title;
+ * with no nextAction, the title alone.
+ */
+function askText(task) {
+  const raw = (text(task.nextAction) ?? '').replace(/^owner\s*[:,-]?\s*/i, '').replace(/\.$/, '').trim()
+  return raw ? raw.charAt(0).toLowerCase() + raw.slice(1) + ' for ' + titleText(task) : titleText(task)
+}
+
+/**
+ * The strip above the chat input (design C):
+ * - normal: { kind: 'normal', key, done: "4 of 6 done", focus?: the focus phrase };
+ * - needs you: { kind: 'needs you', text: "Needs you: <ask>", command?, item } for
+ *   one ask (command: its readyCommand, for Copy command), "2 need you" (no
+ *   command) for more. Both carry the progress (segments) of boardProgress().
+ * @param {{key?: string, tasks: object[], parent?: string}} board
+ */
+function stripModel(board) {
+  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
+  const p = boardProgress(board)
+  const mine = needsYou(tasks).tasks
+  const base = { key: board?.key, progress: p, done: progressText({ done: p.done, total: p.total }) }
+  if (mine.length === 1) return { ...base, kind: 'needs you', text: 'Needs you: ' + askText(mine[0]), command: text(mine[0].readyCommand), item: mine[0].item }
+  if (mine.length > 1) return { ...base, kind: 'needs you', text: mine.length + ' need you', item: mine[0].item }
+  return { ...base, kind: 'normal', focus: p.focus?.text }
+}
+
+/** The strip as one line of text: "sim-883 · 4 of 6 done · <focus> · Board ›" or "⚠ Needs you: … · Copy command · Board ›". */
+function stripText(m) {
+  if (m.kind === 'needs you') return ['⚠ ' + m.text, m.command ? 'Copy command' : '', 'Board ›'].filter(Boolean).join(' · ')
+  return [m.key, m.done, m.focus, 'Board ›'].filter(Boolean).join(' · ')
+}
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, taskUrl, titleText, boardRows, progressText, blockedText, SEGMENT_MAX, boardProgress, boardProgressText, STATUS_MARK, prText, rowCells, problemLine, EMPTY_STATE, askText, stripModel, stripText }
 })(),
 "../../lib/present.js": (() => {
 // Tool-card titles (GenericCallView / GenericResultView of dsh-tools): one
@@ -431,21 +559,102 @@ function presentation(name) {
 }
 
 return { callTitle, resultTitle, presentation }
+})(),
+"./command-box.js": (() => {
+// CommandBox: a command in monospace with a Copy button fixed at its top right.
+// The command wraps at spaces first, then anywhere (white-space: pre-wrap with
+// overflow-wrap: anywhere, in a minmax(0, 1fr) grid cell), so it never widens
+// the panel. Import-free: client/build.mjs inlines it; React comes from the
+// caller, so the copy state machine below is testable without a browser.
+
+/** How long "Copied" (or "Copy failed") shows before the button reads Copy again. */
+const COPY_RESET_MS = 1500
+
+/** The button's words in each state. */
+const COPY_LABEL = { idle: 'Copy', copied: 'Copied', failed: 'Copy failed' }
+
+/**
+ * The copy state machine: idle | copied | failed. 'copied' and 'failed' come
+ * from the clipboard write; 'reset' (COPY_RESET_MS later) returns to idle.
+ * Anything else keeps the state.
+ */
+function copyStep(state, event) {
+  if (event === 'copied' || event === 'failed') return event
+  if (event === 'reset') return 'idle'
+  return state
+}
+
+/** Write text with clipboard.writeText: 'copied', or 'failed' when there is no clipboard or it refuses. */
+async function copyText(text, clipboard) {
+  try {
+    if (!clipboard || typeof clipboard.writeText !== 'function') return 'failed'
+    await clipboard.writeText(text)
+    return 'copied'
+  } catch {
+    return 'failed'
+  }
+}
+
+/** The copy icon: two overlapping rounded squares. */
+function copyIcon(h) {
+  return h('svg', { width: 12, height: 12, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinejoin: 'round', 'aria-hidden': true },
+    h('rect', { x: 5.5, y: 5.5, width: 8, height: 8, rx: 1.5 }), h('path', { d: 'M10.5 3.5H4a1.5 1.5 0 00-1.5 1.5v6' }))
+}
+
+/**
+ * The hook and component, built on the caller's React.
+ * useCopy(text) -> [state, copy]; copy(event) copies text and stops the click.
+ * CommandBox({ command, label }) draws the box; label names the button for
+ * screen readers ("Copy command for #886").
+ */
+function makeCommandBox(React) {
+  const h = React.createElement
+  function useCopy(text) {
+    const [state, setState] = React.useState('idle')
+    const timer = React.useRef ? React.useRef(undefined) : { current: undefined }
+    React.useEffect(() => () => clearTimeout(timer.current), [])
+    const copy = (e) => {
+      if (e && e.stopPropagation) e.stopPropagation()
+      const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined
+      copyText(text, clipboard).then((result) => {
+        setState((s) => copyStep(s, result))
+        clearTimeout(timer.current)
+        timer.current = setTimeout(() => setState((s) => copyStep(s, 'reset')), COPY_RESET_MS)
+      })
+    }
+    return [state, copy]
+  }
+  function CommandBox({ command, label }) {
+    const [state, copy] = useCopy(command)
+    return h('div', { className: 'dshc-cmd', 'data-command-box': '' },
+      h('code', null, command),
+      h('button', { type: 'button', className: 'dshc-btn', 'aria-label': state === 'idle' ? label || 'Copy command' : COPY_LABEL[state], 'data-copy-state': state, onClick: copy },
+        copyIcon(h), COPY_LABEL[state]),
+      // Announce the result without moving focus.
+      h('span', { role: 'status', className: 'dshc-sr' }, state === 'idle' ? '' : COPY_LABEL[state]))
+  }
+  return { CommandBox, useCopy }
+}
+
+return { COPY_RESET_MS, COPY_LABEL, copyStep, copyText, copyIcon, makeCommandBox }
 })()
 };
 var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? __local[name] : shellRequire(name));
-// dsh-cockpit's browser half: a read-only "Board" tab in the right sidebar,
-// a progress bar above the chat input, and one-line chat card titles for the
-// four board tools.
+// dsh-cockpit's browser half: a read-only "Board" tab in the right sidebar
+// (design C, Outline, refined), a progress strip above the chat input, and
+// one-line chat card titles for the four board tools.
 // Plain CommonJS body: client/build.mjs wraps it in the module-loader factory
-// and inlines the core's pure lib/rows.js and lib/present.js, so the panel,
+// and inlines the core's pure lib/rows.js, lib/present.js and the CommandBox
+// (client/src/command-box.js), so the panel,
 // the hub's tree text and the tool cards share their rules.
 // Externals come from the shell's module table (react, ui-primitives).
 const React = require('react')
 const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
-const { blockedText, boardFlags, boardProgress, boardProgressText, boardRows, flagText, needsYou, problems, progressText, taskUrl, titleText, treeOrder } = require('../../lib/rows.js')
+const { boardFlags, boardProgress, boardProgressText, boardRows, needsYou, problems, progressText, prText, refUrl, taskUrl, titleText, treeOrder, EMPTY_STATE, problemLine, rowCells, stripModel, stripText } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
-const { StateDot, Tag } = primitives
+const { Tag } = primitives
+const { makeCommandBox, copyStep, copyText, COPY_LABEL } = require('./command-box.js')
+const { CommandBox, useCopy } = makeCommandBox(React)
 const h = React.createElement
 
 const ID = '@romany-saad/dsh-cockpit'
@@ -455,22 +664,113 @@ const POLL_MS = 2000
 const VIEW = 'api/dsh-cockpit/view'
 const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update']
 
-const DOT = { now: 'ongoing', waiting: 'warning', done: 'done', next: 'idle' }
-const muted = { color: 'var(--dsw-alias-label-tertiary)' }
-const secondary = { color: 'var(--dsw-alias-label-secondary)' }
-const primary = { color: 'var(--dsw-alias-label-primary)' }
-const mono = { fontFamily: 'var(--dsw-font-family-mono, ui-monospace, monospace)' }
-const small = { fontSize: 'var(--dsh-content-font-size-secondary, 12px)' }
-const STATUS_WIDTH = '8.5em'
-// The status dot's slot, kept on every row so the status words line up.
-const DOT_SLOT = { display: 'inline-flex', justifyContent: 'center', width: '1em', flex: 'none' }
-// Tree guides: thin and faint, scenery rather than content.
-const guideStyle = { color: 'var(--dsw-alias-label-tertiary)', opacity: 0.45 }
-const button = { font: 'inherit', fontSize: 11, padding: '0 6px', cursor: 'pointer' }
-// The row's right-hand columns, fixed so every row's right edge lines up.
-const OPEN_SLOT = { display: 'inline-block', width: '3em', textAlign: 'right', flex: 'none' }
-const OPENER_SLOT = { display: 'inline-block', width: '1em', textAlign: 'center', flex: 'none' }
+// ---- Style: design C (Outline), refined. Host tokens only; see the batch 6 report. ----
+// One stylesheet in the document head, so the rows can use classes (grid,
+// hover, wrapping) and the render output stays plain.
+const T = {
+  surface1: 'var(--dsw-alias-bg-skeleton)', // design surface-l1*: a faint tint in both themes
+  surface2: 'var(--dsw-alias-bg-module-platform)', // design surface-l2*
+  surface0: 'var(--dsw-alias-bg-base)', // design surface-l0*
+  border: 'var(--dsw-alias-border-l1)',
+  primary: 'var(--dsw-alias-label-primary)',
+  secondary: 'var(--dsw-alias-label-secondary)',
+  tertiary: 'var(--dsw-alias-label-tertiary)',
+  warn: 'var(--dsw-alias-state-warn-label)',
+  error: 'var(--dsw-alias-state-error-primary)', // design state-error*
+  success: 'var(--dsw-alias-state-success-primary)', // design state-success*
+  info: 'var(--dsw-alias-state-business-primary)', // design state-info*: the Tag primitive's info tone
+  mono: 'var(--dsh-font-family-code, var(--dsh-font-family-code-default, ui-monospace, monospace))', // design font-family-mono*
+  title: 'var(--dsh-content-font-size-secondary, 13px)', // design font-size-primary* (13 px)
+}
+const CSS = [
+  '[data-dsh-cockpit-board]{box-sizing:border-box;height:100%;overflow:auto;color:' + T.primary + ';font-size:' + T.title + ';line-height:20px;font-variant-numeric:tabular-nums}',
+  '.dshc-mono{font-family:' + T.mono + ';font-variant-ligatures:none}',
+  '.dshc-trunc{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dshc-wrap{display:block;min-width:0;overflow-wrap:anywhere}',
+  '[data-dsh-cockpit-board] a{color:inherit;text-decoration:none}[data-dsh-cockpit-board] a:hover{text-decoration:underline}',
+  '.dshc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+  '.dshc-hd{padding:12px 12px 10px;border-bottom:1px solid ' + T.border + '}',
+  '.dshc-hd1{display:flex;align-items:baseline;justify-content:space-between;gap:12px}',
+  '.dshc-hdl{display:flex;align-items:baseline;gap:8px;min-width:0}',
+  '.dshc-key{font-size:13px;font-weight:500;flex:none;max-width:60%}',
+  '.dshc-parent{font-size:12px;color:' + T.tertiary + '}',
+  '.dshc-meta{font-size:12px;color:' + T.tertiary + ';white-space:nowrap;flex:none}',
+  '.dshc-drift{font-size:12px;line-height:16px;color:' + T.tertiary + ';margin-top:2px}',
+  '.dshc-sec{padding:10px 12px 12px;border-bottom:1px solid ' + T.border + '}',
+  '.dshc-sech{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;line-height:16px;margin-bottom:8px}',
+  '.dshc-warn{color:' + T.warn + '}.dshc-err{color:' + T.error + '}',
+  '.dshc-guess{text-transform:none;letter-spacing:0;font-weight:400;color:' + T.tertiary + '}',
+  '.dshc-ni{display:grid;grid-template-columns:36px minmax(0,1fr) auto;column-gap:8px;row-gap:4px;background:' + T.surface1 + ';border:1px solid ' + T.border + ';border-radius:8px;padding:8px}',
+  '.dshc-ni+.dshc-ni{margin-top:8px}',
+  '.dshc-ni .dshc-id{color:' + T.tertiary + ';font-size:12px}',
+  '.dshc-nit{font-weight:500}',
+  '.dshc-ask{grid-column:2/4;font-size:12px;line-height:16px;color:' + T.secondary + ';overflow-wrap:anywhere}',
+  '.dshc-ni .dshc-cmd{grid-column:1/4}',
+  '.dshc-open{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:' + T.secondary + ';white-space:nowrap}',
+  '.dshc-cmd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;background:' + T.surface2 + ';border:1px solid ' + T.border + ';border-radius:6px;padding:4px 4px 4px 10px;margin-top:4px;position:relative}',
+  '.dshc-cmd code{font-family:' + T.mono + ';font-size:12px;line-height:18px;padding:3px 0;color:' + T.primary + ';white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}',
+  '.dshc-btn{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:4px;border:1px solid ' + T.border + ';background:' + T.surface0 + ';color:' + T.primary + ';font:inherit;font-size:12px;font-weight:500;line-height:1;cursor:pointer;white-space:nowrap;flex:none}',
+  '.dshc-btn[data-copy-state=failed]{color:' + T.error + '}',
+  '.dshc-prob{display:grid;grid-template-columns:16px minmax(0,1fr) auto 20px;column-gap:8px;align-items:center;width:100%;height:28px;padding:0;border:0;background:none;font:inherit;font-size:12px;color:' + T.primary + ';text-align:left;cursor:pointer}',
+  '.dshc-prob .dshc-ic{color:' + T.error + '}.dshc-prob .dshc-ids{color:' + T.secondary + '}.dshc-prob .dshc-go{color:' + T.tertiary + ';display:flex;justify-content:center}',
+  '.dshc-tree{margin:0;padding:0;list-style:none}',
+  '.dshc-li{list-style:none;border-bottom:1px solid ' + T.border + '}',
+  '.dshc-li:focus{outline:2px solid ' + T.info + ';outline-offset:-2px}',
+  '.dshc-row{display:grid;grid-template-columns:36px 68px minmax(0,1fr) 60px 20px;column-gap:8px;row-gap:2px;align-items:start;padding:6px 12px}',
+  '.dshc-row>*{min-height:20px}',
+  '.dshc-li.dshc-parentrow{background:' + T.surface1 + '}',
+  '.dshc-parentrow .dshc-ct{font-weight:600}',
+  '.dshc-cid{font-size:12px;color:' + T.tertiary + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dshc-cst{display:flex;align-items:center;gap:6px;font-size:12px;color:' + T.secondary + '}',
+  '.dshc-check{color:' + T.success + ';flex:none}',
+  '.dshc-mark{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex:none}',
+  '.dshc-dot{width:8px;height:8px;border-radius:50%;box-sizing:border-box}',
+  '.dshc-dot-now{background:' + T.info + '}.dshc-dot-waiting{background:' + T.tertiary + '}',
+  '.dshc-ring{width:8px;height:8px;border-radius:50%;box-sizing:border-box;border:1.5px solid ' + T.secondary + '}',
+  '.dshc-ct{display:flex;align-items:flex-start;min-width:0}',
+  '.dshc-indent{flex:none}',
+  '.dshc-elbow{flex:none;width:8px;height:8px;border-left:1px solid ' + T.tertiary + ';border-bottom:1px solid ' + T.tertiary + ';margin:4px 6px 0 2px}',
+  '.dshc-done .dshc-ct,.dshc-done .dshc-cst{color:' + T.secondary + '}',
+  '.dshc-cpr{font-size:12px;color:' + T.secondary + ';text-align:right;white-space:nowrap}',
+  '.dshc-chev{display:flex;align-items:center;justify-content:center;height:20px;padding:0;border:0;background:none;color:' + T.tertiary + ';cursor:pointer}',
+  '.dshc-chev svg[data-open]{transform:rotate(90deg)}',
+  '.dshc-cmeta{grid-column:3/5;display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:16px;color:' + T.secondary + ';min-height:0}',
+  '.dshc-k{color:' + T.tertiary + '}',
+  '.dshc-block{display:flex;align-items:center;gap:6px;color:' + T.primary + '}.dshc-block b{font-weight:500}.dshc-block .dshc-st{color:' + T.tertiary + '}',
+  '.dshc-mprob{display:flex;align-items:flex-start;gap:6px;color:' + T.error + '}.dshc-mprob svg{flex:none;margin-top:2px}',
+  // Over the Tag primitive's outline tone (class + attribute), so these win: square, currentColor border.
+  '.dshc-cmeta .dshc-tag[data-tone]{align-self:flex-start;background:transparent;border:1px solid currentColor;border-radius:4px;padding:0 6px;font-weight:600;line-height:16px}',
+  '.dshc-cmeta .dshc-tag-warn[data-tone]{color:' + T.warn + '}.dshc-cmeta .dshc-tag-ok[data-tone]{color:' + T.success + '}.dshc-cmeta .dshc-tag-quiet[data-tone]{color:' + T.secondary + '}',
+  '.dshc-detail{grid-column:2/5;margin-top:6px;padding-top:8px;border-top:1px dashed ' + T.border + ';min-height:0}',
+  '.dshc-detail dl{display:grid;grid-template-columns:80px minmax(0,1fr);column-gap:8px;row-gap:4px;margin:0 0 4px;font-size:12px;line-height:16px}',
+  '.dshc-detail dt{color:' + T.tertiary + '}.dshc-detail dd{margin:0;color:' + T.secondary + ';overflow-wrap:anywhere}.dshc-detail dd.dshc-mono{color:' + T.primary + '}',
+  '.dshc-pbar{display:flex;gap:2px;height:4px;margin:4px 0 2px}',
+  '.dshc-need{color:' + T.warn + ';font-weight:500}',
+  '.dshc-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;gap:6px}',
+  '.dshc-empty p{margin:0}.dshc-empty-t{font-weight:500}.dshc-empty-s{font-size:12px;line-height:16px;color:' + T.secondary + ';max-width:280px}',
+  '.dshc-msg{padding:12px;color:' + T.secondary + '}',
+].join('\n')
 
+function useStyle() {
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || document.getElementById('dsh-cockpit-style')) return
+    const el = document.createElement('style')
+    el.id = 'dsh-cockpit-style'
+    el.textContent = CSS
+    document.head.appendChild(el)
+  }, [])
+}
+
+// ---- Icons (16 px grid, stroke) ----
+const svg = (size, children, extra) => h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, ...extra }, children)
+const warnIcon = (size = 12, extra) => svg(size, [h('path', { key: 1, d: 'M8 2.5l6 10.5H2z' }), h('path', { key: 2, d: 'M8 6.5v3' }), h('path', { key: 3, d: 'M8 11.6v.1' })], extra)
+const checkIcon = () => svg(14, h('path', { d: 'M3.5 8.5l3 3 6-7' }), { strokeWidth: 1.8, className: 'dshc-check' })
+const lockIcon = () => svg(12, [h('rect', { key: 1, x: 3.5, y: 7, width: 9, height: 6.5, rx: 1.5 }), h('path', { key: 2, d: 'M5.5 7V5a2.5 2.5 0 015 0v2' })])
+const extIcon = () => svg(12, [h('path', { key: 1, d: 'M9 3.5h3.5V7' }), h('path', { key: 2, d: 'M12.5 3.5L7 9' }), h('path', { key: 3, d: 'M11 9.5v2.5a1 1 0 01-1 1H4.5a1 1 0 01-1-1V6.5a1 1 0 011-1H7' })], { strokeWidth: 1.5 })
+const downIcon = () => svg(14, [h('path', { key: 1, d: 'M8 3.5v9' }), h('path', { key: 2, d: 'M4.5 9L8 12.5 11.5 9' })], { strokeWidth: 1.5 })
+const chevIcon = (open) => svg(14, h('path', { d: 'M6 4l4 4-4 4' }), { 'data-open': open || undefined })
+
+// ---- The view: polled every 2 s ----
 function useView(sessionId) {
   const [state, setState] = React.useState({ loading: true })
   React.useEffect(() => {
@@ -493,6 +793,13 @@ function useView(sessionId) {
   return state
 }
 
+/** The clock for relative times: it ticks once a minute, not on every refresh. */
+function useMinute() {
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(timer) }, [])
+  return now
+}
+
 const pad2 = (n) => String(n).padStart(2, '0')
 /** "15:22 · 2 min ago" in local time; the date is added when it is not today. */
 function whenText(iso, now = Date.now()) {
@@ -511,138 +818,139 @@ function whenText(iso, now = Date.now()) {
 /** Show the drift line when drift is configured or the file holds a drift result; else hide it. */
 const showDrift = (view) => Boolean(view.driftConfigured || view.board?.drift)
 
-function OpenLink({ url }) {
-  if (!url) return null
-  // No title tooltip: it covered the next row's link. The browser's status bar
-  // shows the URL on hover.
-  return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open ' + url, style: { ...muted, fontSize: 11, whiteSpace: 'nowrap', textDecoration: 'none' }, onClick: (e) => e.stopPropagation() }, 'Open')
+/** "Drift check: not run yet", "Drift check: no differences · 16:40", "Drift check: 2 differing · 16:40". */
+function driftText(drift, now) {
+  if (!drift) return 'Drift check: not run yet'
+  const at = drift.checkedAt ? ' · ' + whenText(drift.checkedAt, now).split(' · ')[0] : ''
+  if (drift.error) return 'Drift check failed' + at + ': ' + String(drift.error.message || JSON.stringify(drift.error))
+  const differing = (drift.items || []).filter((i) => i.differs).length
+  return 'Drift check: ' + (differing ? differing + ' differing' : 'no differences') + at
 }
 
-function Command({ command, url }) {
-  if (!command && !url) return null
-  const copy = (e) => { e.stopPropagation(); navigator.clipboard?.writeText(command).catch(() => {}) }
-  return h('div', { style: { ...small, display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 } },
-    command ? h('code', { style: { ...mono, whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 } }, command) : h('span', { style: { flex: 1 } }),
-    command ? h('button', { type: 'button', title: 'Copy the command', onClick: copy, style: button }, 'copy') : null,
-    h(OpenLink, { url }))
+/** The header's right side: "rev 33 · 15:34 · 9 min ago". */
+const headerMeta = (board, now) => ['rev ' + board.revision, board.updatedAt ? whenText(board.updatedAt, now) : ''].filter(Boolean).join(' · ')
+
+// ---- Rows: show one, expand state kept by board and item across refreshes and remounts ----
+const expanded = new Map()
+
+/** Move focus to a row, centred, without animation (the problems lines and dock segments). */
+function showRow(item) {
+  const el = typeof document !== 'undefined' && document.querySelector('[data-dsh-cockpit-board] li[data-item="' + String(item).replace(/["\\]/g, '\\__BODY__') + '"]')
+  if (!el) return
+  el.scrollIntoView({ block: 'center' })
+  el.focus({ preventScroll: true })
+}
+
+function Header({ board, view, now }) {
+  return h('header', { className: 'dshc-hd' },
+    h('div', { className: 'dshc-hd1' },
+      h('span', { className: 'dshc-hdl' },
+        h('span', { className: 'dshc-mono dshc-key dshc-trunc', title: board.key }, board.key),
+        board.parent ? h('span', { className: 'dshc-parent dshc-trunc', title: board.parent }, board.parent) : null),
+      h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
+    showDrift(view) ? h('div', { className: 'dshc-drift' }, driftText(board.drift, now)) : null)
+}
+
+/** "Open PR #892 ↗" for a pr, "Open #884 ↗" for an issue; nothing without a link. */
+function OpenLink({ task, parent }) {
+  const url = taskUrl(task, parent)
+  if (!url) return null
+  const pr = refUrl(task.pr, 'pull', parent)
+  const label = pr ? 'Open ' + prText(task.pr) : 'Open ' + (task.issue || '')
+  return h('a', { className: 'dshc-open', href: url, target: '_blank', rel: 'noopener noreferrer', onClick: (e) => e.stopPropagation() }, label.trim(), extIcon())
 }
 
 function NeedsYou({ board }) {
   const { tasks, guessed } = needsYou(board.tasks)
   if (!tasks.length) return null
-  return h('section', { 'data-needs-you': '', style: { margin: '8px 0', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dsw-alias-state-warn-label, #c90)' } },
-    h('div', { style: { fontWeight: 600, ...primary, marginBottom: 4 } }, 'Needs you', guessed ? h('span', { style: { ...muted, fontWeight: 400 } }, ' (guessed)') : null),
-    tasks.map((t) => h('div', { key: t.item, 'data-item': t.item, style: { padding: '4px 0' } },
-      h('div', null, h('span', { style: { ...mono, ...secondary, marginRight: 8 } }, t.item), h('span', { style: primary }, titleText(t))),
-      t.nextAction ? h('div', { style: { ...small, ...secondary } }, t.nextAction) : null,
-      h(Command, { command: t.readyCommand, url: taskUrl(t, board.parent) }))))
+  return h('section', { className: 'dshc-sec', 'data-needs-you': '', 'aria-label': 'Needs you' },
+    h('div', { className: 'dshc-sech dshc-warn' }, warnIcon(), 'Needs you', guessed ? h('span', { className: 'dshc-guess', title: 'No task sets waitingOn: these wait and their next step starts with "Owner"' }, ' (guessed)') : null),
+    tasks.map((t) => h('div', { key: t.item, className: 'dshc-ni', 'data-item': t.item },
+      h('span', { className: 'dshc-mono dshc-id' }, t.item),
+      h('span', { className: 'dshc-wrap dshc-nit' }, titleText(t)),
+      h(OpenLink, { task: t, parent: board.parent }) || h('span', null),
+      t.nextAction ? h('span', { className: 'dshc-ask' }, String(t.nextAction).trim()) : null,
+      t.readyCommand ? h(CommandBox, { command: String(t.readyCommand).trim(), label: 'Copy command for ' + titleText(t) }) : null)))
 }
 
-function Detail({ row, flags, drift }) {
-  const items = []
-  const add = (label, value, style) => { if (value) items.push(h('div', { key: label }, h('span', { style: muted }, label + ' '), h('span', { style: style || secondary }, value))) }
-  for (const n of row.others) add(n.label, n.text)
-  if (row.done) add('after', row.after.join(', '))
-  else if (!row.blockedBy.length) add('after', row.after.join(', '))
-  add('waiting on', row.waitingOn)
-  add('model', row.model)
-  add('branch', row.branch, mono)
-  add('worktree', row.worktree, mono)
-  if (drift) add('drift', (drift.status || '?') + (drift.note ? ' (' + drift.note + ')' : ''))
-  return h('div', { 'data-detail': '', style: { ...small, padding: '2px 0 4px', paddingLeft: 'calc(' + row.idWidth + 'ch + ' + STATUS_WIDTH + ')' } },
-    items,
-    row.needsYou ? null : h(Command, { command: row.readyCommand }))
-}
-
-function Status({ row }) {
-  const slot = row.progress ? null : row.done ? h('span', { style: { ...muted, fontSize: 11 } }, '✓') : h(StateDot, { state: DOT[row.status] || 'idle' })
-  return h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 6 } },
-    h('span', { 'aria-hidden': true, 'data-dot': '', style: DOT_SLOT }, slot),
-    row.progress ? h('span', { style: secondary }, progressText(row.progress)) : h('span', null, row.status))
-}
-
-function TaskRow({ row, flags, drift }) {
-  const [open, setOpen] = React.useState(false)
-  const toggle = () => setOpen(!open)
-  const hasDetail = row.others.length || row.model || row.branch || row.worktree || row.waitingOn || drift ||
-    (row.readyCommand && !row.needsYou) || (row.after.length && !row.blockedBy.length)
-  const tone = row.done ? muted : primary
-  const extras = []
-  if (row.ready) extras.push(h(Tag, { key: 'ready' }, 'ready'))
-  if (row.blockedBy.length) extras.push(h('span', { key: 'blocked', style: { ...small, ...secondary } }, blockedText(row.blockedBy)))
-  if (row.needsYou) extras.push(h(Tag, { key: 'you' }, 'needs you'))
-  flags.forEach((f, i) => extras.push(h(Tag, { key: 'f' + i }, '! ' + flagText(f))))
-  if (drift) extras.push(h(Tag, { key: 'drift' }, 'drift: ' + (drift.status || '?')))
-  return h('li', { 'data-item': row.item, 'data-done': row.done || undefined, style: { listStyle: 'none', borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
-    h('div', {
-      role: hasDetail ? 'button' : undefined, tabIndex: hasDetail ? 0 : undefined, 'aria-expanded': hasDetail ? open : undefined,
-      onClick: hasDetail ? toggle : undefined,
-      onKeyDown: hasDetail ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } } : undefined,
-      style: { display: 'flex', alignItems: 'baseline', padding: '5px 0', cursor: hasDetail ? 'pointer' : 'default' },
-    },
-      h('span', { style: { ...mono, ...muted, whiteSpace: 'pre', width: row.idWidth + 'ch', flex: 'none' } },
-        h('span', { 'aria-hidden': true, style: guideStyle }, row.guide), h('span', { style: row.done ? muted : secondary }, row.item)),
-      h('span', { style: { ...small, ...(row.done ? muted : secondary), width: STATUS_WIDTH, flex: 'none', whiteSpace: 'nowrap', overflow: 'visible' } }, h(Status, { row })),
-      h('span', { style: { flex: 1, minWidth: 0 } },
-        h('span', { style: tone }, row.title),
-        row.pr ? h('span', { style: { ...muted, ...small, marginLeft: 8, whiteSpace: 'nowrap' } }, 'PR ' + row.pr) : null,
-        // A row in Needs you shows its action there only; here just the tag.
-        row.line && !row.needsYou ? h('div', { style: { ...small, ...secondary, marginTop: 1 } }, row.line) : null,
-        extras.length ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 2 } }, extras) : null),
-      h('span', { style: { flex: 'none', display: 'inline-flex', gap: 6, alignItems: 'baseline', marginLeft: 6 } },
-        h('span', { 'data-open-slot': '', style: OPEN_SLOT }, h(OpenLink, { url: row.url })),
-        h('span', { 'data-opener': '', 'aria-hidden': true, style: { ...OPENER_SLOT, ...muted, ...small } }, hasDetail ? (open ? '▾' : '▸') : null))),
-    open ? h(Detail, { row, flags, drift }) : null)
-}
-
-function Drift({ drift }) {
-  if (!drift) return h('div', { style: { ...muted, ...small } }, 'Drift check available · not run yet')
-  const differing = (drift.items || []).filter((i) => i.differs)
-  return h('div', { style: small },
-    h('span', { style: muted }, 'Drift checked ' + whenText(drift.checkedAt) + ': '),
-    drift.error ? h('span', { style: { color: 'var(--dsw-alias-state-error, #d33)' } }, String(drift.error.message || JSON.stringify(drift.error)))
-      : h('span', null, differing.length ? differing.length + ' differing' : 'no differences'))
-}
-
-function Boards({ boards, note }) {
-  return h('div', null,
-    h('p', { style: secondary }, note || 'This session has no board open. Boards in the folder:'),
-    boards && boards.length
-      ? h('ul', { style: { paddingLeft: 16 } }, boards.map((k) => h('li', { key: k, style: mono }, k)))
-      : h('p', { style: muted }, 'No boards yet.'))
-}
-
-function showRow(item) {
-  const el = typeof document !== 'undefined' && document.querySelector('[data-dsh-cockpit-board] li[data-item="' + String(item).replace(/["\\]/g, '\\$&') + '"]')
-  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-}
-
-/** One line per problem under the header; each shows its row. None: nothing. */
+/** One line per problem; ↓ moves focus to its row. None: nothing. */
 function Problems({ tasks }) {
   const list = problems(tasks)
   if (!list.length) return null
-  const warn = 'var(--dsw-alias-state-warn-label, #c90)'
-  return h('section', { 'data-problems': '', style: { ...small, margin: '6px 0', padding: '4px 8px', borderLeft: '2px solid ' + warn } },
-    list.map((p, i) => h('div', { key: i },
-      h('button', { type: 'button', onClick: () => showRow(p.item), title: 'Show the row', style: { font: 'inherit', background: 'none', border: 0, padding: '1px 0', cursor: 'pointer', textAlign: 'left', ...secondary } },
-        h('span', { 'aria-hidden': true, style: { color: warn, marginRight: 6 } }, '!'), p.text))))
+  return h('section', { className: 'dshc-sec', 'data-problems': '', 'aria-label': 'Problems in board data' },
+    h('div', { className: 'dshc-sech dshc-err' }, 'Board data problems'),
+    list.map((p, i) => {
+      const line = problemLine(p, tasks)
+      return h('button', { key: i, type: 'button', className: 'dshc-prob', title: line.text, onClick: () => showRow(line.item) },
+        h('span', { className: 'dshc-ic' }, warnIcon(14)),
+        h('span', { className: 'dshc-trunc' }, line.kind),
+        h('span', { className: 'dshc-ids' }, line.refs),
+        h('span', { className: 'dshc-go', 'aria-label': 'Go to row', role: 'img' }, downIcon()))
+    }))
 }
 
-/** Rows plus the id column's width in characters (guide and item). */
-function panelRows(board) {
-  const rows = boardRows(board)
-  const idWidth = Math.max(0, ...rows.map((r) => (r.guide + r.item).length)) + 2
-  return rows.map((r) => ({ ...r, idWidth }))
+function Mark({ mark }) {
+  if (mark === 'check') return checkIcon()
+  return h('span', { className: 'dshc-mark', 'aria-hidden': true }, h('span', { className: mark === 'ring' ? 'dshc-ring' : 'dshc-dot dshc-' + mark }))
 }
 
-// Tab id -> the navigation revision already scrolled to, so a remounted body
-// does not jump back to an old click.
+const tag = (key, cls, words) => h(Tag, { key, tone: 'outline', className: 'dshc-tag ' + cls }, words)
+
+function Meta({ c, drift, segments }) {
+  const lines = []
+  if (segments) lines.push(h(Bar, { key: 'bar', m: segments, thin: true, onSegment: showRow }))
+  if (c.progress) lines.push(h('span', { key: 'p' }, c.progress, c.progressNeedsYou ? [' · ', h('span', { key: 'n', className: 'dshc-need' }, c.progressNeedsYou)] : null))
+  if (c.next) lines.push(h('span', { key: 'next', className: 'dshc-trunc', title: c.next.text }, h('span', { className: 'dshc-k' }, c.next.label + ' '), c.next.text))
+  if (c.needsYou) lines.push(tag('you', 'dshc-tag-warn', 'Needs you · see top'))
+  if (c.blockedBy.length) {
+    lines.push(h('span', { key: 'b', className: 'dshc-block' }, lockIcon(),
+      h('span', { className: 'dshc-wrap' }, h('b', null, 'Blocked by '), c.blockedBy.map((b, i) => h('span', { key: i }, i ? ', ' : '', h('b', null, b.ref), ' ', h('span', { className: 'dshc-st' }, '(' + b.status + ')'))))))
+  }
+  if (c.ready) lines.push(tag('ready', 'dshc-tag-ok', 'ready'))
+  c.problems.forEach((p, i) => lines.push(h('span', { key: 'f' + i, className: 'dshc-mprob' }, warnIcon(12), h('span', { className: 'dshc-wrap' }, p))))
+  if (drift) lines.push(tag('drift', 'dshc-tag-quiet', 'drift: ' + (drift.status || '?')))
+  return lines.length ? h('div', { className: 'dshc-cmeta' }, lines) : null
+}
+
+function Detail({ c, drift }) {
+  const items = c.detail.concat(drift ? [{ key: 'Drift', value: (drift.status || '?') + (drift.note ? ' (' + drift.note + ')' : ''), mono: false }] : [])
+  return h('div', { className: 'dshc-detail', 'data-detail': '' },
+    items.length ? h('dl', null, items.map((d) => [h('dt', { key: d.key + 't' }, d.key), h('dd', { key: d.key + 'd', className: d.mono ? 'dshc-mono' : undefined }, d.value)])) : null,
+    c.command ? h(CommandBox, { command: c.command, label: 'Copy command for ' + c.title }) : null)
+}
+
+function TaskRow({ boardKey, row, flags, drift, segments }) {
+  const c = rowCells(row, flags)
+  const id = boardKey + '\u0000' + row.item
+  const [open, setOpen] = React.useState(expanded.get(id) === true ? true : false)
+  const canOpen = c.expandable || Boolean(drift)
+  const toggle = () => { expanded.set(id, !open); setOpen(!open) }
+  const isOpen = canOpen && open
+  const titleCls = c.wrap ? 'dshc-wrap' : 'dshc-trunc'
+  return h('li', { 'data-item': row.item, 'data-done': row.done || undefined, tabIndex: -1, className: 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.done ? ' dshc-done' : '') },
+    h('div', { className: 'dshc-row', onClick: canOpen ? (e) => { if (!e.target.closest || !e.target.closest('a,button')) toggle() } : undefined, style: canOpen ? { cursor: 'pointer' } : undefined },
+      h('span', { className: 'dshc-mono dshc-cid', title: row.item }, row.item),
+      h('span', { className: 'dshc-cst' }, c.mark ? h(Mark, { mark: c.mark }) : null, c.status ? h('span', null, c.status) : null),
+      h('span', { className: 'dshc-ct' },
+        c.indent ? h('span', { className: 'dshc-indent', style: { width: c.indent * 16 } }) : null,
+        c.elbow ? h('span', { className: 'dshc-elbow', 'aria-hidden': true }) : null,
+        h('span', { className: titleCls, title: c.wrap ? undefined : c.title }, c.title)),
+      h('span', { className: 'dshc-cpr' }, c.pr && c.prUrl ? h('a', { href: c.prUrl, target: '_blank', rel: 'noopener noreferrer', onClick: (e) => e.stopPropagation() }, c.pr) : c.pr || null),
+      canOpen
+        ? h('button', { type: 'button', className: 'dshc-chev', 'aria-expanded': isOpen, 'aria-label': 'Details for ' + c.title, onClick: (e) => { e.stopPropagation(); toggle() } }, chevIcon(isOpen))
+        : h('span', null),
+      h(Meta, { c, drift, segments }),
+      isOpen ? h(Detail, { c, drift }) : null))
+}
+
+function Empty() {
+  return h('div', { className: 'dshc-empty', 'data-empty': '' }, h('p', { className: 'dshc-empty-t' }, EMPTY_STATE.title), h('p', { className: 'dshc-empty-s' }, EMPTY_STATE.line))
+}
+
+// Tab id -> the navigation revision already shown, so a remounted body does not jump back to an old click.
 const scrolledTo = new Map()
 
-/**
- * A dock segment opens the tab with params { item }; the body scrolls to that
- * row once the board has rendered, once per navigation.
- */
+/** A dock segment opens the tab with params { item }; the body shows that row once rendered, once per navigation. */
 function useShowRow(useTabInfo, ready) {
   const tab = useTabInfo ? useTabInfo().tab : undefined
   const nav = tab && tab.navigation
@@ -655,34 +963,37 @@ function useShowRow(useTabInfo, ready) {
 }
 
 function BoardBody({ sessionId, useTabInfo }) {
+  useStyle()
   const { loading, view, error } = useView(sessionId)
+  const now = useMinute()
   useShowRow(useTabInfo, Boolean(view && view.board))
-  const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '', style: { padding: 12, overflow: 'auto', height: '100%', boxSizing: 'border-box' } }, child)
-  if (loading) return wrap(h('p', { style: muted }, 'Loading board…'))
-  if (error) return wrap(h('p', { role: 'alert' }, 'Board unavailable: ' + error))
-  if (!view.key) return wrap(h(Boards, { boards: view.boards }))
-  if (!view.board) return wrap(h('div', null, h('p', { role: 'alert' }, view.key + ': ' + view.error), view.boards ? h(Boards, { boards: view.boards, note: 'Boards in the folder:' }) : null))
+  const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '' }, child)
+  if (loading) return wrap(h('p', { className: 'dshc-msg' }, 'Loading board…'))
+  if (error) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, 'Board unavailable: ' + error))
+  if (!view.key) return wrap(h(Empty))
+  if (!view.board) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error))
   const { board } = view
   // Flags from the shared rules, so the panel and the hub's text agree.
-  const flags = boardFlags(board.tasks)
   const flagsOf = new Map()
-  for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
+  for (const f of boardFlags(board.tasks)) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const driftOf = new Map(((board.drift && board.drift.items) || []).filter((i) => i.differs).map((i) => [i.item, i]))
+  const progress = dockModel(view)
+  const rows = boardRows(board)
+  // The thin bar sits in the board's one parent row (the root with children).
+  const roots = rows.filter((r) => r.depth === 0 && r.progress)
   return wrap(h('div', null,
-    h('header', { style: { marginBottom: 8 } },
-      h('div', { style: { fontWeight: 600, ...primary } }, board.key),
-      h('div', { style: { ...muted, ...small } },
-        [board.parent, 'revision ' + board.revision, board.updatedAt ? whenText(board.updatedAt) : ''].filter(Boolean).join(' · '))),
-    h(Problems, { tasks: board.tasks }),
-    showDrift(view) ? h(Drift, { drift: board.drift }) : null,
+    h(Header, { board, view, now }),
     h(NeedsYou, { board }),
-    board.tasks.length
-      ? h('ul', { style: { padding: 0, margin: '8px 0 0' } },
-        panelRows(board).map((row) => h(TaskRow, { key: row.item, row, flags: flagsOf.get(row.item) || [], drift: driftOf.get(row.item) })))
-      : h('p', { style: muted }, 'No tasks yet.')))
+    h(Problems, { tasks: board.tasks }),
+    rows.length
+      ? h('ul', { className: 'dshc-tree', role: 'list' }, rows.map((row) => h(TaskRow, {
+        key: row.item, boardKey: board.key, row, flags: flagsOf.get(row.item) || [], drift: driftOf.get(row.item),
+        segments: roots.length === 1 && roots[0] === row ? progress : undefined,
+      })))
+      : h('p', { className: 'dshc-msg' }, 'No tasks yet.')))
 }
 
-// ---- The progress bar above the chat input (conversation.input.dock) ----
+// ---- The progress strip above the chat input (conversation.input.dock) ----
 
 // Sized like the other composer docks (the goal strip): the composer's width, its panel elevation.
 const DOCK = {
@@ -691,80 +1002,112 @@ const DOCK = {
 }
 const DOCK_BAR = {
   boxSizing: 'border-box', width: '100%', maxWidth: 'calc(var(--dsh-composer-card-max-width, 100%) - 4 * var(--dsh-composer-dock-inset, 0px))',
-  margin: '0 auto', height: 32, padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 10,
-  font: 'inherit', fontSize: 13, textAlign: 'left', border: 0, borderRadius: 'var(--dsw-radius-md, 8px)',
-  background: 'var(--dsw-specific-menu, var(--dsw-alias-bg-l1, transparent))', boxShadow: 'var(--dsw-elevation-panel)',
-  '--dsw-elevation-stroke-color': 'var(--dsw-alias-border-l1)',
+  margin: '0 auto', height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8,
+  font: 'inherit', fontSize: 12, textAlign: 'left', border: 0, borderRadius: 'var(--dsw-radius-sm, 8px)', whiteSpace: 'nowrap',
+  background: 'var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1))', boxShadow: 'var(--dsw-elevation-panel)',
+  '--dsw-elevation-stroke-color': 'var(--dsw-alias-border-l1)', color: T.secondary, fontVariantNumeric: 'tabular-nums',
 }
 // The bar: one segment per work task, a 2 px gap between; above SEGMENT_MAX one fill.
 const TRACK = { flex: 'none', height: 6, display: 'flex', gap: 2, alignItems: 'stretch' }
-const SEGMENT = { flex: '1 1 0', minWidth: 3, borderRadius: 1.5, boxSizing: 'border-box', cursor: 'pointer' }
-const SUCCESS = 'var(--dsw-alias-state-success-primary, #3a3)'
-const ACCENT = 'var(--dsw-alias-brand-primary, #36f)'
-const WARN = 'var(--dsw-alias-state-warn-primary, #c90)'
-const LIGHT = 'var(--dsw-alias-label-tertiary, rgba(127,127,127,0.6))'
-const FAINT = 'var(--dsw-alias-fill-l2, rgba(127,127,127,0.25))'
-// Status by fill and shape, never moving: the bar polls and sits by the input.
-// now is half filled with the accent (started, not finished); needs you is
-// the warn fill with an outline; the tooltip and phrase say it in words.
+const SEGMENT = { flex: '1 1 0', minWidth: 3, borderRadius: 1.5, boxSizing: 'border-box' }
+const FAINT = 'var(--dsw-alias-border-l4)'
+// Status by fill and shape, never moving. Warn means one thing: the owner must
+// act (design C), so waiting on anyone else is grey. now is half filled with
+// the info accent; ready is a success outline; blocked faint.
 const FILL = {
-  done: { background: SUCCESS },
-  now: { background: 'linear-gradient(to right, ' + ACCENT + ' 50%, ' + FAINT + ' 50%)', boxShadow: 'inset 0 0 0 1px ' + ACCENT },
-  waiting: { background: WARN },
-  'needs you': { background: WARN, boxShadow: 'inset 0 0 0 1px var(--dsw-alias-label-primary, #000)' },
-  ready: { background: LIGHT, opacity: 0.7 },
+  done: { background: T.success },
+  now: { background: 'linear-gradient(to right, ' + T.info + ' 50%, ' + FAINT + ' 50%)', boxShadow: 'inset 0 0 0 1px ' + T.info },
+  waiting: { background: T.tertiary },
+  'needs you': { background: T.warn, boxShadow: 'inset 0 0 0 1px ' + T.primary },
+  ready: { background: 'transparent', boxShadow: 'inset 0 0 0 1px ' + T.success },
   blocked: { background: FAINT },
 }
 
 /**
  * The dock's model (pure; exported for tests): undefined, so nothing renders,
  * unless the session has a bound board that parsed; else the progress with its
- * segments, its phrase and the done fraction.
+ * segments, its phrase, the done fraction and the strip (stripModel).
  */
 function dockModel(view) {
   if (!view || !view.key || !view.board) return undefined
   const p = boardProgress(view.board)
-  return { ...p, text: boardProgressText(p), fraction: p.total ? p.done / p.total : 0 }
+  const strip = stripModel({ ...view.board, key: view.board.key || view.key })
+  return { ...p, text: boardProgressText(p), fraction: p.total ? p.done / p.total : 0, strip, line: stripText(strip) }
 }
 
-/** The bar as text, for tests and the hub: "[✓][✓][◐ now][·blocked][!waiting]". */
-const SEGMENT_TEXT = { done: '✓', now: '◐ now', waiting: '!waiting', 'needs you': '!!needs you', ready: '○ready', blocked: '·blocked' }
+/** The bar as text, for tests and the report: "[✓][✓][◐ now][·blocked][…waiting]". */
+const SEGMENT_TEXT = { done: '✓', now: '◐ now', waiting: '…waiting', 'needs you': '!!needs you', ready: '○ready', blocked: '·blocked' }
 const segmentsText = (m) => (m.continuous ? '[' + '█'.repeat(Math.round(m.fraction * 10)).padEnd(10, '░') + ']' : m.segments.map((g) => '[' + SEGMENT_TEXT[g.kind] + ']').join(''))
 
-function Bar({ m, openBoard }) {
+/** The segmented bar: in the strip (6 px, fixed width) or thin in the panel's parent row (4 px, full width). */
+function Bar({ m, onSegment, thin }) {
+  const track = thin ? { ...TRACK, height: 4, width: '100%', margin: '4px 0 2px' } : { ...TRACK, width: Math.min(180, Math.max(72, m.segments.length * 16)) }
+  const aria = { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done' }
   if (m.continuous || !m.segments.length) {
-    return h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', title: progressText(m), style: { ...TRACK, width: 72, borderRadius: 2, overflow: 'hidden', background: FAINT } },
-      h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: SUCCESS } }))
+    return h('span', { ...aria, title: progressText(m), style: { ...track, borderRadius: 2, overflow: 'hidden', background: FAINT, ...(thin ? {} : { width: 72 }) } },
+      h('span', { style: { display: 'block', height: '100%', width: Math.round(m.fraction * 100) + '%', background: T.success } }))
   }
-  const width = Math.min(180, Math.max(72, m.segments.length * 16))
-  return h('span', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': m.total, 'aria-valuenow': m.done, 'aria-label': 'Tasks done', style: { ...TRACK, width } },
+  return h('span', { ...aria, style: track },
     m.segments.map((g) => h('span', {
       key: g.item, 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip,
-      onClick: openBoard ? (e) => { e.stopPropagation(); openBoard(g.item) } : undefined,
-      style: { ...SEGMENT, ...FILL[g.kind], cursor: openBoard ? 'pointer' : 'default' },
+      onClick: onSegment ? (e) => { e.stopPropagation(); onSegment(g.item) } : undefined,
+      style: { ...SEGMENT, ...FILL[g.kind], cursor: onSegment ? 'pointer' : 'default' },
     })))
 }
 
+const sep = (key) => h('span', { key, 'aria-hidden': true, style: { color: T.tertiary } }, '·')
+
+function CopyCommand({ command, label }) {
+  const [state, copy] = useCopy(command)
+  return h('button', { type: 'button', className: 'dshc-btn', 'data-copy-state': state, 'aria-label': state === 'idle' ? label : COPY_LABEL[state], onClick: copy, style: { height: 22, color: state === 'failed' ? T.error : T.primary, background: T.surface1 } },
+    state === 'idle' ? 'Copy command' : COPY_LABEL[state])
+}
+
 function BoardDock({ sessionId, openBoard }) {
+  useStyle()
   const { view } = useView(sessionId)
   const m = dockModel(view)
   if (!m) return null
-  const label = m.text + (openBoard ? ' · open the Board' : '')
+  const s = m.strip
   const open = openBoard ? () => openBoard() : undefined
-  return h('div', { 'data-dsh-cockpit-dock': '', style: DOCK },
-    // A div, not a button: the segments inside take their own clicks.
+  const go = h('button', {
+    key: 'go', type: 'button', onClick: open ? (e) => { e.stopPropagation(); openBoard(s.kind === 'needs you' ? s.item : undefined) } : undefined,
+    style: { font: 'inherit', fontWeight: 500, color: T.secondary, background: 'none', border: 0, padding: '0 2px', cursor: open ? 'pointer' : 'default', flex: 'none' },
+  }, 'Board ›')
+  const fill = { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }
+  const parts = s.kind === 'needs you'
+    ? [
+      h('span', { key: 'w', style: { color: T.warn, display: 'inline-flex', flex: 'none' } }, warnIcon(12)),
+      h('span', { key: 'f', style: fill, title: s.text }, h('span', { style: { color: T.warn, fontWeight: 500 } }, s.text.slice(0, s.text.indexOf(':') + 1) || s.text), s.text.indexOf(':') > 0 ? s.text.slice(s.text.indexOf(':') + 1) : null),
+      s.command ? h(CopyCommand, { key: 'c', command: s.command, label: 'Copy command for ' + s.text.slice(11) }) : null,
+      s.command ? sep('s2') : null,
+      go,
+    ]
+    : [
+      h('span', { key: 'k', className: 'dshc-mono', style: { color: T.tertiary, flex: 'none' } }, s.key),
+      sep('s1'),
+      h('span', { key: 'd', style: { color: T.primary, flex: 'none' } }, s.done),
+      s.focus ? sep('s2') : null,
+      h('span', { key: 'f', style: fill, title: s.focus }, s.focus || ''),
+      go,
+    ]
+  return h('div', { 'data-dsh-cockpit-dock': '', 'data-strip': s.kind, style: DOCK },
+    // A div, not a button: the segments and buttons inside take their own clicks.
     h('div', {
-      role: openBoard ? 'button' : undefined, tabIndex: openBoard ? 0 : undefined, onClick: open, 'aria-label': label,
-      onKeyDown: open ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } } : undefined,
-      style: { ...DOCK_BAR, cursor: openBoard ? 'pointer' : 'default', ...primary },
+      role: openBoard ? 'button' : undefined, tabIndex: openBoard ? 0 : undefined, onClick: open, 'aria-label': m.line,
+      onKeyDown: open ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open() } } : undefined,
+      style: { ...DOCK_BAR, cursor: openBoard ? 'pointer' : 'default' },
     },
-      h(Bar, { m, openBoard }),
-      h('span', { title: openBoard ? 'Open the Board' : undefined, style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...secondary } },
-        h('span', { style: primary }, progressText(m)),
-        m.text.length > progressText(m).length ? m.text.slice(progressText(m).length) : null)))
+      h(Bar, { m, onSegment: openBoard }),
+      parts))
 }
 
 // ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
+
+const muted = { color: T.tertiary }
+const secondary = { color: T.secondary }
+const mono = { fontFamily: T.mono }
+const small = { fontSize: 'var(--dsh-content-font-size-secondary, 12px)' }
 
 const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : {} } catch { return {} } }
 
@@ -845,7 +1188,6 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, dockModel, segmentsText, toolCardModel, TOOLS }
-
+module.exports = { apply, inject, treeOrder, boardRows, boardProgress, needsYou, problems, taskUrl, whenText, showDrift, driftText, headerMeta, dockModel, segmentsText, toolCardModel, copyStep, copyText, TOOLS, CSS }
 return module.exports;
 } });

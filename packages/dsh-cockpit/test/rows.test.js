@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { boardProgress, boardProgressText, boardRows, blockedText, modelText, needsYou, notes, progressText, refUrl, taskUrl, titleText } from '../lib/rows.js'
+import { askText, boardFlags, boardProgress, boardProgressText, boardRows, blockedText, EMPTY_STATE, modelText, needsYou, notes, prText, problemLine, problems, progressText, refUrl, rowCells, stripModel, stripText, taskUrl, titleText } from '../lib/rows.js'
 
 const t = (item, status, what, more = {}) => ({ item, status, what, ...more })
 
@@ -102,7 +102,7 @@ test('board progress: work tasks only, needs you, then the first of needs you, b
   assert.deepEqual([p.done, p.total, p.needsYou], [1, 4, 1])
   assert.equal(boardProgressText(p), '1 of 4 done · 1 needs you · #4 Merge')
   const noOwner = tasks.map((x) => (x.item === '4' ? { ...x, waitingOn: 'CI' } : x))
-  assert.equal(boardProgressText(boardProgress({ tasks: noOwner })), '1 of 4 done · 3 blocked by #2')
+  assert.equal(boardProgressText(boardProgress({ tasks: noOwner })), '1 of 4 done · 3 blocked by #2 (now)')
   const unknown = [t('1', 'now', 'a'), t('2', 'next', 'b', { dependsOn: ['ghost'] })]
   assert.equal(boardProgressText(boardProgress({ tasks: unknown })), "0 of 2 done · 2 blocked by 'ghost' (not on the board)")
   assert.equal(boardProgressText(boardProgress({ tasks: [t('1', 'now', 'a', { issue: '#1' }), t('2', 'next', 'b')] })), '0 of 2 done · in progress: #1 a')
@@ -155,7 +155,7 @@ test('segments: every status; a now segment names who runs it', () => {
   // The live board with item 5 now: 6b is still blocked by it, so blocked wins.
   const now5 = boardProgress({ tasks: sim.map((x) => (x.item === '5' ? { ...x, status: 'now' } : x)) })
   assert.deepEqual(kinds(now5), ['1:done', '2:done', '3:done', '4:done', '5:now', '6b:waiting'])
-  assert.equal(boardProgressText(now5), '4 of 6 done · 6b blocked by #887')
+  assert.equal(boardProgressText(now5), '4 of 6 done · 6b blocked by #887 (now)')
   // Nothing needs you or is blocked: what is in progress.
   const free = boardProgress({ tasks: sim.filter((x) => x.item !== '6b').map((x) => (x.item === '5' ? { ...x, status: 'now', dependsOn: [] } : x)) })
   assert.equal(boardProgressText(free), '4 of 5 done · in progress: #887 Live checks and docs')
@@ -199,4 +199,72 @@ test('the title leads with the issue unless what already does', () => {
   assert.equal(titleText({ what: 'Log reader', issue: '#888' }), '#888 Log reader')
   assert.equal(titleText({ what: '#883 effort', issue: '#883' }), '#883 effort')
   assert.equal(titleText({ what: 'x' }), 'x')
+})
+
+test('focus phrase: a blocker is named with its status; one not on the board says so', () => {
+  const p = boardProgress({ tasks: [t('1', 'waiting', 'Publish', { issue: '#886', waitingOn: 'release' }), t('2', 'next', 'Docs', { issue: '#887', dependsOn: ['1'] })] })
+  assert.equal(p.focus.text, '#887 blocked by #886 (waiting)')
+  assert.equal(boardProgress({ tasks: sim }).focus.text, "#887 blocked by 'release notes' (not on the board)")
+})
+
+test('rowCells: the columns and lines of a row, from the shared row model', () => {
+  const board = { parent: 'o/r#883', tasks: [
+    t('883', 'now', '#883 effort', { issue: '#883' }),
+    t('1', 'done', 'Profile', { parent: '883', issue: '#884', pr: '#892', branch: 'b1', model: 'opus', provider: 'claude', effort: 'high' }),
+    t('5', 'next', 'Docs', { parent: '883', issue: '#887', nextAction: 'start later', why: 'W', dependsOn: ['6', 'ghost'], readyCommand: 'git worktree add x' }),
+    t('6', 'waiting', 'Publish', { parent: '883', issue: '#886', waitingOn: 'owner', nextAction: 'Merge it.' }),
+    t('7', 'waiting', 'Nested', { parent: '5', waitingOn: 'CI', nextAction: 'N' }),
+  ] }
+  const flags = boardFlags(board.tasks)
+  const cells = Object.fromEntries(boardRows(board).map((r) => [r.item, rowCells(r, flags.filter((f) => f.item === r.item))]))
+  assert.equal(cells['883'].parent, true)
+  assert.equal(cells['883'].progress, '1 of 3 done')
+  assert.equal(cells['883'].progressNeedsYou, '1 needs you')
+  assert.equal(cells['883'].mark, undefined)
+  assert.deepEqual([cells['1'].mark, cells['1'].wrap, cells['1'].pr, cells['1'].prUrl], ['check', false, 'PR #892', 'https://github.com/o/r/pull/892'])
+  assert.equal(cells['1'].next, undefined, 'done rows have no meta line')
+  assert.deepEqual(cells['1'].detail.map((d) => d.key), ['Model', 'Branch'])
+  assert.deepEqual([cells['5'].mark, cells['5'].wrap, cells['5'].next], ['ring', true, { label: 'Next:', text: 'start later' }])
+  assert.deepEqual(cells['5'].blockedBy, [{ ref: '#886', status: 'waiting' }])
+  assert.deepEqual(cells['5'].problems, ["Blocked by 'ghost' (not on the board)"])
+  assert.deepEqual(cells['5'].detail, [{ key: 'Reason', value: 'W', mono: false }])
+  assert.equal(cells['5'].command, 'git worktree add x')
+  assert.deepEqual([cells['6'].needsYou, cells['6'].next, cells['6'].mark], [true, undefined, 'dot-waiting'], 'the ask lives in Needs you')
+  assert.deepEqual(cells['6'].detail, [{ key: 'Next', value: 'Merge it.', mono: false }])
+  assert.deepEqual([cells['7'].indent, cells['7'].elbow, cells['7'].next], [1, true, { label: 'Waiting on', text: 'CI' }])
+  assert.deepEqual(cells['7'].detail, [{ key: 'Next', value: 'N', mono: false }])
+  assert.equal(rowCells(boardRows({ tasks: [t('1', 'next', 'a')] })[0]).expandable, false)
+})
+
+test('prText fits the 60 px column: "PR #892"', () => {
+  assert.equal(prText('#892'), 'PR #892')
+  assert.equal(prText('o/r#12'), 'PR #12')
+  assert.equal(prText('https://github.com/o/r/pull/7'), 'PR #7')
+  assert.equal(prText('PR-1'), 'PR')
+  assert.equal(prText(' '), undefined)
+})
+
+test('problemLine: the kind, the rows involved by issue, the full text', () => {
+  const tasks = [t('r', 'now', 'r'), t('3', 'done', 'a', { issue: '#885', parent: '4' }), t('4', 'done', 'b', { issue: '#886', parent: '3' }), t('5', 'next', 'c', { issue: '#887', dependsOn: ['x'] })]
+  assert.deepEqual(problems(tasks).map((p) => problemLine(p, tasks)), [
+    { item: '3', kind: 'Parent loop', refs: '#885, #886', text: 'Parent loop: #885 ↔ #886' },
+    { item: '5', kind: 'Unknown dependency', refs: '#887', text: "Unknown dependency: 'x' on #887" },
+  ])
+})
+
+test('the empty state is the design\'s', () => {
+  assert.deepEqual(EMPTY_STATE, { title: 'No board in this session', line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.' })
+})
+
+test('the strip: normal, one ask with its command, two asks without', () => {
+  const normal = stripModel({ key: 'sim-883', tasks: sim })
+  assert.equal(stripText(normal), "sim-883 · 4 of 6 done · #887 blocked by 'release notes' (not on the board) · Board ›")
+  assert.equal(normal.progress.segments.length, 6)
+  const one = [...sim.slice(0, 4), t('6', 'waiting', 'Publish to npm', { issue: '#886', parent: '883', waitingOn: 'owner', nextAction: 'Owner: Merge PR #892.', readyCommand: 'gh pr merge 892' }), t('883', 'now', 'e')]
+  const m = stripModel({ key: 'sim-883', tasks: one })
+  assert.deepEqual([m.kind, m.text, m.command, m.item], ['needs you', 'Needs you: merge PR #892 for #886 Publish to npm', 'gh pr merge 892', '6'])
+  assert.equal(stripText(m), '⚠ Needs you: merge PR #892 for #886 Publish to npm · Copy command · Board ›')
+  const two = [...one, t('7', 'next', 'x', { parent: '883', waitingOn: 'owner' })]
+  assert.equal(stripText(stripModel({ key: 'k', tasks: two })), '⚠ 2 need you · Board ›')
+  assert.equal(askText(t('1', 'next', 'Docs', { issue: '#887' })), '#887 Docs')
 })

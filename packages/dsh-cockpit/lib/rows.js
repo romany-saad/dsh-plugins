@@ -261,6 +261,7 @@ export function boardRows(board, options = {}) {
       issue: task.issue,
       pr: task.pr,
       line: open?.text,
+      lineLabel: open?.label,
       others: open ? all.slice(1) : all,
       needsYou: mine.has(task.item),
       ready: task.status === 'next' && deps.every((d) => byItem.get(d)?.status === 'done'),
@@ -270,6 +271,7 @@ export function boardRows(board, options = {}) {
       progress: children.length ? { done: children.filter((c) => c.status === 'done').length, total: children.length, needsYou: children.filter((c) => mine.has(c.item)).length } : undefined,
       model: modelText(task),
       url: taskUrl(task, board.parent),
+      prUrl: refUrl(task.pr, 'pull', board.parent),
       readyCommand: text(task.readyCommand),
       waitingOn: text(task.waitingOn),
       branch: text(task.branch),
@@ -302,7 +304,7 @@ export const SEGMENT_MAX = 24
  *
  * focus is the most important open work, in tree order, the first present of:
  * one that needs you ("#884 Profile and guard"), one with blockers ("#887
- * blocked by #884"), the ones now ("in progress: #885 Work reports", "2 in
+ * blocked by #886 (waiting)"), the ones now ("in progress: #885 Work reports", "2 in
  * progress: #885, #886"); else undefined.
  * @param {{tasks: object[], parent?: string}} board
  * @returns {{ done: number, total: number, needsYou: number, continuous: boolean,
@@ -317,11 +319,14 @@ export function boardProgress(board) {
     const task = byItem.get(r.item)
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
     const waits = r.status === 'next' || r.status === 'waiting'
-    const blockers = r.blockedBy.map((b) => b.ref).concat(waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : [])
+    const unknown = waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : []
+    const blockers = r.blockedBy.map((b) => b.ref).concat(unknown)
+    // The phrase names each blocker's status too: "#886 (waiting)".
+    const blockersWithStatus = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
     const kind = r.done ? 'done' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now' : r.status === 'waiting' ? 'waiting' : r.ready ? 'ready' : 'blocked'
     const runner = r.status === 'now' ? modelText(task, ' ') : ''
     const tooltip = [r.title, r.status, runner, blockers.length ? 'blocked by ' + blockers.join(', ') : '', kind === 'ready' ? 'ready' : '', r.needsYou && !r.done ? 'needs you' : ''].filter(Boolean).join(' · ')
-    return { row: r, blockers, segment: { item: r.item, kind, tooltip } }
+    return { row: r, blockers, blockersWithStatus, segment: { item: r.item, kind, tooltip } }
   })
   const open = work.filter((w) => !w.row.done)
   const at = (w, kind, text) => ({ kind, item: w.row.item, title: w.row.title, text })
@@ -330,7 +335,7 @@ export function boardProgress(board) {
   const blocked = open.find((w) => w.blockers.length)
   const now = open.filter((w) => w.row.status === 'now')
   if (mine) focus = at(mine, 'needs you', mine.row.title)
-  else if (blocked) focus = at(blocked, 'blocked', refOf(blocked.row) + ' blocked by ' + blocked.blockers.join(', '))
+  else if (blocked) focus = at(blocked, 'blocked', refOf(blocked.row) + ' blocked by ' + blocked.blockersWithStatus.join(', '))
   else if (now.length === 1) focus = at(now[0], 'now', 'in progress: ' + now[0].row.title)
   else if (now.length) focus = at(now[0], 'now', now.length + ' in progress: ' + now.map((w) => refOf(w.row)).join(', '))
   return {
@@ -343,4 +348,128 @@ export function boardProgress(board) {
 export function boardProgressText(p) {
   const head = progressText(p)
   return p.focus ? head + ' · ' + p.focus.text : head
+}
+
+// ---- Batch 6: what the Board panel (design C, Outline) and the strip show ----
+
+/** The row's status mark: a check for done, a ring for next, else a dot (now: accent, waiting: grey). */
+export const STATUS_MARK = { done: 'check', next: 'ring', now: 'dot-now', waiting: 'dot-waiting' }
+
+/** The meta line's label for each note: "Next:", "Reason:", "Start when:". */
+const NOTE_LABEL = { next: 'Next:', why: 'Reason:', 'starts when': 'Start when:', 'waiting on': 'Waiting on' }
+/** The detail grid's key for each note. */
+const DETAIL_KEY = { next: 'Next', why: 'Reason', 'starts when': 'Start when' }
+
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/** "PR #892" from "#892", "o/r#892" or ".../pull/892"; "PR" for anything else. */
+export function prText(pr) {
+  const v = text(pr)
+  if (!v) return undefined
+  const n = /(?:#|\/pull\/)(\d+)\/?$/.exec(v)
+  return n ? 'PR #' + n[1] : 'PR'
+}
+
+/**
+ * One row's cells in the fixed columns (id · status · title · PR · chevron),
+ * from a boardRows() row and its boardFlags():
+ * - parent: a top row with children, drawn as the parent row (progress, no status);
+ * - mark: STATUS_MARK; wrap: open titles wrap, done titles truncate (tooltip: the title);
+ * - indent: 16 px steps inside the title cell, depth below the parent row; elbow: └ from depth 2;
+ * - pr: "PR #892", linked by prUrl;
+ * - next: the one meta line of an open row not in Needs you, { label, text }:
+ *   "Waiting on <who>" on a waiting row with waitingOn (not the owner), else its first note;
+ * - blockedBy, ready, needsYou ("Needs you · see top"); problems: each flag's text, in place;
+ * - detail: [{ key, value, mono }] (the other notes, waiting on, model, branch, worktree);
+ * - command: the ready command, unless the row is in Needs you (the card has it);
+ * - expandable: detail or a command to show.
+ */
+export function rowCells(row, flags = []) {
+  const parent = Boolean(row.progress) && row.depth === 0
+  // The one meta line: an open row's first note, unless Needs you holds it.
+  // A waiting row that names who it waits on (not the owner) says so: "Waiting on CI".
+  const waitsOn = row.status === 'waiting' && row.waitingOn && row.waitingOn.toLowerCase() !== 'owner' ? row.waitingOn : undefined
+  const open = !row.done && !row.needsYou
+  const shown = open && waitsOn ? { label: 'waiting on', text: waitsOn } : open && row.line ? { label: row.lineLabel, text: row.line } : undefined
+  const notesLeft = row.line && (!shown || waitsOn) ? [{ label: row.lineLabel, text: row.line }, ...row.others] : row.others
+  const detail = notesLeft.map((n) => ({ key: DETAIL_KEY[n.label] ?? capital(n.label), value: n.text, mono: false }))
+  if (row.waitingOn && row.waitingOn.toLowerCase() !== 'owner' && !waitsOn) detail.push({ key: 'Waiting on', value: row.waitingOn, mono: false })
+  if (row.model) detail.push({ key: 'Model', value: row.model, mono: true })
+  if (row.branch) detail.push({ key: 'Branch', value: row.branch, mono: true })
+  if (row.worktree) detail.push({ key: 'Worktree', value: row.worktree, mono: true })
+  const command = row.needsYou ? undefined : row.readyCommand
+  return {
+    item: row.item,
+    parent,
+    status: parent ? undefined : row.status,
+    mark: parent ? undefined : STATUS_MARK[row.status] ?? 'dot-waiting',
+    title: row.title,
+    wrap: !row.done,
+    indent: parent ? 0 : Math.max(0, row.depth - 1),
+    elbow: !parent && row.depth >= 2,
+    pr: prText(row.pr),
+    prUrl: row.prUrl,
+    progress: parent ? progressText({ done: row.progress.done, total: row.progress.total }) : undefined,
+    progressNeedsYou: parent && row.progress.needsYou ? row.progress.needsYou + ' needs you' : undefined,
+    next: shown ? { label: NOTE_LABEL[shown.label] ?? capital(shown.label) + ':', text: shown.text } : undefined,
+    needsYou: !row.done && row.needsYou,
+    blockedBy: row.blockedBy,
+    ready: row.ready,
+    problems: flags.map((f) => capital(flagText(f))),
+    detail,
+    command,
+    expandable: detail.length > 0 || Boolean(command),
+  }
+}
+
+/**
+ * A problems-section line from a problems() entry: { item, kind, refs, text };
+ * kind is the text before its colon ("Parent loop"), refs the rows involved,
+ * by issue, else item ("#885, #886"), text the full problem (the tooltip).
+ */
+export function problemLine(p, tasks = []) {
+  const byItem = new Map(tasks.map((t) => [t.item, t]))
+  const i = p.text.indexOf(': ')
+  const refs = p.items.map((it) => (byItem.has(it) ? refOf(byItem.get(it)) : String(it))).join(', ')
+  return { item: p.item, kind: i < 0 ? p.text : p.text.slice(0, i), refs, text: p.text }
+}
+
+/** What the panel shows with no board: the design's title and one line. */
+export const EMPTY_STATE = {
+  title: 'No board in this session',
+  line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
+}
+
+/**
+ * The owner's ask for the strip: the task's nextAction without its "Owner:"
+ * lead, first letter lower, final period dropped, "for" the task's title;
+ * with no nextAction, the title alone.
+ */
+export function askText(task) {
+  const raw = (text(task.nextAction) ?? '').replace(/^owner\s*[:,-]?\s*/i, '').replace(/\.$/, '').trim()
+  return raw ? raw.charAt(0).toLowerCase() + raw.slice(1) + ' for ' + titleText(task) : titleText(task)
+}
+
+/**
+ * The strip above the chat input (design C):
+ * - normal: { kind: 'normal', key, done: "4 of 6 done", focus?: the focus phrase };
+ * - needs you: { kind: 'needs you', text: "Needs you: <ask>", command?, item } for
+ *   one ask (command: its readyCommand, for Copy command), "2 need you" (no
+ *   command) for more. Both carry the progress (segments) of boardProgress().
+ * @param {{key?: string, tasks: object[], parent?: string}} board
+ */
+export function stripModel(board) {
+  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
+  const p = boardProgress(board)
+  const mine = needsYou(tasks).tasks
+  const base = { key: board?.key, progress: p, done: progressText({ done: p.done, total: p.total }) }
+  if (mine.length === 1) return { ...base, kind: 'needs you', text: 'Needs you: ' + askText(mine[0]), command: text(mine[0].readyCommand), item: mine[0].item }
+  if (mine.length > 1) return { ...base, kind: 'needs you', text: mine.length + ' need you', item: mine[0].item }
+  return { ...base, kind: 'normal', focus: p.focus?.text }
+}
+
+/** The strip as one line of text: "sim-883 · 4 of 6 done · <focus> · Board ›" or "⚠ Needs you: … · Copy command · Board ›". */
+export function stripText(m) {
+  if (m.kind === 'needs you') return ['⚠ ' + m.text, m.command ? 'Copy command' : '', 'Board ›'].filter(Boolean).join(' · ')
+  return [m.key, m.done, m.focus, 'Board ›'].filter(Boolean).join(' · ')
 }
