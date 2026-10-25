@@ -1,0 +1,12 @@
+{
+  "format": "dsh-cockpit.board",
+  "version": 1,
+  "key": "hand",
+  "tasks": [
+    {
+      "item": "a",
+      "what": "by hand",
+      "status": "done"
+    }
+  ]
+}

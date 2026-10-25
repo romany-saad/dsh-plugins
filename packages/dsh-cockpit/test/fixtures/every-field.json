@@ -1,0 +1,51 @@
+{
+  "format": "dsh-cockpit.board",
+  "version": 1,
+  "key": "all",
+  "revision": 3,
+  "createdAt": "2026-10-25T07:00:00Z",
+  "updatedAt": "2026-10-25T07:00:02Z",
+  "tasks": [
+    {
+      "item": "1",
+      "what": "Root",
+      "status": "now",
+      "issue": "romany-saad/dsh-plugins#1",
+      "updatedAt": "2026-10-25T07:00:00Z"
+    },
+    {
+      "item": "2",
+      "what": "Everything",
+      "status": "next",
+      "why": "w",
+      "issue": "PROJ-12",
+      "pr": "https://example.com/pr/1",
+      "branch": "b",
+      "worktree": "/tmp/w",
+      "provider": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "nextAction": "n",
+      "waitingOn": "CI",
+      "readyCommand": "make",
+      "startWhen": "after 1",
+      "parent": "1",
+      "dependsOn": [
+        "1",
+        "unknown"
+      ],
+      "extra": {
+        "k": "v"
+      },
+      "updatedAt": "2026-10-25T07:00:01Z",
+      "keptByAFallbackHub": true
+    },
+    {
+      "item": "3",
+      "what": "Not doing it",
+      "status": "dropped",
+      "parent": "1",
+      "updatedAt": "2026-10-25T07:00:02Z"
+    }
+  ]
+}
