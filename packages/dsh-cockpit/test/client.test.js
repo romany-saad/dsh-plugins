@@ -154,6 +154,15 @@ test('Needs you: only waitingOn owner, with the ask as written, Open PR and the 
   assert.equal(open.props.href, 'https://github.com/Romany-Saad/resturants-app/pull/892')
 })
 
+test('Needs you: a long id stays on one line with an ellipsis and the full id as its title', () => {
+  const id = nodes(live).find((n) => cls(n) === 'dshc-mono dshc-id')
+  assert.ok(id, 'the card shows the step id')
+  assert.equal(id.props.title, id.children.join(''), 'the full id on hover, as in the rows')
+  const { exports } = load()
+  const rule = exports.CSS.split('}').find((r) => r.trim().startsWith('.dshc-ni .dshc-id'))
+  for (const d of ['min-width:0', 'overflow:hidden', 'text-overflow:ellipsis', 'white-space:nowrap']) assert.ok(rule.includes(d), d)
+})
+
 test('rows: fixed columns, tree order, a mark by shape, and dropped struck through and counted apart', () => {
   const all = nodes(live)
   assert.deepEqual(all.filter((n) => n.type === 'li').map((n) => n.props['data-item']), ['883', '1', '2', '5', '6b', '7'])

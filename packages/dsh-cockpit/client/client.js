@@ -902,7 +902,8 @@ const CSS = [
   '.dshc-warn{color:var(--dshc-warn)}.dshc-err{color:var(--dshc-err)}',
   '.dshc-ni{display:grid;grid-template-columns:36px minmax(0,1fr) auto;column-gap:8px;row-gap:4px;background:var(--dshc-l1);border:1px solid var(--dshc-border);border-radius:8px;padding:8px}',
   '.dshc-ni+.dshc-ni{margin-top:8px}',
-  '.dshc-ni .dshc-id{color:var(--dshc-t);font-size:12px}',
+  // One line with an ellipsis, as the rows' .dshc-cid: a long id must not run into the title.
+  '.dshc-ni .dshc-id{color:var(--dshc-t);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.dshc-nit{font-weight:500}',
   '.dshc-ask{grid-column:2/4;font-size:12px;line-height:16px;color:var(--dshc-s);overflow-wrap:anywhere}',
   '.dshc-ni .dshc-cmd{grid-column:1/4}',
@@ -1189,7 +1190,7 @@ function NeedsYou({ board, rows, byItem }) {
       const ask = typeof t.nextAction === 'string' && t.nextAction.trim() ? t.nextAction.trim() : undefined
       const command = typeof t.readyCommand === 'string' && t.readyCommand.trim() ? t.readyCommand.trim() : undefined
       return h('div', { key: t.item, className: 'dshc-ni', 'data-item': t.item },
-        h('span', { className: 'dshc-mono dshc-id' }, t.item),
+        h('span', { className: 'dshc-mono dshc-id', title: t.item }, t.item),
         h(Title, { task: byItem.get(t.item), parent: board.parent, url: r && r.issueUrl, className: 'dshc-wrap dshc-nit' }),
         r ? h(OpenLink, { row: r, parent: board.parent }) || h('span', null) : h('span', null),
         ask ? h('span', { className: 'dshc-ask' }, ask) : null,

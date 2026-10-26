@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Board tab, Needs you card:** a step id longer than its column no longer runs into the step's title. It stays on one line with an ellipsis, and hovering shows the full id, as in the step rows.
+
 ## 0.1.2
 
 README rewritten for users; developer reference moved to DEVELOPING.md. No code change.
