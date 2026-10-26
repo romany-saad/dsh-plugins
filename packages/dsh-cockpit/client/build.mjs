@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const LOCAL = ['../../lib/rows.js', '../../lib/present.js', './command-box.js']
+const LOCAL = ['../../lib/rows.js', '../../lib/present.js', './command-box.js', './segments.js']
 const OUT = new URL('./client.js', import.meta.url)
 
 /** An import-free ES module as an expression of its exports. */
