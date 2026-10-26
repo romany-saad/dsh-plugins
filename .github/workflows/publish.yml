@@ -1,10 +1,11 @@
 name: publish
 
-# Publishes @rs-dsh/dsh-cockpit when a tag dsh-cockpit@<version> is pushed.
+# Publishes one package when a tag <package>@<version> is pushed, for example
+# dsh-cockpit@0.1.1 or dsh-quote@0.1.0. <package> is the folder under packages/.
 on:
   push:
     tags:
-      - 'dsh-cockpit@*'
+      - 'dsh-*@*'
 
 permissions:
   contents: read
@@ -27,16 +28,30 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --if-present test
-      - name: Check the tag's version against package.json
+      - name: Resolve the package and check the tag's version against package.json
         id: version
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          version="$(node -p "require('./packages/dsh-cockpit/package.json').version")"
-          if [ "$TAG" != "dsh-cockpit@$version" ]; then
-            echo "::error::tag $TAG does not match package.json version $version"
+          # The folder is everything before the last "@"; the version, everything after.
+          dir="${TAG%@*}"
+          tag_version="${TAG##*@}"
+          manifest="packages/$dir/package.json"
+          if [ -z "$dir" ] || [ "$dir" = "$TAG" ] || [ ! -f "$manifest" ]; then
+            echo "::error::tag $TAG names no package: $manifest does not exist"
             exit 1
           fi
+          name="$(node -p "require('./$manifest').name")"
+          version="$(node -p "require('./$manifest').version")"
+          if [ "$(node -p "Boolean(require('./$manifest').private)")" = "true" ]; then
+            echo "::error::$name is private and is not published"
+            exit 1
+          fi
+          if [ "$tag_version" != "$version" ]; then
+            echo "::error::tag $TAG does not match $manifest version $version"
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
           # A prerelease (a version with "-", such as 0.2.0-rc.1) goes to npm's next tag; a plain version is latest.
           case "$version" in
             *-*) echo "dist-tag=next" >> "$GITHUB_OUTPUT" ;;
@@ -51,7 +66,8 @@ jobs:
             echo "::error::tag $TAG is not on main: its commit $GITHUB_SHA is not an ancestor of origin/main"
             exit 1
           fi
-      - run: pnpm publish --filter @rs-dsh/dsh-cockpit --no-git-checks --tag "$DIST_TAG"
+      - run: pnpm publish --filter "$PACKAGE" --no-git-checks --tag "$DIST_TAG"
         env:
+          PACKAGE: ${{ steps.version.outputs.name }}
           DIST_TAG: ${{ steps.version.outputs.dist-tag }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
