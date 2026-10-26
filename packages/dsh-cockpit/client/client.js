@@ -934,7 +934,11 @@ const CSS = [
   '.dshc-strip .dshc-go:hover,.dshc-strip .dshc-btn:hover{color:var(--dshc-p)}',
   // The chat cards: the host's tool row, with the result's tree text below it.
   '.dshc-card-sum{margin-left:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}',
-  '.dshc-card-sum[data-state=error]{color:var(--dsw-alias-state-error-primary)}.dshc-card-sum[data-state=stopped]{color:var(--dsw-alias-state-warn-label)}',
+  // The cards sit outside the tab's colour names: in light, error and stopped text
+  // mix toward label-primary as the tab's do (stopped is 2.8:1 on white as is).
+  '.dshc-card-sum[data-state=error]{color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 80%,var(--dsw-alias-label-primary))}',
+  '.dshc-card-sum[data-state=stopped]{color:color-mix(in srgb,var(--dsw-alias-state-warn-label) 65%,var(--dsw-alias-label-primary))}',
+  'body[data-ds-dark-theme] .dshc-card-sum[data-state=error]{color:var(--dsw-alias-state-error-primary)}body[data-ds-dark-theme] .dshc-card-sum[data-state=stopped]{color:var(--dsw-alias-state-warn-label)}',
   '.dshc-card-out{margin:4px 0 4px 4px;max-height:260px;overflow:auto;white-space:pre;font-family:' + MONO + ';font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
 ].join('\n')
 

@@ -261,6 +261,13 @@ test('the parent row: progress in words and the thin bar, one segment per child,
   assert.match(exports.CSS, /\[data-segment=waiting\]\{background:/)
 })
 
+test('card error and stopped text: mixed toward label-primary in light, the host tokens in dark', () => {
+  const { exports } = load()
+  assert.match(exports.CSS, /\.dshc-card-sum\[data-state=stopped\]\{color:color-mix\(in srgb,var\(--dsw-alias-state-warn-label\) 65%,var\(--dsw-alias-label-primary\)\)\}/)
+  assert.match(exports.CSS, /\.dshc-card-sum\[data-state=error\]\{color:color-mix\(in srgb,var\(--dsw-alias-state-error-primary\) 80%,var\(--dsw-alias-label-primary\)\)\}/)
+  assert.match(exports.CSS, /body\[data-ds-dark-theme\] \.dshc-card-sum\[data-state=stopped\]\{color:var\(--dsw-alias-state-warn-label\)\}/)
+})
+
 test('the empty state and a board that cannot be shown', () => {
   const out = render({ key: null, boards: ['a'] })
   assert.ok(out.includes('No board in this session'))

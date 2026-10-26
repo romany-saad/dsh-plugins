@@ -2,7 +2,41 @@
 
 A durable task board for a DeepSeek Harness hub session: the session that coordinates builders across many pull requests. A board is a tree of steps, each linked to its work by free-form fields, and it is kept as one local JSON file that other processes can read.
 
-**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools, its read routes, and in the web GUI the Board tab, the progress strip above the chat input and the chat cards of the board tools; it runs the optional drift check.
+**Status: 0.1.0.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1), and [CHANGELOG.md](CHANGELOG.md) lists what 0.1 holds and what comes later. The plugin registers its four board tools, its read routes, and in the web GUI the Board tab, the progress strip above the chat input and the chat cards of the board tools; it runs the optional drift check.
+
+## Install
+
+The package is not on npm (#2). A profile installs it from this repository with a git pin:
+
+```sh
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.1.0&path:packages/dsh-cockpit'
+```
+
+That adds the dependency to the profile's `package.json` and the package to its `dsh.profile.bundles`:
+
+```json
+"@romany-saad/dsh-cockpit": "github:romany-saad/dsh-plugins#dsh-cockpit@0.1.0&path:packages/dsh-cockpit"
+```
+
+- **The tag works.** pnpm accepts a tag that contains `@` before `&path:`, and the lockfile records the tag's commit (`codeload.github.com/romany-saad/dsh-plugins/tar.gz/<commit>#path:packages/dsh-cockpit`). This was tried with pnpm 12.14.0 and `dsh plugin add` (DSH 0.2.1-rc.2) against a test tag. To pin a commit instead, put the commit in place of the tag: `#<commit>&path:packages/dsh-cockpit`.
+- **The peers** `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths` come from the DSH that boots the profile. pnpm may warn that they are missing from the profile itself.
+- **The web GUI half** (the tab, the strip and the cards) needs a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
+
+The bundle patch gives the defaults (see Config). A profile changes them in its own `cordis.patch.yml`. A patch with the same id replaces the whole config, so it restates every field. On GitHub, to link `#12` and `owner/repo#12`:
+
+```yaml
+- id: dsh-cockpit
+  name: '@romany-saad/dsh-cockpit'
+  config:
+    tools: { enabled: true }
+    route: { enabled: true }
+    drift: { command: '', cwd: '', mode: report }
+    links:
+      issue: 'https://github.com/{repo}/issues/{number}'
+      pr: 'https://github.com/{repo}/pull/{number}'
+```
+
+`{repo}` comes from `owner/repo#12`, or for `#12` from the board's parent reference.
 
 ## What is here
 
@@ -24,7 +58,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
   - on the parent row, the progress in words (dropped counted apart) and a thin bar with one segment per task that text counts (the row's children), each kind its own shape.
   Titles show `#12` for the board parent's repository and `repo#12` for another, with the full reference in the link and its tooltip. Board text is rendered only as text; only `http(s)` URLs become links, opening in a new tab. The tab runs no command and writes nothing.
 - The **progress strip** above the chat input (the `conversation.input.dock` slot, after the Todo, Goal and Queue docks), shown only while the session has a bound board. It is one line: the same segments as the parent row's bar (one continuous bar above 24), then "<key> · N of M done · <focus> · Board ›". The focus is the first of: a task blocked, naming the blocker and its status ("#887 blocked by #886 (waiting)"); the tasks in progress ("2 in progress: #885, #886"). When a task waits on the owner it reads "⚠ Needs you: <next action> · Copy command · Board ›" instead, with the CommandBox's copy ("2 need you" for more, with no Copy). A click on the strip or a segment opens the Board tab at that row. The strip and the tab share one poll of the view route.
-- **Chat cards** for `board_open`, `board_read`, `board_add` and `board_update` (keyed `tool.call.toolview` views): one row, "Board · <title>", the title from `lib/present.js` on the arguments or the result's recorded meta title; a result `{ ok: false }` shows its code. Opened, the card shows the result's tree text, else its JSON.
+- **Chat cards** for `board_open`, `board_read`, `board_add` and `board_update` (keyed `tool.call.toolview` views): one row, "Board · <title>", the title from `lib/present.js` on the arguments or the result's recorded meta title; a result `{ ok: false }` shows its code, in the error colour (mixed toward the primary label in light, as the tab's is). Opened, the card shows the result's tree text, else its JSON.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
 - `lib/present.js`: one-line titles for the tool cards, inlined into the client bundle too.
 - `cordis.patch.yml`: the bundle patch (`dsh.bundle.patch`).
@@ -49,7 +83,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
     links: { issue: '', pr: '' }  # URL patterns with {ref}, {repo}, {number}; empty: only full URLs link, in the Board tab too
 ```
 
-A profile patch with the same id replaces the whole config, so it restates the fields it keeps. For example, a profile on GitHub sets `links: { issue: 'https://github.com/{repo}/issues/{number}', pr: 'https://github.com/{repo}/pull/{number}' }`; `{repo}` comes from `owner/repo#12`, or for `#12` from the board's parent reference.
+A profile patch with the same id replaces the whole config, so it restates the fields it keeps. Install shows the patch for GitHub links.
 
 ## Drift
 
