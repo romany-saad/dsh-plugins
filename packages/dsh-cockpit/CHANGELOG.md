@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+The package is renamed from `@romany-saad/dsh-cockpit` to `@rs-dsh/dsh-cockpit`, under the npm organization `rs-dsh` ([decision 26](https://github.com/romany-saad/dsh-plugins/issues/2#issuecomment-6410629697)). The plugin id `dsh-cockpit`, its tools, config, board format and data folder `$DSH_HOME/data/dsh-cockpit` stay as they were, so existing boards stay where they are.
+
+- **The segmented bar** (the progress strip and the Board tab's parent row, one shared style): segments at least 10 px wide and 8 px tall with 1 px gaps, square except the first segment's left end and the last one's right end, which are round (4 px, half the height; a single segment is round at both ends). Every size is a whole pixel: the bar is measured, each segment gets floor((width − gaps) / n) px and the pixels left over go one each to the first segments, and the half fill of a `now` segment is floor(width / 2) px. When the segments do not fit at 10 px, the bar is one continuous bar, with the same height and round ends.
+
+To upgrade a profile from 0.1.0, remove the old package and add the new one, so the two never load side by side under the same id: `dsh plugin --profile <name> remove @romany-saad/dsh-cockpit`, then `dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.1.1`. In the profile's own `cordis.patch.yml`, change `name: '@romany-saad/dsh-cockpit'` to `name: '@rs-dsh/dsh-cockpit'`. The web GUI's Board tab takes its id from the package name, so it is now `@rs-dsh/dsh-cockpit`.
+
 ## 0.1.0
 
 The first release: the board only (decision 2). The design is in [#1](https://github.com/romany-saad/dsh-plugins/issues/1); the decisions below are numbered as in [the owner's decisions](https://github.com/romany-saad/dsh-plugins/issues/1#issuecomment-6402129343).
@@ -10,7 +18,7 @@ The first release: the board only (decision 2). The design is in [#1](https://gi
 - **The record.** One file per board, `$DSH_HOME/data/dsh-cockpit/boards/<key>.json`, format `dsh-cockpit.board` version 1, written by temp file, fsync and rename before each tool returns. A file the plugin cannot read is never overwritten. `board.schema.json` describes the format.
 - **Four tools.** `board_open`, `board_read`, `board_add` and `board_update` (one item or a list in one write, with `previous`). A session's binding survives a resume.
 - **Drift.** An optional `drift.command`, run only on `board_read({ checkDrift: true })`, in mode `report` (default) or `apply`, keeping only the differences. `examples/board-drift-gh.sh` is an example to copy.
-- **The reader.** `@romany-saad/dsh-cockpit/reader`: `listBoards`, `readBoard` and `boardTree`, with no DSH imports.
+- **The reader.** `@rs-dsh/dsh-cockpit/reader`: `listBoards`, `readBoard` and `boardTree`, with no DSH imports.
 - **Read routes.** `/api/dsh-cockpit/boards`, `/board` and `/view`, `GET` and `HEAD` only, owner-only on the host connection.
 - **In the web GUI.** The Board tab (Needs you, board data problems, the tree in fixed columns, PR and issue links, the parent row's bar), the progress strip above the chat input, and one-line chat cards for the four tools. None of them runs a command or writes the board.
 - **Config.** `tools.enabled`, `route.enabled`, `drift` and `links` (URL patterns, empty by default), shipped as the bundle patch `cordis.patch.yml`.

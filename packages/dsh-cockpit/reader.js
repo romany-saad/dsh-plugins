@@ -1,4 +1,4 @@
-// @romany-saad/dsh-cockpit/reader: read boards with plain Node, no DSH imports.
+// @rs-dsh/dsh-cockpit/reader: read boards with plain Node, no DSH imports.
 import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'

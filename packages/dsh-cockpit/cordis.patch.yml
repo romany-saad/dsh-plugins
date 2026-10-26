@@ -2,7 +2,7 @@
 # replaces the whole config, so restate the fields you keep.
 - insert:
     - id: dsh-cockpit
-      name: '@romany-saad/dsh-cockpit'
+      name: '@rs-dsh/dsh-cockpit'
       config:
         # false: register no tools.
         tools:

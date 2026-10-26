@@ -37,7 +37,7 @@ test('a misspelt key fails instead of being ignored', () => {
 
 test('cordis.patch.yml restates every default', async () => {
   const text = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-  for (const line of ['id: dsh-cockpit', "name: '@romany-saad/dsh-cockpit'", 'enabled: true', "command: ''", "cwd: ''", 'mode: report', "issue: ''", "pr: ''"]) {
+  for (const line of ['id: dsh-cockpit', "name: '@rs-dsh/dsh-cockpit'", 'enabled: true', "command: ''", "cwd: ''", 'mode: report', "issue: ''", "pr: ''"]) {
     assert.ok(text.includes(line), line)
   }
   for (const section of Object.keys(DEFAULT_CONFIG)) assert.match(text, new RegExp('^        ' + section + ':$', 'm'), section)

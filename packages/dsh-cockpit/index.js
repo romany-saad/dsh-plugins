@@ -1,4 +1,4 @@
-// @romany-saad/dsh-cockpit: the DSH host plugin. Registers the four board
+// @rs-dsh/dsh-cockpit: the DSH host plugin. Registers the four board
 // tools inside ctx.inject(['tools'], …) and the read routes inside
 // ctx.inject(['connection'], …), so they come and go with those services and
 // with this plugin.

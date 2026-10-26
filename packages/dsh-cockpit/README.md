@@ -1,21 +1,31 @@
-# @romany-saad/dsh-cockpit
+# @rs-dsh/dsh-cockpit
 
 A durable task board for a DeepSeek Harness hub session: the session that coordinates builders across many pull requests. A board is a tree of steps, each linked to its work by free-form fields, and it is kept as one local JSON file that other processes can read.
 
-**Status: 0.1.0.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1), and [CHANGELOG.md](CHANGELOG.md) lists what 0.1 holds and what comes later. The plugin registers its four board tools, its read routes, and in the web GUI the Board tab, the progress strip above the chat input and the chat cards of the board tools; it runs the optional drift check.
+**Status: 0.1.1.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1), and [CHANGELOG.md](CHANGELOG.md) lists what 0.1 holds and what comes later. The plugin registers its four board tools, its read routes, and in the web GUI the Board tab, the progress strip above the chat input and the chat cards of the board tools; it runs the optional drift check.
 
 ## Install
 
-The package is not on npm (#2). A profile installs it from this repository with a git pin:
+A profile installs the package from npm, at an exact version:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.1.0&path:packages/dsh-cockpit'
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.1.1
 ```
 
 That adds the dependency to the profile's `package.json` and the package to its `dsh.profile.bundles`:
 
 ```json
-"@romany-saad/dsh-cockpit": "github:romany-saad/dsh-plugins#dsh-cockpit@0.1.0&path:packages/dsh-cockpit"
+"@rs-dsh/dsh-cockpit": "0.1.1"
+```
+
+As a fallback, a profile installs it from this repository with a git pin to the release tag:
+
+```sh
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.1.1&path:packages/dsh-cockpit'
+```
+
+```json
+"@rs-dsh/dsh-cockpit": "github:romany-saad/dsh-plugins#dsh-cockpit@0.1.1&path:packages/dsh-cockpit"
 ```
 
 - **The tag works.** pnpm accepts a tag that contains `@` before `&path:`, and the lockfile records the tag's commit (`codeload.github.com/romany-saad/dsh-plugins/tar.gz/<commit>#path:packages/dsh-cockpit`). This was tried with pnpm 12.14.0 and `dsh plugin add` (DSH 0.2.1-rc.2) against a test tag. To pin a commit instead, put the commit in place of the tag: `#<commit>&path:packages/dsh-cockpit`.
@@ -26,7 +36,7 @@ The bundle patch gives the defaults (see Config). A profile changes them in its 
 
 ```yaml
 - id: dsh-cockpit
-  name: '@romany-saad/dsh-cockpit'
+  name: '@rs-dsh/dsh-cockpit'
   config:
     links:
       issue: 'https://github.com/{repo}/issues/{number}'
@@ -52,7 +62,7 @@ The bundle patch gives the defaults (see Config). A profile changes them in its 
   - **Needs you**: one card per open task whose `waitingOn` is `owner`, with its next action as written, an "Open PR" link and the ready command with Copy;
   - **Board data problems**, each naming its reference, with ↓ to the row;
   - the rows in tree order and fixed columns (id · status · title · PR · chevron): status by shape and word (done a check, next a ring, now an info dot, waiting a grey dot, dropped a dash with the title struck through), one meta line (the next action as written, "Waiting on CI", "Start when: …"), "Blocked by …", "ready", "reported: done", and an expandable detail with the reason, start condition, model, branch, worktree and command;
-  - on the parent row, the progress in words (dropped counted apart) and a thin bar with one segment per task that text counts (the row's children), each kind its own shape.
+  - on the parent row, the progress in words (dropped counted apart) and a segmented bar with one segment per task that text counts (the row's children), each kind its own shape. The bar and the strip's share one style in whole pixels: segments at least 10 px wide and 8 px tall, 1 px gaps, round only at the bar's two outer ends, and one continuous bar when the segments do not fit.
   Titles show `#12` for the board parent's repository and `repo#12` for another, with the full reference in the link and its tooltip. Board text is rendered only as text; only `http(s)` URLs become links, opening in a new tab. The tab runs no command and writes nothing.
 - The **progress strip** above the chat input (the `conversation.input.dock` slot, after the Todo, Goal and Queue docks), shown only while the session has a bound board. It is one line: the same segments as the parent row's bar (one continuous bar above 24), then "<key> · N of M done · <focus> · Board ›". The focus is the first of: a task blocked, naming the blocker and its status ("#887 blocked by #886 (waiting)"); the tasks in progress ("2 in progress: #885, #886"). When a task waits on the owner it reads "⚠ Needs you: <next action> · Copy command · Board ›" instead, with the CommandBox's copy ("2 need you" for more, with no Copy). A click on the strip or a segment opens the Board tab at that row. The strip and the tab share one poll of the view route.
 - **Chat cards** for `board_open`, `board_read`, `board_add` and `board_update` (keyed `tool.call.toolview` views): one row, "Board · <title>", the title from `lib/present.js` on the arguments or the result's recorded meta title; a result `{ ok: false }` shows its code, in the error colour (mixed toward the primary label in light, as the tab's is). Opened, the card shows the result's tree text, else its JSON.
@@ -65,14 +75,14 @@ The bundle patch gives the defaults (see Config). A profile changes them in its 
 - `lib/store.js`: `$DSH_HOME/data/dsh-cockpit/boards/<encodeURIComponent(key)>.json`, format `dsh-cockpit.board`, version 1, written by temp file, fsync, rename and directory fsync. A file it cannot read is never overwritten. `revision` counts changes to tasks or to the board's parent; a write that changes neither, such as a report-only drift result, does not bump it.
 - `lib/drift.js`: the drift runner and record. It keeps only the entries whose status differs from their task's, and `checked` counts every entry.
 - `examples/board-drift-gh.sh`: an example drift command (see Drift).
-- `reader.js` (`@romany-saad/dsh-cockpit/reader`): `listBoards(dir?)`, `readBoard(keyOrFile, dir?)` and `boardTree(board)`, with no DSH imports. A miss names the folder it looked in and where `DSH_HOME` came from.
+- `reader.js` (`@rs-dsh/dsh-cockpit/reader`): `listBoards(dir?)`, `readBoard(keyOrFile, dir?)` and `boardTree(board)`, with no DSH imports. A miss names the folder it looked in and where `DSH_HOME` came from.
 - `board.schema.json`: the file format as a JSON Schema, also for a local file that a hub without the plugin writes and the reader reads the same way; that file is never the plugin's own store.
 
 ## Config
 
 ```yaml
 - id: dsh-cockpit
-  name: '@romany-saad/dsh-cockpit'
+  name: '@rs-dsh/dsh-cockpit'
   config:
     tools: { enabled: true }      # false: register no tools
     route: { enabled: true }      # false: no routes, so no panel data

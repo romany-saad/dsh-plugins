@@ -10,10 +10,11 @@ import { bundle } from '../client/build.mjs'
 const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
 
 /** The bundle's exports; useState gives a row's open state (false unless open). */
-function load({ open = false, primitives } = {}) {
+function load({ open = false, primitives, measured = 0 } = {}) {
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
-    useState: (init) => [typeof init === 'function' ? init() : init === false ? open : init, () => {}],
+    // A bar's measured width is the only useState(0): measured gives it.
+    useState: (init) => [typeof init === 'function' ? init() : init === false ? open : init === 0 ? measured : init, () => {}],
     useRef: (v) => ({ current: v }),
     useEffect: () => {},
     useMemo: (fn) => fn(),
@@ -100,14 +101,14 @@ function register(exports) {
 
 test('the bundle registers the Board tab, the four tool cards and the strip; materializing it requires only react', () => {
   const { row, exports } = load()
-  assert.equal(row.id, '@romany-saad/dsh-cockpit')
+  assert.equal(row.id, '@rs-dsh/dsh-cockpit')
   assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight'])
   const calls = register(exports)
   assert.equal(calls.tabs.length, 1)
-  assert.equal(calls.tabs[0].id, '@romany-saad/dsh-cockpit')
+  assert.equal(calls.tabs[0].id, '@rs-dsh/dsh-cockpit')
   assert.equal(calls.tabs[0].title(), 'Board', 'still "Board" in 0.1')
   assert.deepEqual(calls.slots.map((s) => [s.entry.name, s.entry.key ?? s.entry.id]), [
-    ['sidebar.right.pane.tab', '@romany-saad/dsh-cockpit'],
+    ['sidebar.right.pane.tab', '@rs-dsh/dsh-cockpit'],
     ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'],
     ['conversation.input.dock', 'dsh-cockpit-progress'],
   ])
@@ -255,8 +256,8 @@ test('the parent row: progress in words and the thin bar, one segment per child,
   const { exports } = load()
   for (const kind of ['done', 'now', 'waiting', '"needs you"', 'ready', 'blocked', 'dropped']) assert.ok(exports.CSS.includes('[data-segment=' + kind + ']'), kind)
   assert.match(exports.CSS, /\[data-segment=blocked\]\{border:1px dashed/)
-  // now: the left half filled with the info accent and an info outline, never solid, never moving.
-  assert.match(exports.CSS, /\[data-segment=now\]\{background:linear-gradient\(to right,var\(--dshc-info\) 50%,transparent 50%\);box-shadow:inset 0 0 0 1px var\(--dshc-info\)\}/)
+  // now: the left half filled with the info accent and an info outline, never solid, never moving; the half in whole px once measured.
+  assert.match(exports.CSS, /\[data-segment=now\]\{background:linear-gradient\(to right,var\(--dshc-info\) var\(--dshc-half\),transparent var\(--dshc-half\)\);box-shadow:inset 0 0 0 1px var\(--dshc-info\)\}/)
   assert.doesNotMatch(exports.CSS, /\[data-segment=now\]\{[^}]*(animation|transition)/)
   assert.match(exports.CSS, /\[data-segment=waiting\]\{background:/)
 })
@@ -371,7 +372,7 @@ test('the strip at narrow widths: the action or focus first, then the count, the
   assert.match(exports.CSS, /@container dshc-strip \(max-width:600px\)\{\.dshc-strip \.dshc-key,\.dshc-strip \.dshc-key\+\.dshc-sep\{display:none\}\}/)
   assert.match(exports.CSS, /\.dshc-strip \.dshc-done,\.dshc-strip \.dshc-go,\.dshc-strip \.dshc-copy,\.dshc-strip \.dshc-ic\{flex:none\}/)
   assert.match(exports.CSS, /\.dshc-strip \.dshc-focus\{flex:1 1 auto;min-width:0\}/)
-  assert.match(exports.CSS, /\.dshc-strip \.dshc-bar\{flex:0 1000 auto/, 'the segments give way before the text')
+  assert.match(exports.CSS, /\.dshc-strip \.dshc-barbox\{flex:0 1000 auto/, 'the segments give way before the text')
   // The full text is the strip's tooltip.
   const calm = withTasks(live, (ts) => ts.map((t) => (t.item === '1' ? { ...t, status: 'done', waitingOn: undefined } : t)))
   const bar = (view) => expand(strip(view).tree).find((n) => n.props.className === 'dshc-strip')
@@ -379,10 +380,10 @@ test('the strip at narrow widths: the action or focus first, then the count, the
   assert.equal(bar(live).props.title, '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. (#884 Profile and guard) · 1 of 5 done · 1 dropped')
   // Below 460 px: the continuous fill instead of the segments, no "· 1 dropped", and no bar beside a needs-you action.
   const all = expand(strip(calm).tree)
-  assert.ok(all.some((n) => n.props.className === 'dshc-fill dshc-alt'))
+  assert.ok(all.some((n) => n.props.className === 'dshc-barbox dshc-alt'))
   assert.deepEqual(all.find((n) => n.props.className === 'dshc-more').children, [' · 1 dropped'])
-  assert.match(exports.CSS, /@container dshc-strip \(max-width:460px\)\{\.dshc-strip \.dshc-bar,\.dshc-strip \.dshc-more,\.dshc-strip\[data-kind="needs you"\] \.dshc-fill\{display:none\}\.dshc-strip \.dshc-alt\{display:block\}\}/)
-  assert.match(exports.CSS, /@container dshc-strip \(max-width:380px\)\{\.dshc-strip \.dshc-fill\{display:none\}\}/)
+  assert.match(exports.CSS, /@container dshc-strip \(max-width:460px\)\{\.dshc-strip \.dshc-barbox\[data-alt\],\.dshc-strip \.dshc-more,\.dshc-strip\[data-kind="needs you"\] \.dshc-barbox\{display:none\}\.dshc-strip \.dshc-alt\{display:block\}\}/)
+  assert.match(exports.CSS, /@container dshc-strip \(max-width:380px\)\{\.dshc-strip \.dshc-barbox\{display:none\}\}/)
 })
 
 test('the strip\'s Copy command announces its result, as the CommandBox does', () => {
@@ -400,6 +401,69 @@ test('the strip above 24 segments is one continuous bar', () => {
   assert.ok(all.some((n) => n.props.className === 'dshc-fill'))
   const at24 = { ...big, board: { ...big.board, tasks: tasks.slice(0, 25) } }
   assert.equal(expand(strip(at24).tree).filter((n) => 'data-segment' in n.props).length, 24)
+})
+
+// ---- The segmented bar's geometry, shared by the parent row and the strip ----
+
+test('segment widths: whole pixels that, with the 1 px gaps, fill the bar exactly; the leftover to the first segments', () => {
+  const { exports } = load()
+  for (const [width, n] of [[120, 5], [347, 7], [348.6, 7], [100, 1], [263, 24], [300, 24], [64, 3], [10, 1], [21, 2]]) {
+    const w = exports.segmentWidths(width, n)
+    assert.equal(w.length, n)
+    assert.ok(w.every((x) => Number.isInteger(x) && x >= 10), width + '/' + n + ': whole px, at least 10')
+    assert.equal(w.reduce((a, b) => a + b, 0) + (n - 1), Math.floor(width), width + '/' + n + ': the sum and the gaps fill the bar')
+    assert.ok(Math.max(...w) - Math.min(...w) <= 1)
+    const extra = w.filter((x) => x > w[n - 1]).length
+    assert.ok(w.slice(0, extra).every((x) => x === w[0]) && w.slice(extra).every((x) => x === w[n - 1]), 'the wider ones come first')
+  }
+  // 347 - 6 gaps = 341 = 7 * 48 + 5: five segments of 49 px, then two of 48.
+  assert.deepEqual([...exports.segmentWidths(347, 7)], [49, 49, 49, 49, 49, 48, 48])
+  // A fractional width is rounded down first: 348.6 is 348 px.
+  assert.deepEqual([...exports.segmentWidths(348.6, 7)], [49, 49, 49, 49, 49, 49, 48])
+  // The 'now' half and the continuous fill are whole pixels too.
+  assert.equal(exports.halfFill(49), 24)
+  assert.equal(exports.halfFill(48), 24)
+  assert.ok(Number.isInteger(exports.fillWidth(347, 1, 3)))
+  assert.equal(exports.fillWidth(347, 3, 3), 347)
+})
+
+test('segment corners: square, except the first one\'s left end and the last one\'s right end, 4 px (half the 8 px height); one segment is round at both', () => {
+  const { exports } = load()
+  assert.deepEqual([0, 1, 2].map((i) => exports.segmentRadius(i, 3)), ['4px 0 0 4px', '0 0 0 0', '0 4px 4px 0'])
+  assert.deepEqual([0, 1].map((i) => exports.segmentRadius(i, 2)), ['4px 0 0 4px', '0 4px 4px 0'])
+  assert.equal(exports.segmentRadius(0, 1), '4px 4px 4px 4px')
+  assert.match(exports.CSS, /\.dshc-seg\{flex:none;min-width:10px;height:8px;border-radius:0;/)
+  assert.match(exports.CSS, /\.dshc-bar\{display:flex;gap:1px;height:8px\}/)
+  // The continuous bar: the same 8 px height and round ends.
+  assert.match(exports.CSS, /\.dshc-fill\{display:block;height:8px;border-radius:4px;/)
+  // No half pixel in the bar's rules: no .5 px, no 1.5 px.
+  const bar = exports.CSS.split('\n').filter((l) => /dshc-(seg|bar|fill)/.test(l)).join('\n')
+  assert.doesNotMatch(bar, /\d\.\d+px/)
+})
+
+test('segment fallback: n segments at 10 px with 1 px gaps, else one continuous bar', () => {
+  const { exports } = load()
+  // Five segments need 5 * 10 + 4 = 54 px.
+  assert.ok(exports.segmentsFit(54, 5))
+  assert.ok(!exports.segmentsFit(53, 5))
+  assert.ok(exports.segmentsFit(54.9, 5))
+  assert.equal(exports.segmentWidths(53, 5), undefined)
+  assert.ok(exports.segmentsFit(10, 1) && !exports.segmentsFit(9, 1))
+  assert.equal(exports.stripBarWidth({ segments: Array(5) }), 54, 'the strip asks for the room the segments need')
+  assert.equal(exports.stripBarWidth({ segments: Array(24) }), 120)
+  const bar = { segments: [1, 2, 3, 4, 5].map((i) => ({ item: String(i), kind: 'done', tooltip: 't' })), continuous: false, done: 5, dropped: 0, total: 5 }
+  const at = (measured) => expand(load({ measured }).exports.Bar({ bar }))
+  // Measured wide enough: whole-pixel widths and the corner rule inline.
+  const fit = at(54).filter((n) => 'data-segment' in n.props)
+  assert.deepEqual(fit.map((s) => s.props.style.width), [10, 10, 10, 10, 10])
+  assert.deepEqual(fit.map((s) => s.props.style.borderRadius), ['4px 0 0 4px', '0 0 0 0', '0 0 0 0', '0 0 0 0', '0 4px 4px 0'])
+  assert.equal(at(54).find((n) => n.props.className === 'dshc-bar').props.style.width, 54)
+  // One pixel short: the continuous bar, in whole pixels.
+  const narrow = at(53)
+  assert.equal(narrow.filter((n) => 'data-segment' in n.props).length, 0)
+  const fill = narrow.find((n) => n.props.className === 'dshc-fill')
+  assert.equal(fill.props.style.width, 53)
+  assert.equal(fill.children[0].props.style.width, '53px')
 })
 
 test('the strip opens the Board tab: the strip at its focus row, a segment at its own row, without the click going twice', () => {

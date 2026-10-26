@@ -13,6 +13,7 @@ const React = require('react')
 const { EMPTY_STATE, boardFlags, boardParent, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
+const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, wholePx } = require('./segments.js')
 const { CommandBox, CopyButton } = makeCommandBox(React)
 const h = React.createElement
 
@@ -112,17 +113,26 @@ const CSS = [
   '.dshc-detail dt{color:var(--dshc-t)}.dshc-detail dd{margin:0;color:var(--dshc-s);overflow-wrap:anywhere}.dshc-detail dd.dshc-mono{color:var(--dshc-p)}',
   '.dshc-pp{color:var(--dshc-s);font-weight:400}',
   '.dshc-need{color:var(--dshc-warn);font-weight:500}',
-  // The thin bar: segments by shape, never moving.
-  '.dshc-bar{display:flex;gap:2px;height:6px;width:100%;margin:4px 0 2px}',
-  '.dshc-seg{flex:1 1 0;min-width:3px;border-radius:1.5px;cursor:pointer}',
+  // The segmented bar: segments by shape, never moving, in whole pixels only.
+  // The box is measured (useWholeWidth); the bar inside it is the box's width
+  // rounded down, and each segment's width comes from segmentWidths. Only the
+  // first segment's left end and the last one's right end are round (inline
+  // border-radius from segmentRadius).
+  '.dshc-barbox{display:block;width:100%;height:' + SEG_HEIGHT + 'px;margin:4px 0 2px}',
+  '.dshc-bar{display:flex;gap:' + SEG_GAP + 'px;height:' + SEG_HEIGHT + 'px}',
+  '.dshc-seg{flex:none;min-width:' + SEG_MIN + 'px;height:' + SEG_HEIGHT + 'px;border-radius:0;cursor:pointer;--dshc-half:50%}',
+  // Before the first measure only (layout effect, so never painted): share the width.
+  '.dshc-bar:not([data-px]) .dshc-seg{flex:1 1 0}',
   '.dshc-seg[data-segment=done]{background:var(--dshc-ok-mark)}',
-  '.dshc-seg[data-segment=now]{background:linear-gradient(to right,var(--dshc-info) 50%,transparent 50%);box-shadow:inset 0 0 0 1px var(--dshc-info)}',
+  '.dshc-seg[data-segment=now]{background:linear-gradient(to right,var(--dshc-info) var(--dshc-half),transparent var(--dshc-half));box-shadow:inset 0 0 0 1px var(--dshc-info)}',
   '.dshc-seg[data-segment=waiting]{background:var(--dshc-mark)}',
   '.dshc-seg[data-segment="needs you"]{background:var(--dshc-warn-mark);box-shadow:inset 0 0 0 1px var(--dshc-warn)}',
   '.dshc-seg[data-segment=ready]{box-shadow:inset 0 0 0 1px var(--dshc-ok-mark)}',
   '.dshc-seg[data-segment=blocked]{border:1px dashed var(--dshc-mark)}',
-  '.dshc-seg[data-segment=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) center/100% 1px no-repeat}',
-  '.dshc-fill{display:block;height:6px;width:100%;border-radius:2px;overflow:hidden;background:var(--dshc-border);margin:4px 0 2px}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
+  // A 1 px line at a whole pixel (3 px down of 8), not center, which falls on 3.5 px.
+  '.dshc-seg[data-segment=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat}',
+  // The continuous bar: the same height and round ends.
+  '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
   '.dshc-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;gap:6px}',
   '.dshc-empty p{margin:0}.dshc-empty-t{font-weight:500}.dshc-empty-s{font-size:12px;line-height:16px;color:var(--dshc-s);max-width:280px}',
   '.dshc-msg{padding:12px;color:var(--dshc-s);overflow-wrap:anywhere}',
@@ -136,15 +146,14 @@ const CSS = [
   // segments become the 32 px continuous fill and the count drops "· 1 dropped";
   // a needs-you strip drops the bar there. Below 380 px no bar shows. The focus
   // takes the rest and ellipsizes only at its end. Count, Copy command and
-  // Board › never shrink. The strip's tooltip has the full text.
-  '.dshc-strip .dshc-bar{flex:0 1000 auto;margin:0;height:6px}',
-  '.dshc-strip .dshc-bar .dshc-seg{min-width:3px}',
-  '.dshc-strip .dshc-fill{flex:0 1000 72px;min-width:32px;margin:0}',
-  '.dshc-strip .dshc-alt{display:none}',
-  '@container dshc-strip (max-width:460px){.dshc-strip .dshc-bar,.dshc-strip .dshc-more,.dshc-strip[data-kind="needs you"] .dshc-fill{display:none}.dshc-strip .dshc-alt{display:block}}',
+  // Board › never shrink. The strip's tooltip has the full text. A bar squeezed
+  // below its segments' 10 px each is the continuous fill (Bar).
+  '.dshc-strip .dshc-barbox{flex:0 1000 auto;min-width:32px;margin:0}',
+  '.dshc-strip .dshc-alt{flex:0 1000 72px;display:none}',
+  '@container dshc-strip (max-width:460px){.dshc-strip .dshc-barbox[data-alt],.dshc-strip .dshc-more,.dshc-strip[data-kind="needs you"] .dshc-barbox{display:none}.dshc-strip .dshc-alt{display:block}}',
   '.dshc-strip .dshc-key{color:var(--dshc-t);font-size:12px;font-weight:400;flex:0 0 auto;max-width:120px}',
   '@container dshc-strip (max-width:600px){.dshc-strip .dshc-key,.dshc-strip .dshc-key+.dshc-sep{display:none}}',
-  '@container dshc-strip (max-width:380px){.dshc-strip .dshc-fill{display:none}}',
+  '@container dshc-strip (max-width:380px){.dshc-strip .dshc-barbox{display:none}}',
   '.dshc-strip .dshc-sep{color:var(--dshc-t);flex:none}',
   '.dshc-strip .dshc-done,.dshc-strip .dshc-go,.dshc-strip .dshc-copy,.dshc-strip .dshc-ic{flex:none}',
   '.dshc-strip .dshc-done{color:var(--dshc-p)}',
@@ -374,16 +383,47 @@ function Mark({ mark }) {
 
 const tag = (key, cls, words, title) => h('span', { key, className: 'dshc-tag ' + cls, title }, words)
 
+const useLayout = (fn, deps) => (React.useLayoutEffect || React.useEffect)(fn, deps)
+
+/** A ref and its element's width in whole pixels (rounded down), kept by a ResizeObserver; 0 until measured. */
+function useWholeWidth() {
+  const ref = React.useRef(null)
+  const [width, setWidth] = React.useState(0)
+  useLayout(() => {
+    const el = ref.current
+    if (!el || typeof el.getBoundingClientRect !== 'function') return
+    const read = () => setWidth(wholePx(el.getBoundingClientRect().width))
+    read()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(read)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, width]
+}
+
 /**
- * The segmented bar, one segment per counted task, by shape; above 24 one
- * fill. The parent row draws it full width; the strip at a fixed width
- * (width). A segment's click goes to onSegment(item), else focuses its row.
+ * The segmented bar, one segment per counted task, by shape: its box is
+ * measured, the bar is the box's whole-pixel width, and segmentWidths splits
+ * it. Above 24 tasks (bar.continuous), or when the segments do not fit at
+ * 10 px each, or with fill, it is one continuous fill. The parent row draws it
+ * full width; the strip at its widest width, shrinking. hasAlt marks the
+ * strip's main bar that the narrow strip swaps for its alt fill. A segment's
+ * click goes to onSegment(item), else focuses its row.
  */
-function Bar({ bar, onSegment = (item, e) => showRow(item, boardOf(e)), width }) {
+function Bar({ bar, onSegment = (item, e) => showRow(item, boardOf(e)), width, fill, hasAlt, className }) {
+  const [ref, px] = useWholeWidth()
+  const n = bar.segments.length
+  const widths = px ? segmentWidths(px, n) : undefined
+  const box = (child) => h('span', { ref, className: 'dshc-barbox' + (className ? ' ' + className : ''), style: width ? { width } : undefined, 'data-alt': hasAlt ? '' : undefined }, child)
+  if (fill || bar.continuous || (px && !widths)) return box(h(Fill, { bar, px }))
   const aria = { role: 'img', 'aria-label': progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) + ' (work tasks)' }
-  if (bar.continuous) return h(Fill, { bar })
-  return h('span', { ...aria, className: 'dshc-bar', style: width ? { width } : undefined },
-    bar.segments.map((g) => h('span', { key: g.item, className: 'dshc-seg', 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip, onClick: (e) => { e.stopPropagation(); onSegment(g.item, e) } })))
+  return box(h('span', { ...aria, className: 'dshc-bar', 'data-px': widths ? '' : undefined, style: widths ? { width: px } : undefined },
+    bar.segments.map((g, i) => h('span', {
+      key: g.item, className: 'dshc-seg', 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip,
+      style: widths ? { width: widths[i], borderRadius: segmentRadius(i, n), '--dshc-half': halfFill(widths[i]) + 'px' } : { borderRadius: segmentRadius(i, n) },
+      onClick: (e) => { e.stopPropagation(); onSegment(g.item, e) },
+    }))))
 }
 
 function Meta({ c, bar, parent }) {
@@ -513,21 +553,52 @@ function dockModel(view) {
   return { ...m, count, more: m.done.slice(count.length) || undefined, line: stripText(m), tooltip: stripTitle(m) }
 }
 
-/** The bar's width in the strip at its widest: 10 px a segment, between 48 and 120 px; it shrinks to 3 px a segment. */
-const stripBarWidth = (bar) => Math.min(120, Math.max(48, bar.segments.length * 10))
+/** The bar's width in the strip at its widest: its segments at 10 px with 1 px gaps, between 48 and 120 px; squeezed below that, it is the continuous fill. */
+const stripBarWidth = (bar) => Math.min(120, Math.max(48, segmentsNeed(bar.segments.length)))
 
-/** The continuous fill: done of the open (not dropped) tasks. */
-function Fill({ bar, className }) {
+/** The continuous fill: done of the open (not dropped) tasks, in whole pixels once measured (px). */
+function Fill({ bar, px }) {
   const label = progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) + ' (work tasks)'
   const open = bar.total - bar.dropped
-  const fill = open > 0 ? Math.round((bar.done / open) * 100) : 100
-  return h('span', { role: 'img', 'aria-label': label, className: 'dshc-fill' + (className ? ' ' + className : ''), title: label }, h('span', { style: { width: fill + '%' } }))
+  const done = px ? fillWidth(px, bar.done, open) + 'px' : (open > 0 ? Math.round((bar.done / open) * 100) : 100) + '%'
+  return h('span', { role: 'img', 'aria-label': label, className: 'dshc-fill', title: label, style: px ? { width: px } : undefined }, h('span', { style: { width: done } }))
 }
 
 const sep = (key) => h('span', { key, className: 'dshc-sep', 'aria-hidden': true }, '·')
 
+/**
+ * The strip's own box in whole pixels: its width is the room (the dock, at
+ * most its max-width) rounded down, and its left edge sits on a whole pixel of
+ * the page, so the bar inside starts on one too. Measured on the dock's box,
+ * kept by a ResizeObserver and window resizes; until then the CSS centres it.
+ */
+function useWholeStrip() {
+  const ref = React.useRef(null)
+  const [snap, setSnap] = React.useState(undefined)
+  useLayout(() => {
+    const el = ref.current
+    const box = el && el.parentElement
+    if (!box || typeof box.getBoundingClientRect !== 'function' || typeof getComputedStyle !== 'function') return
+    const read = () => {
+      const r = box.getBoundingClientRect()
+      const max = parseFloat(getComputedStyle(el).maxWidth)
+      const width = wholePx(Number.isFinite(max) ? Math.min(r.width, max) : r.width)
+      const left = Math.round(r.left + (r.width - width) / 2) - r.left
+      setSnap((s) => (s && s.width === width && s.left === left ? s : { width, left }))
+    }
+    read()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(read)
+    observer.observe(box)
+    addEventListener('resize', read)
+    return () => { observer.disconnect(); removeEventListener('resize', read) }
+  }, [])
+  return [ref, snap]
+}
+
 /** The strip (pure render; exported for tests). openBoard(item?) opens the Board tab at that row. */
 function StripView({ m, openBoard }) {
+  const [ref, snap] = useWholeStrip()
   const open = (item) => (e) => { if (e && e.stopPropagation) e.stopPropagation(); if (openBoard) openBoard(item) }
   const go = h('button', { key: 'go', type: 'button', className: 'dshc-go', onClick: open(m.item) }, 'Board ›')
   const parts = m.kind === 'needs you'
@@ -552,12 +623,13 @@ function StripView({ m, openBoard }) {
     // A div, not a button: the segments and buttons inside take their own clicks.
     // The tooltip carries the full text, whatever the width cuts.
     h('div', {
+      ref, style: snap ? { width: snap.width, marginLeft: snap.left, marginRight: 0 } : undefined,
       className: 'dshc-strip', role: 'button', tabIndex: 0, 'aria-label': m.line, title: m.tooltip, 'data-kind': m.kind, onClick: open(m.item),
       onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(m.item)() } },
     },
-      h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: stripBarWidth(m.bar) }),
+      h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: m.bar.continuous ? 72 : stripBarWidth(m.bar), hasAlt: !m.bar.continuous }),
       // The narrow strip's bar, shown by the container query instead of the segments.
-      m.bar.continuous ? null : h(Fill, { bar: m.bar, className: 'dshc-alt' }),
+      m.bar.continuous ? null : h(Bar, { bar: m.bar, fill: true, className: 'dshc-alt' }),
       parts))
 }
 
@@ -683,4 +755,4 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, BoardView, StripView, dockModel, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, BoardView, StripView, Bar, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
