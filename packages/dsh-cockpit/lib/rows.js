@@ -1,6 +1,6 @@
 // What each board row says: one model shared by the tree text (lib/tree.js),
-// the reader and the Board panel (a later step inlines this file into the
-// client). Pure, with no imports, so it can be inlined.
+// the reader and the Board tab (client/build.mjs inlines this file into
+// client/client.js). Pure, with no imports, so it can be inlined.
 
 const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
 const same = (a, b) => a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase()
@@ -319,3 +319,183 @@ export const progressText = (p) => p.done + ' of ' + p.total + ' done' +
 
 /** "blocked by #884 (waiting), #885 (now)". */
 export const blockedText = (blockedBy) => 'blocked by ' + blockedBy.map((b) => b.ref + ' (' + b.status + ')').join(', ')
+
+// ---- What the Board tab shows (design 6, C · Outline, refined) ----
+
+/** The row's status mark by shape: a check, a ring, an info dot, a grey dot, a dash. */
+export const STATUS_MARK = { done: 'check', next: 'ring', now: 'dot-now', waiting: 'dot-waiting', dropped: 'dash' }
+
+/**
+ * A reference as a title shows it: "#12" when "owner/repo#12" is in the
+ * repository of the board's parent reference, "repo#12" when it is in
+ * another; anything else as stored. The link and its tooltip keep the full one.
+ * @param {string|undefined} ref
+ * @param {string} [parent] the board's parent reference
+ */
+export function shortRef(ref, parent) {
+  const r = text(ref)
+  if (!r) return undefined
+  const full = REPO_REF.exec(r)
+  if (!full) return r
+  const home = REPO_REF.exec(text(parent) ?? '')
+  if (home && home[1].toLowerCase() === full[1].toLowerCase()) return '#' + full[2]
+  return full[1].slice(full[1].indexOf('/') + 1) + '#' + full[2]
+}
+
+/**
+ * The title in two parts: the issue (full, and short for display) and the
+ * rest of what. what that already leads with its issue, as a word, is not
+ * repeated: { issue: '#883', ref: '#883', what: 'effort' }.
+ */
+export function titleParts(task, parent) {
+  const what = String(task.what ?? '')
+  const issue = text(task.issue)
+  if (!issue) return { what }
+  const leads = what === issue || (what.startsWith(issue) && /^\s/.test(what.slice(issue.length)))
+  return { issue, ref: shortRef(issue, parent), what: leads ? what.slice(issue.length).trim() : what }
+}
+
+/** "PR #892" from "#892", "o/r#892" or a URL ending in "/892"; "PR" for anything else. */
+export function prText(pr) {
+  const v = text(pr)
+  if (!v) return undefined
+  const n = /[#/](\d+)\/?$/.exec(v)
+  return n ? 'PR #' + n[1] : 'PR'
+}
+
+/** The meta line's label for a note; nextAction shows as written, with no label. */
+const NOTE_LABEL = { next: '', why: 'Reason: ', 'start when': 'Start when: ' }
+/** The detail grid's key for each note. */
+const DETAIL_KEY = { next: 'Next', why: 'Reason', 'start when': 'Start when' }
+
+/**
+ * One row's cells in the fixed columns (id · status · title · PR · chevron),
+ * from a boardRows() row and its boardFlags():
+ * - parent: a top row with children, drawn as the parent row (progress, no status);
+ * - mark: STATUS_MARK; wrap: open titles wrap, closed ones truncate;
+ * - indent: 16 px steps in the title cell below the parent row; elbow from depth 2;
+ * - pr: "PR #892", linked by prUrl when there is one;
+ * - line: the one meta line of an open row not in Needs you: "Waiting on CI"
+ *   on a row waiting on someone other than the owner, else its first note
+ *   (nextAction as written, "Start when: …", "Reason: …");
+ * - blockedBy, ready, needsYou; problems: each flag's text, in place;
+ * - reported: the drift tag ("reported: done") and its note;
+ * - detail: [{ key, value, mono }] (the other notes, waiting on, model, branch, worktree);
+ * - command: the ready command, unless the row is in Needs you (its card has it);
+ * - expandable: detail, a command or a drift note to show.
+ * @param {ReturnType<typeof boardRows>[number]} row
+ * @param {object[]} [flags]
+ */
+export function rowCells(row, flags = []) {
+  const parent = Boolean(row.progress) && row.depth === 0
+  const other = row.waitingOn && row.waitingOn.toLowerCase() !== 'owner' ? row.waitingOn : undefined
+  const waitsOn = row.status === 'waiting' && other ? other : undefined
+  const open = !row.closed && !row.needsYou
+  const line = open && waitsOn ? 'Waiting on ' + waitsOn
+    : open && row.line ? NOTE_LABEL[row.lineLabel] + row.line : undefined
+  const notesLeft = row.line && (!line || waitsOn) ? [{ label: row.lineLabel, text: row.line }, ...row.others] : row.others
+  const detail = notesLeft.map((n) => ({ key: DETAIL_KEY[n.label] ?? n.label, value: n.text, mono: false }))
+  if (other && !waitsOn) detail.push({ key: 'Waiting on', value: other, mono: false })
+  if (row.model) detail.push({ key: 'Model', value: row.model, mono: true })
+  if (row.branch) detail.push({ key: 'Branch', value: row.branch, mono: true })
+  if (row.worktree) detail.push({ key: 'Worktree', value: row.worktree, mono: true })
+  if (row.reported?.note) detail.push({ key: 'Reported', value: row.reported.status + ': ' + row.reported.note, mono: false })
+  const command = row.needsYou ? undefined : row.readyCommand
+  return {
+    item: row.item,
+    parent,
+    status: parent ? undefined : row.status,
+    mark: parent ? undefined : STATUS_MARK[row.status] ?? 'dot-waiting',
+    wrap: !row.closed,
+    indent: parent ? 0 : Math.max(0, row.depth - 1),
+    elbow: !parent && row.depth >= 2,
+    pr: prText(row.pr),
+    prUrl: row.prUrl,
+    progress: parent ? row.progress : undefined,
+    line,
+    needsYou: row.needsYou,
+    blockedBy: row.blockedBy,
+    ready: row.ready,
+    problems: flags.map((f) => { const t = flagText(f); return t.charAt(0).toUpperCase() + t.slice(1) }),
+    reported: row.reported ? { text: reportedText(row.reported), note: row.reported.note } : undefined,
+    detail,
+    command,
+    expandable: detail.length > 0 || Boolean(command),
+  }
+}
+
+/** Above this many work tasks the bar is one continuous fill: segments get too thin. */
+export const SEGMENT_MAX = 24
+
+/** A segment's kind: done, dropped, 'needs you', now, ready (next and every dependency closed), blocked (other next) or waiting. */
+export const segmentKind = (r) => r.done ? 'done' : r.dropped ? 'dropped' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now'
+  : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
+
+/**
+ * The parent row's thin bar: one segment per child of that row, in tree
+ * order, the same tasks its progress text counts, so the bar and "2 of 8
+ * done" always agree. Each is { item, kind, tooltip }; kind is segmentKind()
+ * of the child's own status (a child with children of its own is drawn by
+ * its status). The tooltip is the title and what the kind means: "#887 Live
+ * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
+ * on CI". continuous: more than SEGMENT_MAX children.
+ * @param {{tasks: object[]}} board
+ * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
+ * @param {string} item the parent row's item
+ */
+export function boardSegments(board, rows, item) {
+  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
+  const byItem = new Map()
+  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  const at = rows.findIndex((r) => r.item === item)
+  const children = []
+  if (at >= 0) {
+    for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
+  }
+  const segments = children.map((r) => {
+    const kind = segmentKind(r)
+    let said = [kind]
+    if (kind === 'now') said = ['now', modelText(byItem.get(r.item) ?? {}, ' ')]
+    else if (kind === 'waiting') said = ['waiting', r.waitingOn ? 'on ' + r.waitingOn : '']
+    else if (kind === 'blocked') {
+      const deps = Array.isArray(byItem.get(r.item)?.dependsOn) ? byItem.get(r.item).dependsOn : []
+      const unknown = deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)")
+      const blockers = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
+      said = [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
+    }
+    return { item: r.item, kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
+  })
+  return {
+    segments,
+    continuous: children.length > SEGMENT_MAX,
+    done: children.filter((r) => r.done).length,
+    dropped: children.filter((r) => r.dropped).length,
+    total: children.length,
+  }
+}
+
+/**
+ * The header's drift line, from the board's last drift check and its rows:
+ * { kind: 'not run' } | { kind: 'failed', error, at } | { kind: 'matches'|'differs', count, at }.
+ * count is the rows still tagged "reported: …".
+ */
+export function driftState(drift, rows) {
+  if (!drift || typeof drift !== 'object') return { kind: 'not run' }
+  const at = typeof drift.checkedAt === 'string' ? drift.checkedAt : undefined
+  if (drift.error !== undefined) return { kind: 'failed', error: typeof drift.error === 'string' ? drift.error : JSON.stringify(drift.error), at }
+  const count = rows.filter((r) => r.reported).length
+  return { kind: count ? 'differs' : 'matches', count, at }
+}
+
+/** "not run yet", "failed", "matches", "1 differs", "2 differ". */
+export function driftWords(state) {
+  if (state.kind === 'not run') return 'not run yet'
+  if (state.kind === 'failed' || state.kind === 'matches') return state.kind
+  return state.count + (state.count === 1 ? ' differs' : ' differ')
+}
+
+/** What the tab shows with no board: the design's title and one line. */
+export const EMPTY_STATE = {
+  title: 'No board in this session',
+  line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
+}

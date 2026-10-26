@@ -2,7 +2,7 @@
 
 A durable task board for a DeepSeek Harness hub session: the session that coordinates builders across many pull requests. A board is a tree of steps, each linked to its work by free-form fields, and it is kept as one local JSON file that other processes can read.
 
-**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools and its read routes, and runs the optional drift check; the web panel follows in a later pull request.
+**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools, its read routes and the web GUI's Board tab, and runs the optional drift check; the progress strip and the chat tool cards follow in a later pull request.
 
 ## What is here
 
@@ -15,7 +15,14 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
 - `lib/route.js`: the read routes for the Cockpit tab, `GET` and `HEAD` only, registered inside `ctx.inject(['connection'], …)` as exact Fetch routes on the host connection, which answers 403 to any Peer that is not the owner. Nothing registers on the raw web server. `route.enabled: false` registers none.
   - `/api/dsh-cockpit/boards`: `{ boards }`, the keys in the folder.
   - `/api/dsh-cockpit/board?key=K`: the board file as stored; 404 for an unknown key.
-  - `/api/dsh-cockpit/view?sessionId=S`: `{ key, board, tree, flags, problems, driftConfigured }` for the session's bound board, else `{ key: null, boards }`. A bound board that is missing, unreadable or cannot be drawn comes back as `{ key, error }`. An unexpected read error is a 500 that names its code, not its paths.
+  - `/api/dsh-cockpit/view?sessionId=S`: `{ key, board, tree, flags, problems, driftConfigured, links }` for the session's bound board, `links` being the profile's non-empty link patterns, else `{ key: null, boards }`. A bound board that is missing, unreadable or cannot be drawn comes back as `{ key, error }`. An unexpected read error is a 500 that names its code, not its paths.
+- `client/client.js` (`./client`, `dsh.client` with `platform: 'web'`): the Board tab in the web GUI's right sidebar, read-only. Built from `client/src/panel.js` and `client/src/command-box.js` by `node client/build.mjs`, which inlines `lib/rows.js`, so the tab and the tree text share their rules; a test fails when the committed file is not what the sources build. The tab polls the view route every 2 s and shows:
+  - a header with the key and parent, the revision and time, and the drift line ("Drift: 1 differs · 16:40") when drift is configured or has run;
+  - **Needs you**: one card per open task whose `waitingOn` is `owner`, with its next action as written, an "Open PR" link and the ready command with Copy;
+  - **Board data problems**, each naming its reference, with ↓ to the row;
+  - the rows in tree order and fixed columns (id · status · title · PR · chevron): status by shape and word (done a check, next a ring, now an info dot, waiting a grey dot, dropped a dash with the title struck through), one meta line (the next action as written, "Waiting on CI", "Start when: …"), "Blocked by …", "ready", "reported: done", and an expandable detail with the reason, start condition, model, branch, worktree and command;
+  - on the parent row, the progress in words (dropped counted apart) and a thin bar with one segment per task that text counts (the row's children), each kind its own shape.
+  Titles show `#12` for the board parent's repository and `repo#12` for another, with the full reference in the link and its tooltip. Board text is rendered only as text; only `http(s)` URLs become links, opening in a new tab. The tab runs no command and writes nothing.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
 - `lib/present.js`: one-line titles for the tool cards.
 - `cordis.patch.yml`: the bundle patch (`dsh.bundle.patch`).
@@ -37,7 +44,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
     tools: { enabled: true }      # false: register no tools
     route: { enabled: true }      # false: no routes, so no panel data
     drift: { command: '', cwd: '', mode: report }   # mode: report | apply; empty command: no check
-    links: { issue: '', pr: '' }  # URL patterns with {ref}, {repo}, {number}; empty: only full URLs link
+    links: { issue: '', pr: '' }  # URL patterns with {ref}, {repo}, {number}; empty: only full URLs link, in the Board tab too
 ```
 
 A profile patch with the same id replaces the whole config, so it restates the fields it keeps. For example, a profile on GitHub sets `links: { issue: 'https://github.com/{repo}/issues/{number}', pr: 'https://github.com/{repo}/pull/{number}' }`; `{repo}` comes from `owner/repo#12`, or for `#12` from the board's parent reference.
@@ -60,6 +67,7 @@ The peers are `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths`, which 
 
 ```sh
 pnpm test
+node client/build.mjs   # after changing client/src or lib/rows.js
 ```
 
 ## License

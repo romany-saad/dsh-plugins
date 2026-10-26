@@ -6,7 +6,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { listBoards } from '../reader.js'
-import { driftConfigured } from './config.js'
+import { driftConfigured, linkOptions } from './config.js'
 import { BoardError, boardFile, createStore, parseBoard } from './store.js'
 import { boardTree } from './tree.js'
 
@@ -66,10 +66,12 @@ function viewError(key, error) {
  * The three handlers over one data directory ($DSH_HOME/data/dsh-cockpit),
  * by path. They only read: no handler writes a file.
  * @param {string} dataDir
- * @param {{ drift?: boolean }} [options] drift: whether a drift command is configured
+ * @param {{ drift?: boolean, links?: { issue?: string, pr?: string } }} [options]
+ *   drift: whether a drift command is configured; links: the profile's link
+ *   patterns (linkOptions), which the tab passes to boardRows
  * @returns {Record<string, (request: Request) => Promise<Response>>}
  */
-export function createRouteHandlers(dataDir, { drift = false } = {}) {
+export function createRouteHandlers(dataDir, { drift = false, links = {} } = {}) {
   const store = createStore({ dataDir })
   return {
     [ROUTES.boards]: async () => json({ boards: await listBoards(dataDir) }),
@@ -83,7 +85,8 @@ export function createRouteHandlers(dataDir, { drift = false } = {}) {
       return new Response(text, { headers: { ...HEADERS, 'content-type': 'application/json; charset=utf-8' } })
     },
 
-    // The session's bound board with its tree, flags and problems; else the
+    // The session's bound board with its tree, flags and problems, and the
+    // link patterns the tab draws its links with; else the
     // board list. A bound board that is missing, or that cannot be read or
     // drawn, is reported in the answer, so the tab can say so.
     [ROUTES.view]: async (request) => {
@@ -101,7 +104,7 @@ export function createRouteHandlers(dataDir, { drift = false } = {}) {
         return json({ key, error: viewError(key, error) })
       }
       const { tree, flags, problems } = drawn
-      return json({ key, board, tree, flags, problems, driftConfigured: drift })
+      return json({ key, board, tree, flags, problems, driftConfigured: drift, links })
     },
   }
 }
@@ -116,7 +119,7 @@ export function createRouteHandlers(dataDir, { drift = false } = {}) {
  * @param {{ dataDir: string, config: ReturnType<typeof import('./config.js').resolveConfig> }} options
  */
 export function registerRoutes(ctx, { dataDir, config }) {
-  const handlers = createRouteHandlers(dataDir, { drift: driftConfigured(config) })
+  const handlers = createRouteHandlers(dataDir, { drift: driftConfigured(config), links: linkOptions(config).links })
   for (const [path, handle] of Object.entries(handlers)) {
     ctx.connection.fetch.register({
       path,

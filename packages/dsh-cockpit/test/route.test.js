@@ -93,7 +93,8 @@ test('boards: the keys in the folder; none when the folder does not exist', asyn
 test('view: a bound session gets its board, tree, flags, problems and whether drift is configured', async () => {
   const { routes, dataDir } = await home()
   const v = await (await routes[ROUTES.view](get(ROUTES.view, '?sessionId=s1'))).json()
-  assert.deepEqual(Object.keys(v), ['key', 'board', 'tree', 'flags', 'problems', 'driftConfigured'])
+  assert.deepEqual(Object.keys(v), ['key', 'board', 'tree', 'flags', 'problems', 'driftConfigured', 'links'])
+  assert.deepEqual(v.links, {})
   assert.equal(v.key, 'bosla-883')
   assert.deepEqual(v.board, BOARD)
   const expected = boardTree(BOARD)
@@ -159,12 +160,21 @@ test('the owner reads the view through the connection; HEAD gives the status and
   const v = await (await request(ROUTES.view + '?sessionId=s1')).json()
   assert.equal(v.key, 'bosla-883')
   assert.equal(v.driftConfigured, true)
+  assert.deepEqual(v.links, {}, 'empty patterns are left out')
   assert.equal(await (await request(ROUTES.board + '?key=bosla-883')).text(), text)
   const head = await request(ROUTES.board + '?key=bosla-883', { method: 'HEAD' })
   assert.equal(head.status, 200)
   assert.equal(head.headers.get('content-type'), 'application/json; charset=utf-8')
   assert.equal(await head.text(), '')
   assert.equal((await request(ROUTES.board + '?key=nope', { method: 'HEAD' })).status, 404)
+  await fork.dispose()
+})
+
+test('view: the profile\'s link patterns come with the board, so the tab links as the config says', async () => {
+  const links = { issue: 'https://github.com/{repo}/issues/{number}', pr: '' }
+  const { request, fork } = await mounted({ links })
+  const v = await (await request(ROUTES.view + '?sessionId=s1')).json()
+  assert.deepEqual(v.links, { issue: links.issue })
   await fork.dispose()
 })
 
