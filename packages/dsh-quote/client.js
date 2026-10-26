@@ -229,7 +229,8 @@ window.__ModuleLoader__.load({
   border:.5px solid var(--dsw-alias-border-l2,rgba(127,127,127,.3));font:13px/20px var(--dsw-font-family,system-ui);
   color:var(--dsw-alias-label-primary,#eee)}
 .dshq-pop blockquote{margin:0 0 8px;padding:2px 8px;border-left:3px solid var(--dsw-alias-state-business-primary,#4c6ef5);
-  color:var(--dsw-alias-label-secondary,#aaa);max-height:72px;overflow:hidden;white-space:pre-wrap}
+  color:var(--dsw-alias-label-secondary,#aaa);white-space:pre-wrap;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .dshq-pop textarea{box-sizing:border-box;width:100%;min-height:64px;resize:vertical;padding:6px 8px;border-radius:8px;
   border:.5px solid var(--dsw-alias-border-l4,rgba(127,127,127,.4));background:transparent;color:inherit;font:inherit;outline:none}
 .dshq-pop .dshq-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}

@@ -9,4 +9,4 @@ The first release.
 - **Hover and edit.** Hovering a chip shows the full passage and note. Clicking it opens the box to edit the note, remove the quote, or cancel.
 - **What the model receives.** At send time each chip becomes a `<quote>` block, with a `<note>` when there is one. If that fails, the send is blocked and the draft is kept.
 - **Sent messages.** Your sent message shows the quotes as cards: three lines of the passage, expandable with a click, and the note under it.
-- **Built on DSH extension points** (DSH 0.2.x): a reference source with a codec, the conversation input facade, a user-text rule and its node slot. The plugin never edits nodes the host renders.
+- **Requires** DSH 0.2.1-rc.2 or later and a profile with the web GUI.
