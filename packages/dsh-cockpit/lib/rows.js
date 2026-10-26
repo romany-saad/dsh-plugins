@@ -413,7 +413,7 @@ export function rowCells(row, flags = []) {
     prUrl: row.prUrl,
     progress: parent ? row.progress : undefined,
     line,
-    needsYou: !row.closed && row.needsYou,
+    needsYou: row.needsYou,
     blockedBy: row.blockedBy,
     ready: row.ready,
     problems: flags.map((f) => { const t = flagText(f); return t.charAt(0).toUpperCase() + t.slice(1) }),
@@ -427,40 +427,50 @@ export function rowCells(row, flags = []) {
 /** Above this many work tasks the bar is one continuous fill: segments get too thin. */
 export const SEGMENT_MAX = 24
 
+/** A segment's kind: done, dropped, 'needs you', now, ready (next and every dependency closed), blocked (other next) or waiting. */
+export const segmentKind = (r) => r.done ? 'done' : r.dropped ? 'dropped' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now'
+  : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
+
 /**
- * The thin bar: one segment per work task (a task with no children on the
- * board), in tree order, { item, kind, tooltip }. kind is done, dropped,
- * 'needs you', now, waiting, ready (next, every dependency on the board and
- * closed) or blocked (any other next). The tooltip is the title and what the
- * kind means: "#887 Live checks · blocked by #886 (waiting)", "… · now · opus
- * high", "… · waiting · on CI". continuous: more than SEGMENT_MAX work tasks.
- * done, dropped and total count the work tasks.
- * @param {{tasks: object[], parent?: string}} board
+ * The parent row's thin bar: one segment per child of that row, in tree
+ * order, the same tasks its progress text counts, so the bar and "2 of 8
+ * done" always agree. Each is { item, kind, tooltip }; kind is segmentKind()
+ * of the child's own status (a child with children of its own is drawn by
+ * its status). The tooltip is the title and what the kind means: "#887 Live
+ * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
+ * on CI". continuous: more than SEGMENT_MAX children.
+ * @param {{tasks: object[]}} board
+ * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
+ * @param {string} item the parent row's item
  */
-export function boardSegments(board) {
+export function boardSegments(board, rows, item) {
   const tasks = Array.isArray(board?.tasks) ? board.tasks : []
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  const work = boardRows(board).filter((r) => !r.progress)
-  const segments = work.map((r) => {
-    const task = byItem.get(r.item)
-    const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
-    const waits = r.status === 'next' || r.status === 'waiting'
-    const unknown = waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : []
-    const blockers = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
-    const kind = r.done ? 'done' : r.dropped ? 'dropped' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now'
-      : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
-    const said = kind === 'now' ? ['now', modelText(task, ' ')]
-      : kind === 'waiting' ? ['waiting', r.waitingOn ? 'on ' + r.waitingOn : '']
-      : kind === 'blocked' ? [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
-      : [kind]
+  const byItem = new Map()
+  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  const at = rows.findIndex((r) => r.item === item)
+  const children = []
+  if (at >= 0) {
+    for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
+  }
+  const segments = children.map((r) => {
+    const kind = segmentKind(r)
+    let said = [kind]
+    if (kind === 'now') said = ['now', modelText(byItem.get(r.item) ?? {}, ' ')]
+    else if (kind === 'waiting') said = ['waiting', r.waitingOn ? 'on ' + r.waitingOn : '']
+    else if (kind === 'blocked') {
+      const deps = Array.isArray(byItem.get(r.item)?.dependsOn) ? byItem.get(r.item).dependsOn : []
+      const unknown = deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)")
+      const blockers = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
+      said = [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
+    }
     return { item: r.item, kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
   })
   return {
     segments,
-    continuous: work.length > SEGMENT_MAX,
-    done: work.filter((r) => r.done).length,
-    dropped: work.filter((r) => r.dropped).length,
-    total: work.length,
+    continuous: children.length > SEGMENT_MAX,
+    done: children.filter((r) => r.done).length,
+    dropped: children.filter((r) => r.dropped).length,
+    total: children.length,
   }
 }
 

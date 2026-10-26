@@ -265,7 +265,7 @@ test('rowCells: the parent row has progress and no status; a problem names its r
   assert.deepEqual([c[1].indent, c[1].elbow, c[2].indent, c[2].elbow], [0, false, 1, true])
 })
 
-test('boardSegments: one per work task, a kind per shape, tooltips that say why', () => {
+test('boardSegments: one per child of the parent row, a kind per shape, tooltips that say why', () => {
   const tasks = [
     t('r', 'now', 'root'),
     t('1', 'done', 'a', { parent: 'r' }),
@@ -276,16 +276,34 @@ test('boardSegments: one per work task, a kind per shape, tooltips that say why'
     t('6', 'next', 'f', { parent: 'r', dependsOn: ['3', 'ghost'] }),
     t('7', 'dropped', 'g', { parent: 'r' }),
   ]
-  const s = boardSegments({ tasks })
+  const s = boardSegments({ tasks }, boardRows({ tasks }), 'r')
   assert.deepEqual(s.segments.map((g) => g.kind), ['done', 'now', 'waiting', 'needs you', 'ready', 'blocked', 'dropped'])
   assert.equal(new Set(s.segments.map((g) => g.kind)).size, 7, 'blocked and waiting differ')
   assert.equal(s.segments[1].tooltip, 'b · now · opus high')
   assert.equal(s.segments[2].tooltip, 'c · waiting · on CI')
   assert.equal(s.segments[5].tooltip, "f · blocked by 3 (waiting), 'ghost' (not on the board)")
   assert.deepEqual([s.done, s.dropped, s.total, s.continuous], [1, 1, 7, false])
-  const many = Array.from({ length: SEGMENT_MAX + 1 }, (_, i) => t(String(i), 'next', 'w'))
-  assert.equal(boardSegments({ tasks: many }).continuous, true)
-  assert.equal(boardSegments({ tasks: many.slice(1) }).continuous, false)
+  const many = [t('r', 'now', 'r'), ...Array.from({ length: SEGMENT_MAX + 1 }, (_, i) => t(String(i), 'next', 'w', { parent: 'r' }))]
+  assert.equal(boardSegments({ tasks: many }, boardRows({ tasks: many }), 'r').continuous, true)
+  const fewer = many.slice(0, -1)
+  assert.equal(boardSegments({ tasks: fewer }, boardRows({ tasks: fewer }), 'r').continuous, false)
+})
+
+test('boardSegments counts what the parent row\'s progress counts: a now child with children is a now segment', () => {
+  // The live board's shape: #888 is now, with a done child #889, and a task outside the root.
+  const tasks = [
+    t('883', 'now', 'root'),
+    t('1', 'done', 'a', { parent: '883' }),
+    t('3', 'now', 'b', { parent: '883' }),
+    t('3b', 'done', 'c', { parent: '3' }),
+    t('9', 'done', 'apart'),
+  ]
+  const rows = boardRows({ tasks })
+  const s = boardSegments({ tasks }, rows, '883')
+  assert.deepEqual(s.segments.map((g) => [g.item, g.kind]), [['1', 'done'], ['3', 'now']])
+  const p = rows.find((r) => r.item === '883').progress
+  assert.deepEqual([s.done, s.dropped, s.total], [p.done, p.dropped, p.total], 'the bar and the text agree')
+  assert.deepEqual(boardSegments({ tasks }, rows, 'nope').segments, [])
 })
 
 test('driftState and driftWords: not run, failed, matches, differs', () => {

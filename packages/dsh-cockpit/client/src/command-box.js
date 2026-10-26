@@ -48,7 +48,7 @@ export function makeCommandBox(React) {
   const h = React.createElement
   function useCopy(text) {
     const [state, setState] = React.useState('idle')
-    const timer = React.useRef ? React.useRef(undefined) : { current: undefined }
+    const timer = React.useRef(undefined)
     React.useEffect(() => () => clearTimeout(timer.current), [])
     const copy = (e) => {
       if (e && e.stopPropagation) e.stopPropagation()

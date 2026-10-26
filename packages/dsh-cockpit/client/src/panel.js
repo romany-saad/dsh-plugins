@@ -12,7 +12,8 @@ const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { CommandBox } = makeCommandBox(React)
 const h = React.createElement
 
-const ID = '@romany-saad/dsh-cockpit'
+// The package name, which client/build.mjs defines from package.json.
+const ID = __packageId
 const KIND = 'dsh-cockpit-board'
 const POLL_MS = 2000
 // Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
@@ -153,26 +154,30 @@ function Link({ url, title, className, children }) {
 }
 
 // ---- The view: polled every 2 s ----
+// One request at a time: the next poll starts POLL_MS after the last answer,
+// so an older answer never overwrites a newer one. The state is kept per
+// session, so another session's board never shows while the first poll runs.
 function useView(sessionId) {
   const [state, setState] = React.useState({ loading: true })
   React.useEffect(() => {
     let stopped = false
-    let controller
+    let timer
+    const controller = new AbortController()
     const load = async () => {
-      controller = new AbortController()
       try {
         const res = await fetch(VIEW + '?sessionId=' + encodeURIComponent(sessionId), { signal: controller.signal, cache: 'no-store' })
         const body = res.headers.get('content-type')?.includes('json') ? await res.json() : { error: await res.text() }
-        if (!stopped) setState(res.ok ? { view: body } : { error: body.error || 'HTTP ' + res.status })
+        if (!stopped) setState(res.ok ? { view: body, sessionId } : { error: body.error || 'HTTP ' + res.status, sessionId })
       } catch (error) {
-        if (!stopped && error.name !== 'AbortError') setState({ error: String(error.message || error) })
+        if (stopped || error.name === 'AbortError') return
+        setState({ error: String(error.message || error), sessionId })
       }
+      if (!stopped) timer = setTimeout(load, POLL_MS)
     }
     load()
-    const timer = setInterval(load, POLL_MS)
-    return () => { stopped = true; clearInterval(timer); controller?.abort() }
+    return () => { stopped = true; clearTimeout(timer); controller.abort() }
   }, [sessionId])
-  return state
+  return state.sessionId === undefined || state.sessionId === sessionId ? state : { loading: true }
 }
 
 /** The clock for relative times: it ticks once a minute, not on every refresh. */
@@ -192,18 +197,23 @@ function clockText(iso, now = Date.now()) {
   const sameDay = at.getFullYear() === today.getFullYear() && at.getMonth() === today.getMonth() && at.getDate() === today.getDate()
   return sameDay ? clock : at.getFullYear() + '-' + pad2(at.getMonth() + 1) + '-' + pad2(at.getDate()) + ' ' + clock
 }
-/** "15:22 · 2 min ago". */
+/**
+ * "15:22 · 2 min ago". now is the minute clock, so a board changed since its
+ * last tick (up to a minute "ahead") is "just now"; only a time more than a
+ * minute ahead, such as another machine's clock, is "in the future".
+ */
 function whenText(iso, now = Date.now()) {
   const at = new Date(iso)
   if (!iso || Number.isNaN(at.getTime())) return iso ? String(iso) : ''
   const s = Math.round((now - at.getTime()) / 1000)
-  const ago = s < 0 ? 'in the future' : s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago'
+  const ago = s < -60 ? 'in the future' : s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago'
     : s < 86400 ? Math.floor(s / 3600) + ' h ago' : Math.floor(s / 86400) + ' d ago'
   return clockText(iso, now) + ' · ' + ago
 }
 
 /** The header's right side: "rev 33 · 15:34 · 9 min ago". */
-const headerMeta = (board, now) => ['rev ' + board.revision, board.updatedAt ? whenText(board.updatedAt, now) : ''].filter(Boolean).join(' · ')
+// A fallback hub's file may have no revision or updatedAt: each is shown only when present.
+const headerMeta = (board, now) => [Number.isInteger(board.revision) ? 'rev ' + board.revision : '', typeof board.updatedAt === 'string' ? whenText(board.updatedAt, now) : ''].filter(Boolean).join(' · ')
 
 /** "Drift: 1 differs · 16:40", "Drift: matches · 16:40", "Drift: not run yet". */
 function driftLine(state, now) {
@@ -337,7 +347,7 @@ function TaskRow({ boardKey, parent, row, task, flags, bar }) {
   const isOpen = c.expandable && open
   const cls = 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.closed ? ' dshc-closed' : '') + (row.dropped ? ' dshc-dropped' : '')
   return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
-    h('div', { className: 'dshc-row', onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
+    h('div', { className: 'dshc-row', onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
       h('span', { className: 'dshc-mono dshc-cid', title: row.item }, row.item),
       h('span', { className: 'dshc-cst' }, c.mark ? h(Mark, { mark: c.mark }) : null, c.status ? h('span', null, c.status) : null),
       h('span', { className: 'dshc-ct' },
@@ -364,21 +374,25 @@ function BoardView({ view, now }) {
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
   const links = view.links && typeof view.links === 'object' ? view.links : {}
   const rows = boardRows(board, { links })
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  // Flags and problems from the shared rules, so the tab and the hub's text agree.
-  const flags = boardFlags(tasks)
+  // The first task of an item, as the rows draw it, should a hand-edited file repeat one.
+  const byItem = new Map()
+  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  // The route's flags and problems, drawn by the same rules as the hub's text; computed here only without them.
+  const flags = Array.isArray(view.flags) ? view.flags : boardFlags(tasks)
+  const list = Array.isArray(view.problems) ? view.problems : problems(tasks, flags)
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
-  // The thin bar sits in the board's one parent row (the root with children).
+  // The thin bar sits in the board's one parent row (the root with children)
+  // and counts that row's children, as its progress text does.
   const roots = rows.filter((r) => r.depth === 0 && r.progress)
-  const bar = roots.length === 1 ? boardSegments(board) : undefined
+  const bar = roots.length === 1 ? boardSegments(board, rows, roots[0].item) : undefined
   return h('div', null,
     h(Header, { board, view, rows, now }),
     h(NeedsYou, { board, rows, byItem }),
-    h(Problems, { list: problems(tasks, flags) }),
+    h(Problems, { list }),
     rows.length
       ? h('ul', { className: 'dshc-tree', role: 'list' }, rows.map((row) => h(TaskRow, {
-        key: row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
+        key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: bar && roots[0] === row ? bar : undefined,
       })))
       : h('p', { className: 'dshc-msg' }, 'No tasks yet.'))

@@ -113,6 +113,9 @@ test('header: key and parent left, revision and time right; the drift line only 
   const at = new Date(2026, 9, 25, 15, 22, 0)
   assert.equal(exports.headerMeta({ revision: 3, updatedAt: at.toISOString() }, at.getTime() + 9 * 60000), 'rev 3 · 15:22 · 9 min ago')
   assert.equal(exports.whenText(at.toISOString(), at.getTime() + 3 * 86400000), '2026-10-25 15:22 · 3 d ago')
+  assert.equal(exports.whenText(at.toISOString(), at.getTime() - 30000), '15:22 · just now', 'changed since the minute tick')
+  assert.equal(exports.whenText(at.toISOString(), at.getTime() - 5 * 60000), '15:22 · in the future')
+  assert.equal(exports.headerMeta({ key: 'k' }, at.getTime()), '', 'a fallback file without revision or updatedAt')
 })
 
 test('Needs you: only waitingOn owner, with the ask as written, Open PR and the command', () => {
@@ -208,7 +211,21 @@ test('the expanded row: a key/value grid with Start when, Model and the command 
   assert.ok(chev.length && chev.every((n) => n.props['aria-expanded'] === false))
 })
 
-test('the parent row: progress in words and the thin bar, one segment per work task, by shape', () => {
+test('the parent row: a now child with children is a now segment, and the bar counts what the text counts', () => {
+  const view = { key: 'k', board: { key: 'k', revision: 1, tasks: [
+    { item: 'r', what: 'root', status: 'now' },
+    { item: '1', what: 'a', status: 'done', parent: 'r' },
+    { item: '3', what: 'b', status: 'now', parent: 'r', model: 'opus', effort: 'high' },
+    { item: '3b', what: 'c', status: 'done', parent: '3' },
+  ] } }
+  const segs = nodes(view).filter((n) => 'data-segment' in n.props)
+  assert.deepEqual(segs.map((s) => [s.props['data-item'], s.props['data-segment']]), [['1', 'done'], ['3', 'now']])
+  assert.equal(segs[1].props.title, 'b · now · opus high')
+  assert.ok(render(view).includes('1 of 2 done'))
+  assert.equal(segs.filter((s) => s.props['data-segment'] === 'done').length, 1, 'as many done segments as the text counts')
+})
+
+test('the parent row: progress in words and the thin bar, one segment per child, by shape', () => {
   const all = nodes(live)
   const segs = all.filter((n) => 'data-segment' in n.props)
   assert.deepEqual(segs.map((s) => [s.props['data-item'], s.props['data-segment']]), [['1', 'needs you'], ['2', 'done'], ['5', 'blocked'], ['6b', 'waiting'], ['7', 'dropped']])
@@ -216,6 +233,9 @@ test('the parent row: progress in words and the thin bar, one segment per work t
   const { exports } = load()
   for (const kind of ['done', 'now', 'waiting', '"needs you"', 'ready', 'blocked', 'dropped']) assert.ok(exports.CSS.includes('[data-segment=' + kind + ']'), kind)
   assert.match(exports.CSS, /\[data-segment=blocked\]\{border:1px dashed/)
+  // now: the left half filled with the info accent and an info outline, never solid, never moving.
+  assert.match(exports.CSS, /\[data-segment=now\]\{background:linear-gradient\(to right,var\(--dshc-info\) 50%,transparent 50%\);box-shadow:inset 0 0 0 1px var\(--dshc-info\)\}/)
+  assert.doesNotMatch(exports.CSS, /\[data-segment=now\]\{[^}]*(animation|transition)/)
   assert.match(exports.CSS, /\[data-segment=waiting\]\{background:/)
 })
 

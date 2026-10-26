@@ -26,7 +26,7 @@ export function bundle() {
   const local = LOCAL.map((s) => JSON.stringify(s) + ': ' + inline(s)).join(',\n')
   return `// Built by client/build.mjs from client/src and lib/rows.js; do not edit.
 window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (shellRequire) => {
-var module = { exports: {} }; var exports = module.exports;
+var module = { exports: {} }; var exports = module.exports; var __packageId = ${JSON.stringify(id)};
 var __local = {
 ${local}
 };

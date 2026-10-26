@@ -1,6 +1,6 @@
 // Built by client/build.mjs from client/src and lib/rows.js; do not edit.
 window.__ModuleLoader__.load({ id: "@romany-saad/dsh-cockpit", factory: (shellRequire) => {
-var module = { exports: {} }; var exports = module.exports;
+var module = { exports: {} }; var exports = module.exports; var __packageId = "@romany-saad/dsh-cockpit";
 var __local = {
 "../../lib/rows.js": (() => {
 // What each board row says: one model shared by the tree text (lib/tree.js),
@@ -418,7 +418,7 @@ function rowCells(row, flags = []) {
     prUrl: row.prUrl,
     progress: parent ? row.progress : undefined,
     line,
-    needsYou: !row.closed && row.needsYou,
+    needsYou: row.needsYou,
     blockedBy: row.blockedBy,
     ready: row.ready,
     problems: flags.map((f) => { const t = flagText(f); return t.charAt(0).toUpperCase() + t.slice(1) }),
@@ -432,40 +432,50 @@ function rowCells(row, flags = []) {
 /** Above this many work tasks the bar is one continuous fill: segments get too thin. */
 const SEGMENT_MAX = 24
 
+/** A segment's kind: done, dropped, 'needs you', now, ready (next and every dependency closed), blocked (other next) or waiting. */
+const segmentKind = (r) => r.done ? 'done' : r.dropped ? 'dropped' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now'
+  : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
+
 /**
- * The thin bar: one segment per work task (a task with no children on the
- * board), in tree order, { item, kind, tooltip }. kind is done, dropped,
- * 'needs you', now, waiting, ready (next, every dependency on the board and
- * closed) or blocked (any other next). The tooltip is the title and what the
- * kind means: "#887 Live checks · blocked by #886 (waiting)", "… · now · opus
- * high", "… · waiting · on CI". continuous: more than SEGMENT_MAX work tasks.
- * done, dropped and total count the work tasks.
- * @param {{tasks: object[], parent?: string}} board
+ * The parent row's thin bar: one segment per child of that row, in tree
+ * order, the same tasks its progress text counts, so the bar and "2 of 8
+ * done" always agree. Each is { item, kind, tooltip }; kind is segmentKind()
+ * of the child's own status (a child with children of its own is drawn by
+ * its status). The tooltip is the title and what the kind means: "#887 Live
+ * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
+ * on CI". continuous: more than SEGMENT_MAX children.
+ * @param {{tasks: object[]}} board
+ * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
+ * @param {string} item the parent row's item
  */
-function boardSegments(board) {
+function boardSegments(board, rows, item) {
   const tasks = Array.isArray(board?.tasks) ? board.tasks : []
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  const work = boardRows(board).filter((r) => !r.progress)
-  const segments = work.map((r) => {
-    const task = byItem.get(r.item)
-    const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
-    const waits = r.status === 'next' || r.status === 'waiting'
-    const unknown = waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : []
-    const blockers = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
-    const kind = r.done ? 'done' : r.dropped ? 'dropped' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now'
-      : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
-    const said = kind === 'now' ? ['now', modelText(task, ' ')]
-      : kind === 'waiting' ? ['waiting', r.waitingOn ? 'on ' + r.waitingOn : '']
-      : kind === 'blocked' ? [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
-      : [kind]
+  const byItem = new Map()
+  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  const at = rows.findIndex((r) => r.item === item)
+  const children = []
+  if (at >= 0) {
+    for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
+  }
+  const segments = children.map((r) => {
+    const kind = segmentKind(r)
+    let said = [kind]
+    if (kind === 'now') said = ['now', modelText(byItem.get(r.item) ?? {}, ' ')]
+    else if (kind === 'waiting') said = ['waiting', r.waitingOn ? 'on ' + r.waitingOn : '']
+    else if (kind === 'blocked') {
+      const deps = Array.isArray(byItem.get(r.item)?.dependsOn) ? byItem.get(r.item).dependsOn : []
+      const unknown = deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)")
+      const blockers = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
+      said = [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
+    }
     return { item: r.item, kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
   })
   return {
     segments,
-    continuous: work.length > SEGMENT_MAX,
-    done: work.filter((r) => r.done).length,
-    dropped: work.filter((r) => r.dropped).length,
-    total: work.length,
+    continuous: children.length > SEGMENT_MAX,
+    done: children.filter((r) => r.done).length,
+    dropped: children.filter((r) => r.dropped).length,
+    total: children.length,
   }
 }
 
@@ -495,7 +505,7 @@ const EMPTY_STATE = {
   line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
 }
 
-return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, boardSegments, driftState, driftWords, EMPTY_STATE }
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, boardSegments, driftState, driftWords, EMPTY_STATE }
 })(),
 "./command-box.js": (() => {
 // CommandBox: a command in monospace with a Copy button fixed at its top right.
@@ -548,7 +558,7 @@ function makeCommandBox(React) {
   const h = React.createElement
   function useCopy(text) {
     const [state, setState] = React.useState('idle')
-    const timer = React.useRef ? React.useRef(undefined) : { current: undefined }
+    const timer = React.useRef(undefined)
     React.useEffect(() => () => clearTimeout(timer.current), [])
     const copy = (e) => {
       if (e && e.stopPropagation) e.stopPropagation()
@@ -591,7 +601,8 @@ const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { CommandBox } = makeCommandBox(React)
 const h = React.createElement
 
-const ID = '@romany-saad/dsh-cockpit'
+// The package name, which client/build.mjs defines from package.json.
+const ID = __packageId
 const KIND = 'dsh-cockpit-board'
 const POLL_MS = 2000
 // Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
@@ -732,26 +743,30 @@ function Link({ url, title, className, children }) {
 }
 
 // ---- The view: polled every 2 s ----
+// One request at a time: the next poll starts POLL_MS after the last answer,
+// so an older answer never overwrites a newer one. The state is kept per
+// session, so another session's board never shows while the first poll runs.
 function useView(sessionId) {
   const [state, setState] = React.useState({ loading: true })
   React.useEffect(() => {
     let stopped = false
-    let controller
+    let timer
+    const controller = new AbortController()
     const load = async () => {
-      controller = new AbortController()
       try {
         const res = await fetch(VIEW + '?sessionId=' + encodeURIComponent(sessionId), { signal: controller.signal, cache: 'no-store' })
         const body = res.headers.get('content-type')?.includes('json') ? await res.json() : { error: await res.text() }
-        if (!stopped) setState(res.ok ? { view: body } : { error: body.error || 'HTTP ' + res.status })
+        if (!stopped) setState(res.ok ? { view: body, sessionId } : { error: body.error || 'HTTP ' + res.status, sessionId })
       } catch (error) {
-        if (!stopped && error.name !== 'AbortError') setState({ error: String(error.message || error) })
+        if (stopped || error.name === 'AbortError') return
+        setState({ error: String(error.message || error), sessionId })
       }
+      if (!stopped) timer = setTimeout(load, POLL_MS)
     }
     load()
-    const timer = setInterval(load, POLL_MS)
-    return () => { stopped = true; clearInterval(timer); controller?.abort() }
+    return () => { stopped = true; clearTimeout(timer); controller.abort() }
   }, [sessionId])
-  return state
+  return state.sessionId === undefined || state.sessionId === sessionId ? state : { loading: true }
 }
 
 /** The clock for relative times: it ticks once a minute, not on every refresh. */
@@ -771,18 +786,23 @@ function clockText(iso, now = Date.now()) {
   const sameDay = at.getFullYear() === today.getFullYear() && at.getMonth() === today.getMonth() && at.getDate() === today.getDate()
   return sameDay ? clock : at.getFullYear() + '-' + pad2(at.getMonth() + 1) + '-' + pad2(at.getDate()) + ' ' + clock
 }
-/** "15:22 · 2 min ago". */
+/**
+ * "15:22 · 2 min ago". now is the minute clock, so a board changed since its
+ * last tick (up to a minute "ahead") is "just now"; only a time more than a
+ * minute ahead, such as another machine's clock, is "in the future".
+ */
 function whenText(iso, now = Date.now()) {
   const at = new Date(iso)
   if (!iso || Number.isNaN(at.getTime())) return iso ? String(iso) : ''
   const s = Math.round((now - at.getTime()) / 1000)
-  const ago = s < 0 ? 'in the future' : s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago'
+  const ago = s < -60 ? 'in the future' : s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago'
     : s < 86400 ? Math.floor(s / 3600) + ' h ago' : Math.floor(s / 86400) + ' d ago'
   return clockText(iso, now) + ' · ' + ago
 }
 
 /** The header's right side: "rev 33 · 15:34 · 9 min ago". */
-const headerMeta = (board, now) => ['rev ' + board.revision, board.updatedAt ? whenText(board.updatedAt, now) : ''].filter(Boolean).join(' · ')
+// A fallback hub's file may have no revision or updatedAt: each is shown only when present.
+const headerMeta = (board, now) => [Number.isInteger(board.revision) ? 'rev ' + board.revision : '', typeof board.updatedAt === 'string' ? whenText(board.updatedAt, now) : ''].filter(Boolean).join(' · ')
 
 /** "Drift: 1 differs · 16:40", "Drift: matches · 16:40", "Drift: not run yet". */
 function driftLine(state, now) {
@@ -916,7 +936,7 @@ function TaskRow({ boardKey, parent, row, task, flags, bar }) {
   const isOpen = c.expandable && open
   const cls = 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.closed ? ' dshc-closed' : '') + (row.dropped ? ' dshc-dropped' : '')
   return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
-    h('div', { className: 'dshc-row', onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
+    h('div', { className: 'dshc-row', onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
       h('span', { className: 'dshc-mono dshc-cid', title: row.item }, row.item),
       h('span', { className: 'dshc-cst' }, c.mark ? h(Mark, { mark: c.mark }) : null, c.status ? h('span', null, c.status) : null),
       h('span', { className: 'dshc-ct' },
@@ -943,21 +963,25 @@ function BoardView({ view, now }) {
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
   const links = view.links && typeof view.links === 'object' ? view.links : {}
   const rows = boardRows(board, { links })
-  const byItem = new Map(tasks.map((t) => [t.item, t]))
-  // Flags and problems from the shared rules, so the tab and the hub's text agree.
-  const flags = boardFlags(tasks)
+  // The first task of an item, as the rows draw it, should a hand-edited file repeat one.
+  const byItem = new Map()
+  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  // The route's flags and problems, drawn by the same rules as the hub's text; computed here only without them.
+  const flags = Array.isArray(view.flags) ? view.flags : boardFlags(tasks)
+  const list = Array.isArray(view.problems) ? view.problems : problems(tasks, flags)
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
-  // The thin bar sits in the board's one parent row (the root with children).
+  // The thin bar sits in the board's one parent row (the root with children)
+  // and counts that row's children, as its progress text does.
   const roots = rows.filter((r) => r.depth === 0 && r.progress)
-  const bar = roots.length === 1 ? boardSegments(board) : undefined
+  const bar = roots.length === 1 ? boardSegments(board, rows, roots[0].item) : undefined
   return h('div', null,
     h(Header, { board, view, rows, now }),
     h(NeedsYou, { board, rows, byItem }),
-    h(Problems, { list: problems(tasks, flags) }),
+    h(Problems, { list }),
     rows.length
       ? h('ul', { className: 'dshc-tree', role: 'list' }, rows.map((row) => h(TaskRow, {
-        key: row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
+        key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: bar && roots[0] === row ? bar : undefined,
       })))
       : h('p', { className: 'dshc-msg' }, 'No tasks yet.'))

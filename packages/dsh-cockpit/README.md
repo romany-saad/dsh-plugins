@@ -21,7 +21,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
   - **Needs you**: one card per open task whose `waitingOn` is `owner`, with its next action as written, an "Open PR" link and the ready command with Copy;
   - **Board data problems**, each naming its reference, with ↓ to the row;
   - the rows in tree order and fixed columns (id · status · title · PR · chevron): status by shape and word (done a check, next a ring, now an info dot, waiting a grey dot, dropped a dash with the title struck through), one meta line (the next action as written, "Waiting on CI", "Start when: …"), "Blocked by …", "ready", "reported: done", and an expandable detail with the reason, start condition, model, branch, worktree and command;
-  - on the parent row, the progress in words (dropped counted apart) and a thin bar with one segment per work task, each kind its own shape.
+  - on the parent row, the progress in words (dropped counted apart) and a thin bar with one segment per task that text counts (the row's children), each kind its own shape.
   Titles show `#12` for the board parent's repository and `repo#12` for another, with the full reference in the link and its tooltip. Board text is rendered only as text; only `http(s)` URLs become links, opening in a new tab. The tab runs no command and writes nothing.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
 - `lib/present.js`: one-line titles for the tool cards.
