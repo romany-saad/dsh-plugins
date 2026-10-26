@@ -2,8 +2,19 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { BoardError, boardFile, changesRecord, parseBoard, writeJsonAtomic } from '../lib/store.js'
 import { newBoard, setup, t } from './helpers.mjs'
+
+/** The pid of a child that has exited and been reaped, so no process holds it. */
+async function deadPid() {
+  const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' })
+  await once(child, 'exit')
+  // Reuse of a just-freed pid is possible in principle; assert it did not happen.
+  assert.throws(() => process.kill(child.pid, 0), { code: 'ESRCH' })
+  return child.pid
+}
 
 const create = (store, key, more) => store.change(key, (current) => (current ? { board: current, write: false } : { board: newBoard(key, store.now(), more), write: true }), { by: 'sess-1' })
 const addTask = (store, key, task) => store.change(key, (current) => ({ board: { ...current, tasks: [...current.tasks, task] }, write: true }), { by: 'sess-1' })
@@ -98,8 +109,11 @@ test('a leftover temp file is removed on the next write; the old file survives a
   const { dataDir } = await setup()
   const file = join(dataDir, 'boards', 'k.json')
   await writeJsonAtomic(file, { a: 1 })
-  // Simulate a crash after the temp write, before the rename.
-  await writeFile(join(dataDir, 'boards', '.k.json.999.dead.tmp'), '{"a":2')
+  // Simulate a crash after the temp write, before the rename. The writer's pid
+  // must be one no process holds: a fixed number such as 999 can be a live
+  // process on the machine, and then its temp file is rightly kept.
+  const pid = await deadPid()
+  await writeFile(join(dataDir, 'boards', `.k.json.${pid}.dead.tmp`), '{"a":2')
   assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), { a: 1 })
   await writeJsonAtomic(file, { a: 3 })
   assert.deepEqual(await readdir(join(dataDir, 'boards')), ['k.json'])
