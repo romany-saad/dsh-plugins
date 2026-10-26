@@ -261,6 +261,17 @@ test('the parent row: progress in words and the thin bar, one segment per child,
   assert.match(exports.CSS, /\[data-segment=waiting\]\{background:/)
 })
 
+test('card error and stopped text use the tab colour names, set on the card in both themes', () => {
+  const { exports } = load()
+  assert.match(exports.CSS, /\.dshc-card-sum\[data-state=error\]\{color:var\(--dshc-err\)\}/)
+  assert.match(exports.CSS, /\.dshc-card-sum\[data-state=stopped\]\{color:var\(--dshc-warn\)\}/)
+  // The colour names are defined on the card root in light and overridden in dark, as on the tab and the strip.
+  assert.match(exports.CSS, /\[data-dsh-cockpit-dock\],\[data-dsh-cockpit-card\]\{--dshc-l0:/)
+  assert.match(exports.CSS, /body\[data-ds-dark-theme\] \[data-dsh-cockpit-card\]\{--dshc-t:[^}]*--dshc-warn:var\(--dsw-alias-state-warn-label\)[^}]*--dshc-err:var\(--dsw-alias-state-error-primary\)\}/)
+  // Only the card's own rules: no second copy of the light mixes.
+  assert.doesNotMatch(exports.CSS, /\.dshc-card-sum\[data-state=\w+\]\{color:color-mix/)
+})
+
 test('the empty state and a board that cannot be shown', () => {
   const out = render({ key: null, boards: ['a'] })
   assert.ok(out.includes('No board in this session'))
@@ -477,11 +488,14 @@ test('the card renders folded and opens to the result, through the host\'s Discl
     const Row = register(exports).slots.find((s) => s.entry.key === 'board_open').Component
     return Row({ toolName: 'board_open', phase: 'result', block, useDisclosure: () => ({ expanded, toggle() {} }) })
   }
+  assert.ok('data-dsh-cockpit-card' in row(false).props, 'the card root carries the colour names')
   assert.ok(!textOf(row(false)).includes('TREE'), 'folded')
   assert.match(textOf(row(false)), /Board.*open sim-883/)
   assert.ok(textOf(row(true)).includes('TREE'), 'opened')
   const seen = []
   const DisclosureRow = (p) => { seen.push(p); return { type: 'div', props: {}, children: [p.title, p.collapsedContent, p.children] } }
-  assert.ok(textOf(row(true, { DisclosureRow })).includes('TREE'))
+  const withRow = row(true, { DisclosureRow })
+  assert.ok('data-dsh-cockpit-card' in withRow.props)
+  assert.ok(textOf(withRow).includes('TREE'))
   assert.deepEqual([seen[0].title, seen[0].expandable, seen[0].open, seen[0].expandOnRowClick], ['Board', true, true, true])
 })

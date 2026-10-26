@@ -1,6 +1,6 @@
 {
   "name": "@romany-saad/dsh-cockpit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "A durable task board for a DSH hub session: a tree of steps with free-form link fields, kept as a local JSON file that other processes can read.",
   "license": "MIT",
@@ -30,7 +30,9 @@
     "examples",
     "board.schema.json",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "scripts": {
     "test": "node --import ./test/no-network.mjs --test test/*.test.js",

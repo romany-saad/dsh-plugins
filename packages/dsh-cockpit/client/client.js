@@ -811,7 +811,7 @@ const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update']
 // misses the spec's contrast rule in the light theme (text 4.5:1, marks 3:1),
 // the light value mixes it toward label-primary; the PR body has the table.
 const TOKENS = [
-  '[data-dsh-cockpit-board],[data-dsh-cockpit-dock]{',
+  '[data-dsh-cockpit-board],[data-dsh-cockpit-dock],[data-dsh-cockpit-card]{',
   '--dshc-l0:var(--dsw-alias-bg-base);--dshc-l1:var(--dsw-alias-bg-skeleton);--dshc-l2:var(--dsw-alias-bg-module-platform);',
   '--dshc-border:var(--dsw-alias-border-l1);--dshc-p:var(--dsw-alias-label-primary);--dshc-s:var(--dsw-alias-label-secondary);',
   '--dshc-mark:var(--dsw-alias-label-tertiary);--dshc-info:var(--dsw-alias-state-business-primary);',
@@ -822,7 +822,7 @@ const TOKENS = [
   '--dshc-ok:color-mix(in srgb,var(--dsw-alias-state-success-primary) 60%,var(--dsw-alias-label-primary));',
   '--dshc-ok-mark:color-mix(in srgb,var(--dsw-alias-state-success-primary) 80%,var(--dsw-alias-label-primary));',
   '--dshc-err:color-mix(in srgb,var(--dsw-alias-state-error-primary) 80%,var(--dsw-alias-label-primary))}',
-  'body[data-ds-dark-theme] [data-dsh-cockpit-board],body[data-ds-dark-theme] [data-dsh-cockpit-dock]{--dshc-t:var(--dsw-alias-label-tertiary);--dshc-warn:var(--dsw-alias-state-warn-label);',
+  'body[data-ds-dark-theme] [data-dsh-cockpit-board],body[data-ds-dark-theme] [data-dsh-cockpit-dock],body[data-ds-dark-theme] [data-dsh-cockpit-card]{--dshc-t:var(--dsw-alias-label-tertiary);--dshc-warn:var(--dsw-alias-state-warn-label);',
   '--dshc-ok:var(--dsw-alias-state-success-primary);--dshc-ok-mark:var(--dsw-alias-state-success-primary);--dshc-err:var(--dsw-alias-state-error-primary)}',
 ].join('')
 const MONO = 'var(--ds-font-family-code,ui-monospace,monospace)'
@@ -934,7 +934,9 @@ const CSS = [
   '.dshc-strip .dshc-go:hover,.dshc-strip .dshc-btn:hover{color:var(--dshc-p)}',
   // The chat cards: the host's tool row, with the result's tree text below it.
   '.dshc-card-sum{margin-left:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}',
-  '.dshc-card-sum[data-state=error]{color:var(--dsw-alias-state-error-primary)}.dshc-card-sum[data-state=stopped]{color:var(--dsw-alias-state-warn-label)}',
+  // The cards use the tab's colour names (TOKENS), so error and stopped text meet
+  // 4.5:1 in light too: state-warn-label alone is 2.8:1 on white.
+  '.dshc-card-sum[data-state=error]{color:var(--dshc-err)}.dshc-card-sum[data-state=stopped]{color:var(--dshc-warn)}',
   '.dshc-card-out{margin:4px 0 4px 4px;max-height:260px;overflow:auto;white-space:pre;font-family:' + MONO + ';font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
 ].join('\n')
 
@@ -1420,10 +1422,10 @@ function BoardToolRow(props) {
   const body = open && expandable ? h('pre', { className: 'dshc-card-out' }, cardBody(m)) : null
   const Row = primitives && primitives.DisclosureRow
   if (Row) {
-    return h('div', { 'data-tool': props.toolName, 'data-state': m.state },
+    return h('div', { 'data-tool': props.toolName, 'data-state': m.state, 'data-dsh-cockpit-card': '' },
       h(Row, { icon, title: m.title, open: open && expandable, expandable, onToggle: toggle, running: m.state === 'running', expandOnRowClick: true, collapsedContent: summary, keepContentWhenOpen: true }, body))
   }
-  return h('div', { 'data-tool': props.toolName, 'data-state': m.state },
+  return h('div', { 'data-tool': props.toolName, 'data-state': m.state, 'data-dsh-cockpit-card': '' },
     h('div', {
       role: expandable ? 'button' : undefined, tabIndex: expandable ? 0 : undefined, 'aria-expanded': expandable ? open : undefined, onClick: expandable ? toggle : undefined,
       onKeyDown: expandable ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle() } } : undefined,
