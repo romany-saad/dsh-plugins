@@ -4,7 +4,7 @@ Public plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 
 | Package | What it does | Status |
 |---|---|---|
-| [`@rs-dsh/dsh-cockpit`](packages/dsh-cockpit) | A durable task board for a hub session that coordinates builders: a tree of steps with free-form link fields (issue, PR, branch, worktree, model, effort), kept as one local JSON file per board that other processes can read | 0.1.1 |
+| [`@rs-dsh/dsh-cockpit`](packages/dsh-cockpit) | A durable task board for a hub session that coordinates builders: a tree of steps with free-form link fields (issue, PR, branch, worktree, model, effort), kept as one local JSON file per board that other processes can read | 0.1.2 |
 
 ## Install
 
