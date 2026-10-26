@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SEGMENT_MAX, blockedText, boardFlags, boardParent, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, stripModel, stripText, titleParts, titleText } from '../lib/rows.js'
+import { SEGMENT_MAX, blockedText, boardFlags, boardParent, firstByItem, stripTitle, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, stripModel, stripText, titleParts, titleText } from '../lib/rows.js'
 import { t } from './helpers.mjs'
 
 test('needsYou: waitingOn owner, any case and spacing, open tasks only', () => {
@@ -346,4 +346,12 @@ test('stripModel: the parent bar\'s segments and counts, and the focus in order:
   assert.equal(stripText(n), '⚠ Needs you: merge PR #902 · Copy command · Board ›')
   const noAction = { ...owner, tasks: owner.tasks.map((x) => (x.item === '3' ? { ...x, nextAction: undefined, readyCommand: undefined } : x)) }
   assert.equal(stripText(stripModel(noAction)), '⚠ Needs you: o/r#886 b · Board ›', 'no action: the title, and no Copy')
+})
+test('stripModel with two or more parent rows counts their work tasks; firstByItem keeps the first of a repeated item', () => {
+  const tasks = [t('a', 'now', 'A'), t('a1', 'done', 'x', { parent: 'a' }), t('a2', 'next', 'y', { parent: 'a' }), t('b', 'now', 'B'), t('b1', 'now', 'z', { parent: 'b' })]
+  const m = stripModel({ key: 'k', tasks })
+  assert.deepEqual(m.bar.segments.map((s) => s.item), ['a1', 'a2', 'b1'])
+  assert.equal(m.done, '1 of 3 done')
+  assert.equal(stripTitle(m), 'k · 1 of 3 done · in progress: z')
+  assert.equal(firstByItem({ tasks: [t('1', 'now', 'first'), t('1', 'done', 'second')] }).get('1').what, 'first')
 })

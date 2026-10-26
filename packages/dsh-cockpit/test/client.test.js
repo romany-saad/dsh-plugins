@@ -16,6 +16,7 @@ function load({ open = false, primitives } = {}) {
     useState: (init) => [typeof init === 'function' ? init() : init === false ? open : init, () => {}],
     useRef: (v) => ({ current: v }),
     useEffect: () => {},
+    useMemo: (fn) => fn(),
   }
   let row
   vm.runInNewContext(code, { window: { __ModuleLoader__: { load: (r) => { row = r } } } })
@@ -344,10 +345,40 @@ test('the strip: the same segments and counts as the parent row\'s bar, each wit
   assert.ok(stripSegs.every((s) => s[2]), 'every segment has a tooltip')
   assert.equal(m.done, '1 of 5 done · 1 dropped')
   assert.ok(!/animation|transition/.test(exports.CSS))
-  // A board without one parent row: one segment per top task.
+  // A board without one parent row: one segment per work task (a row without children).
   const flat = { key: 'f', board: { key: 'f', tasks: [{ item: '1', what: 'a', status: 'done' }, { item: '2', what: 'b', status: 'next', dependsOn: ['1'] }] } }
   assert.deepEqual([...strip(flat).m.bar.segments.map((s) => s.kind)], ['done', 'ready'])
   assert.equal(strip(flat).m.line, 'f · 1 of 2 done · Board ›')
+  const epics = { key: 'e', board: { key: 'e', tasks: ['a', 'b'].flatMap((p) => [{ item: p, what: p, status: 'now' }, ...[1, 2, 3].map((i) => ({ item: p + i, what: p + i, status: i === 1 ? 'done' : 'next', parent: p }))]) } }
+  assert.equal(strip(epics).m.done, '2 of 6 done', 'two epics: their work tasks, not the epics')
+  assert.deepEqual([...strip(epics).m.bar.segments.map((s) => s.item)], ['a1', 'a2', 'a3', 'b1', 'b2', 'b3'])
+})
+
+test('the strip at narrow widths: the action or focus first, then the count, the segments, and the key last; the full text in the tooltip', () => {
+  const { exports } = load()
+  // The key drops below 600 px of strip; Board ›, Copy command and the count never shrink.
+  assert.match(exports.CSS, /@container dshc-strip \(max-width:600px\)\{\.dshc-strip \.dshc-key,\.dshc-strip \.dshc-key\+\.dshc-sep\{display:none\}\}/)
+  assert.match(exports.CSS, /\.dshc-strip \.dshc-done,\.dshc-strip \.dshc-go,\.dshc-strip \.dshc-copy,\.dshc-strip \.dshc-ic\{flex:none\}/)
+  assert.match(exports.CSS, /\.dshc-strip \.dshc-focus\{flex:1 1 auto;min-width:0\}/)
+  assert.match(exports.CSS, /\.dshc-strip \.dshc-bar\{flex:0 1000 auto/, 'the segments give way before the text')
+  // The full text is the strip's tooltip.
+  const calm = withTasks(live, (ts) => ts.map((t) => (t.item === '1' ? { ...t, status: 'done', waitingOn: undefined } : t)))
+  const bar = (view) => expand(strip(view).tree).find((n) => n.props.className === 'dshc-strip')
+  assert.equal(bar(calm).props.title, "sim-883 · 2 of 5 done · 1 dropped · dsh-plugins#1 blocked by 'release notes' (not on the board)")
+  assert.equal(bar(live).props.title, '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. (#884 Profile and guard) · 1 of 5 done · 1 dropped')
+  // Below 460 px: the continuous fill instead of the segments, no "· 1 dropped", and no bar beside a needs-you action.
+  const all = expand(strip(calm).tree)
+  assert.ok(all.some((n) => n.props.className === 'dshc-fill dshc-alt'))
+  assert.deepEqual(all.find((n) => n.props.className === 'dshc-more').children, [' · 1 dropped'])
+  assert.match(exports.CSS, /@container dshc-strip \(max-width:460px\)\{\.dshc-strip \.dshc-bar,\.dshc-strip \.dshc-more,\.dshc-strip\[data-kind="needs you"\] \.dshc-fill\{display:none\}\.dshc-strip \.dshc-alt\{display:block\}\}/)
+  assert.match(exports.CSS, /@container dshc-strip \(max-width:380px\)\{\.dshc-strip \.dshc-fill\{display:none\}\}/)
+})
+
+test('the strip\'s Copy command announces its result, as the CommandBox does', () => {
+  const all = expand(strip(live).tree)
+  const copy = all.find((n) => n.props.className === 'dshc-copy')
+  assert.ok(copy, 'the shared CopyButton')
+  assert.ok(expand(copy).some((n) => n.props.role === 'status'))
 })
 
 test('the strip above 24 segments is one continuous bar', () => {
@@ -407,6 +438,36 @@ test('a failed {ok:false} card shows its code; a thrown error and an interruptio
   assert.equal(card({ toolName: 'board_open', phase: 'result', block: thrown }).summary, 'open k · failed')
   const stopped = { ...thrown, error: { name: 'x', code: 'interrupted' } }
   assert.equal(card({ toolName: 'board_open', phase: 'result', block: stopped }).state, 'stopped')
+})
+
+test('a settled card whose call left the loaded window reads its arguments from the node\'s args view', () => {
+  const view = (o) => ({ value: (k) => o[k] })
+  const gone = { call: null, args: view({ item: '3', set: { status: 'done' } }), content: [{ type: 'text', text: '{"ok":true}' }], isError: false }
+  assert.equal(card({ toolName: 'board_update', phase: 'result', block: gone }).summary, 'update 3 → done')
+  const failed = { call: null, args: view({ key: 'k' }), content: [{ type: 'text', text: 'Error: boom' }], isError: true }
+  assert.equal(card({ toolName: 'board_open', phase: 'result', block: failed }).summary, 'open k · failed')
+})
+
+test('the fallback card row opens from the keyboard', () => {
+  const block = { call: { argsRaw: '{"key":"k"}' }, content: [{ type: 'text', text: '{"ok":true,"tree":"T"}' }], isError: false }
+  let toggled = 0
+  const Row = register(load().exports).slots.find((s) => s.entry.key === 'board_open').Component
+  const head = expand(Row({ toolName: 'board_open', phase: 'result', block, useDisclosure: () => ({ expanded: false, toggle: () => { toggled++ } }) })).find((n) => n.props.role === 'button')
+  const target = {}
+  head.props.onKeyDown({ key: 'Enter', target, currentTarget: target, preventDefault() {} })
+  head.props.onKeyDown({ key: ' ', target, currentTarget: target, preventDefault() {} })
+  assert.equal(toggled, 2)
+})
+
+test('a row is looked up in its own board, never another body\'s', () => {
+  const { exports } = load()
+  assert.match(exports.CSS, /\.dshc-strip \.dshc-go\{/, 'the strip\'s Board › rule is scoped; the problems arrow keeps its own')
+  assert.doesNotMatch(exports.CSS, /(^|\n|\})\.dshc-go\{/)
+  const prob = nodes(live).find((n) => n.props.className === 'dshc-prob')
+  const asked = []
+  const root = { querySelector: (sel) => { asked.push(sel); return null } }
+  prob.props.onClick({ currentTarget: { closest: () => root } })
+  assert.deepEqual(asked, ['li[data-item="5"]'])
 })
 
 test('the card renders folded and opens to the result, through the host\'s DisclosureRow when the shell has it', () => {

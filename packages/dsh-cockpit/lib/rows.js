@@ -432,7 +432,7 @@ export const segmentKind = (r) => r.done ? 'done' : r.dropped ? 'dropped' : r.ne
   : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
 
 /** Tasks by item, the first of a repeated item, as the rows draw it. */
-function firstByItem(board) {
+export function firstByItem(board) {
   const byItem = new Map()
   for (const t of Array.isArray(board?.tasks) ? board.tasks : []) if (!byItem.has(t.item)) byItem.set(t.item, t)
   return byItem
@@ -457,6 +457,13 @@ export function boardParent(rows) {
 }
 
 /**
+ * The rows the strip counts when the board has no one parent row: every
+ * row without children (its work tasks), so two epics of five tasks read
+ * "0 of 10 done", never "0 of 2".
+ */
+const workRows = (rows) => rows.filter((r) => !r.progress)
+
+/**
  * The parent row's thin bar: one segment per child of that row, in tree
  * order, the same tasks its progress text counts, so the bar and "2 of 8
  * done" always agree. Each is { item, kind, tooltip }; kind is segmentKind()
@@ -465,7 +472,7 @@ export function boardParent(rows) {
  * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
  * on CI". continuous: more than SEGMENT_MAX children.
  * With item undefined (a board with no one parent row), the segments are the
- * top rows instead; the progress strip uses that.
+ * work tasks, the rows without children; the progress strip uses that.
  * @param {{tasks: object[]}} board
  * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
  * @param {string|undefined} item the parent row's item
@@ -473,7 +480,7 @@ export function boardParent(rows) {
 export function boardSegments(board, rows, item) {
   const byItem = firstByItem(board)
   const children = []
-  if (item === undefined) children.push(...rows.filter((r) => r.depth === 0))
+  if (item === undefined) children.push(...workRows(rows))
   else {
     const at = rows.findIndex((r) => r.item === item)
     if (at >= 0) {
@@ -531,8 +538,8 @@ export function driftWords(state) {
  * - else 'normal', with focus, in tree order, the first present of: a task
  *   that is blocked, naming each blocker and its status ("#887 blocked by
  *   #886 (waiting)"); the tasks in progress ("in progress: #885 Work
- *   reports", "2 in progress: #885, #886"); else none. The parent row is
- *   not a candidate: its children are.
+ *   reports", "2 in progress: #885, #886"); else none. A parent row (a
+ *   top row with children) is not a candidate: its tasks are.
  * References show short, as the titles do (shortRef).
  * @param {{key?: string, tasks: object[], parent?: string}} board
  * @param {ReturnType<typeof boardRows>} [rows] boardRows(board), when the caller has them
@@ -552,7 +559,8 @@ export function stripModel(board, rows = boardRows(board)) {
       ? { ...base, kind: 'needs you', item: first.item, title: first.title, text: 'Needs you: ' + ask, command: first.readyCommand }
       : { ...base, kind: 'needs you', item: first.item, title: first.title, text: mine.length + ' need you' }
   }
-  const open = rows.filter((r) => !r.closed && r.item !== parent)
+  // The parent rows (top rows with children) are not candidates: their tasks are.
+  const open = rows.filter((r) => !r.closed && !(r.depth === 0 && r.progress))
   for (const r of open) {
     const blockers = blockerTexts(r, byItem.get(r.item), byItem, ref)
     if (blockers.length) return { ...base, kind: 'normal', item: r.item, focus: ref(refOf(byItem.get(r.item))) + ' blocked by ' + blockers.join(', ') }
@@ -574,6 +582,12 @@ const shortTitle = (task, parent) => { const p = titleParts(task ?? {}, parent);
 export function stripText(m) {
   if (m.kind === 'needs you') return ['⚠ ' + m.text, m.command ? 'Copy command' : '', 'Board ›'].filter(Boolean).join(' · ')
   return [m.key, m.done, m.focus, 'Board ›'].filter(Boolean).join(' · ')
+}
+
+/** The strip's tooltip: what it says in full, with the needs-you task's title. */
+export function stripTitle(m) {
+  if (m.kind === 'needs you') return '⚠ ' + m.text + (m.title && m.text.startsWith('Needs you:') ? ' (' + m.title + ')' : '') + ' · ' + m.done
+  return [m.key, m.done, m.focus].filter(Boolean).join(' · ')
 }
 
 /** What the tab shows with no board: the design's title and one line. */
