@@ -4,6 +4,8 @@
 
 The package is renamed from `@romany-saad/dsh-cockpit` to `@rs-dsh/dsh-cockpit`, under the npm organization `rs-dsh` ([decision 26](https://github.com/romany-saad/dsh-plugins/issues/2#issuecomment-6410629697)). Nothing else changes: the plugin id `dsh-cockpit`, its tools, config, board format and data folder `$DSH_HOME/data/dsh-cockpit` stay as they were, so existing boards stay where they are.
 
+To upgrade a profile from 0.1.0, remove the old package and add the new one, so the two never load side by side under the same id: `dsh plugin --profile <name> remove @romany-saad/dsh-cockpit`, then `dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.1.1`. In the profile's own `cordis.patch.yml`, change `name: '@romany-saad/dsh-cockpit'` to `name: '@rs-dsh/dsh-cockpit'`. The web GUI's Board tab takes its id from the package name, so it is now `@rs-dsh/dsh-cockpit`.
+
 ## 0.1.0
 
 The first release: the board only (decision 2). The design is in [#1](https://github.com/romany-saad/dsh-plugins/issues/1); the decisions below are numbered as in [the owner's decisions](https://github.com/romany-saad/dsh-plugins/issues/1#issuecomment-6402129343).
