@@ -2,6 +2,8 @@
 
 A task board for a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) hub, the session that coordinates the work of an effort across many pull requests. The board is a tree of steps, each linked to its issue and PR, kept as a local file that you and your scripts can read.
 
+![The Board tab: a Needs you card with a command to copy, then each step with its status, PR, next action and what blocks it](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-tab.png)
+
 ## What you get
 
 - **Four board tools** for the agent: open a board, read it, add steps and update them.
@@ -52,6 +54,14 @@ Ask the hub to keep a board for the effort, or let it use the tools on its own:
 - **Add steps**, each with what it is and its issue or PR. `parent` puts a step under another; `dependsOn` lists steps that come first, so a step shows as blocked until they are done or dropped.
 - **Update a step** as the work moves: `next`, `now`, `waiting`, `done` or `dropped`, and a next action.
 - **Needs you:** a step with `waitingOn: owner` shows in the "Needs you" list and on the strip, with its next action, and its `readyCommand` to copy when it has one.
+
+The strip above the message box shows the board's progress, one segment per step, and the step that needs you. **Copy command** copies that step's `readyCommand`, and **Board ›** opens the Board tab.
+
+![The progress strip above the message box: a segment per step, the step that needs you, Copy command and Board ›](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/strip.png)
+
+Each board tool call shows as a one-line card in the chat, under **Called tools**.
+
+![Two board tool cards in the chat: open search-v2, and add docs with its status and dependency](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/tool-cards.png)
 
 ## Reading a board from a script
 

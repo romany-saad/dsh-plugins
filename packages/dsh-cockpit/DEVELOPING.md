@@ -87,6 +87,16 @@ dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@<ver
 - **The tag works.** pnpm accepts a tag that contains `@` before `&path:`, and the lockfile records the tag's commit (`codeload.github.com/romany-saad/dsh-plugins/tar.gz/<commit>#path:packages/dsh-cockpit`). This was tried with pnpm 12.14.0 and `dsh plugin add` (DSH 0.2.1-rc.2) against a test tag. To pin a commit instead, put the commit in place of the tag: `#<commit>&path:packages/dsh-cockpit`.
 - **The peers** `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths` come from the DSH that boots the profile. pnpm may warn that they are missing from the profile itself.
 
+## Screenshots
+
+[CONTRIBUTING.md](../../CONTRIBUTING.md#screenshots) sets the rules. The README's images live in `docs/images/` (not shipped in the package). They were taken in a separate `DSH_HOME` with a scratch profile (`@deepseek-ai/dsh-web-app`, this package by path) and a demo board, `search-v2` (parent `acme/shop#120`), so no real board, session or path shows. Light theme, 1400 × 900 at 2× scale. Retake them when a change alters what they show:
+
+| File | Shows |
+|---|---|
+| `board-tab.png` | The Board tab: a Needs you card with its command, then every step |
+| `strip.png` | The progress strip above the message box, with a step that needs you |
+| `tool-cards.png` | Two board tool calls as cards under Called tools |
+
 ## Releases
 
 A release bumps `version` in `package.json`, adds a CHANGELOG entry and is tagged `dsh-cockpit@<version>` after the merge; pushing the tag publishes it to npm. npm shows the README of the last published version, so a README change reaches npmjs.com only with a release.
