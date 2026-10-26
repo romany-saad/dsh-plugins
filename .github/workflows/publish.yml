@@ -66,7 +66,11 @@ jobs:
             echo "::error::tag $TAG is not on main: its commit $GITHUB_SHA is not an ancestor of origin/main"
             exit 1
           fi
-      - run: pnpm publish --filter "$PACKAGE" --no-git-checks --tag "$DIST_TAG"
+      # --provenance signs a provenance attestation with this job's OIDC token
+      # (id-token: write above). pnpm does not read publishConfig.provenance from
+      # package.json the way npm does: dsh-cockpit 0.1.2 and dsh-quote 0.1.0
+      # published without one. The flag is the switch pnpm acts on.
+      - run: pnpm publish --filter "$PACKAGE" --no-git-checks --tag "$DIST_TAG" --provenance
         env:
           PACKAGE: ${{ steps.version.outputs.name }}
           DIST_TAG: ${{ steps.version.outputs.dist-tag }}
