@@ -25,6 +25,7 @@
     "index.js",
     "reader.js",
     "lib",
+    "examples",
     "board.schema.json",
     "cordis.patch.yml",
     "README.md"

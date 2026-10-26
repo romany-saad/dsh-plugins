@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedText, boardRows, modelText, needsYou, notes, progressText, refUrl, titleText } from '../lib/rows.js'
+import { blockedText, boardRows, modelText, needsYou, notes, progressText, refUrl, reportedText, titleText } from '../lib/rows.js'
 import { t } from './helpers.mjs'
 
 test('needsYou: waitingOn owner, any case and spacing, open tasks only', () => {
@@ -181,4 +181,14 @@ test('rows carry issueUrl and prUrl from the links option and the board parent',
   assert.deepEqual([plain.issueUrl, plain.prUrl], [undefined, undefined])
   const [linked] = boardRows(board, { links: { issue: 'https://t.example/{repo}/i/{number}', pr: 'https://t.example/{repo}/p/{number}' } })
   assert.deepEqual([linked.issueUrl, linked.prUrl], ['https://t.example/o/r/i/2', 'https://t.example/o/r/p/3'])
+})
+
+test('reported: the last drift entry of a row whose status still differs, tagged "reported: done"', () => {
+  const drift = { checkedAt: 'x', checked: 3, items: [{ item: '1', status: 'done', note: '#902 merged' }, { item: '2', status: 'done' }, { item: '9', status: 'done' }] }
+  const rows = boardRows({ drift, tasks: [t('1', 'waiting', 'a'), t('2', 'done', 'b'), t('3', 'next', 'c')] })
+  assert.deepEqual(rows.map((r) => r.reported), [{ status: 'done', note: '#902 merged' }, undefined, undefined], 'a task since set to the reported status has no tag')
+  assert.equal(reportedText(rows[0].reported), 'reported: done')
+  assert.deepEqual(boardRows({ drift: { checkedAt: 'x', error: 'exit 3' }, tasks: [t('1', 'now', 'a')] })[0].reported, undefined)
+  const bad = { drift: { checkedAt: 'x', items: [null, 3, 'x', { item: 1, status: 'done' }, { item: '1', status: 'done' }] }, tasks: [t('1', 'now', 'a')] }
+  assert.deepEqual(boardRows(bad)[0].reported, { status: 'done' }, 'a hand-written entry that is not an object with a string item is skipped')
 })

@@ -1,6 +1,6 @@
 // Draw a board's tasks as a tree (design section 3). No DSH imports. The row
 // text, the flags and the problems come from lib/rows.js.
-import { blockedText, boardFlags, boardRows, flagText, problems, progressText } from './rows.js'
+import { blockedText, boardFlags, boardRows, flagText, problems, progressText, reportedText } from './rows.js'
 
 export { boardFlags, flagText, problems }
 
@@ -33,6 +33,7 @@ export function boardTree(board, options = {}) {
     if (r.done && r.pr) suffix.push('PR ' + r.pr)
     if (r.blockedBy.length) suffix.push(blockedText(r.blockedBy))
     else if (r.after.length) suffix.push('after ' + r.after.join(', '))
+    if (r.reported) suffix.push(reportedText(r.reported))
     for (const f of flagsOf.get(r.item) ?? []) suffix.push('! ' + flagText(f))
     return { prefix, suffix: suffix.join('   ') }
   })

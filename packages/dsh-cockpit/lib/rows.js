@@ -243,8 +243,10 @@ export function titleText(task) {
  * - after: its dependencies on the board, by issue, else item;
  * - progress: on a row with children, { done, dropped, total, needsYou } of all
  *   its children on the board, drawn or not (only filters the rows, not the counts);
- * - issueUrl, prUrl: refUrl() of issue and pr, with options.links and the board's parent.
- * @param {{tasks: object[], parent?: string}} board
+ * - issueUrl, prUrl: refUrl() of issue and pr, with options.links and the board's parent;
+ * - reported: the last drift check's entry for this task ({ status, note? }),
+ *   while its status still differs from the task's; drawn "reported: done".
+ * @param {{tasks: object[], parent?: string, drift?: object}} board
  * @param {{only?: Set<string>, links?: {issue?: string, pr?: string}}} [options]
  */
 export function boardRows(board, options = {}) {
@@ -253,7 +255,13 @@ export function boardRows(board, options = {}) {
   const byItem = new Map(tasks.map((t) => [t.item, t]))
   const mine = new Set(needsYou(tasks).map((t) => t.item))
   const childrenOf = new Map(treeOrder(tasks).map((r) => [r.task.item, r.children]))
+  // A hand-written file may hold anything in drift.items: only entries with a string item count.
+  const drifted = new Map((Array.isArray(board?.drift?.items) ? board.drift.items : []).filter((e) => typeof e?.item === 'string').map((e) => [e.item, e]))
   return treeOrder(tasks, { only: options.only }).map(({ task, depth, guide }) => {
+    const d = drifted.get(task.item)
+    const reported = d && typeof d.status === 'string' && d.status !== task.status
+      ? (typeof d.note === 'string' ? { status: d.status, note: d.note } : { status: d.status })
+      : undefined
     const children = childrenOf.get(task.item) ?? []
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
     const isClosed = closed(task.status)
@@ -296,9 +304,13 @@ export function boardRows(board, options = {}) {
       startWhen: text(task.startWhen),
       branch: text(task.branch),
       worktree: text(task.worktree),
+      reported,
     }
   })
 }
+
+/** "reported: done": the tag of a row whose last drift check reported another status (E1). */
+export const reportedText = (reported) => 'reported: ' + reported.status
 
 /** "4 of 6 done · 1 dropped · 1 needs you": dropped is counted apart from done. */
 export const progressText = (p) => p.done + ' of ' + p.total + ' done' +

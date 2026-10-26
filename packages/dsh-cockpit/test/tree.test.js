@@ -129,3 +129,9 @@ test('removing a parent flags its children', () => {
   const { flags } = boardTree({ tasks: [t('2', 'next', 'child', { parent: '1' })] })
   assert.equal(flags[0].code, 'unknown_parent')
 })
+
+test('a row the last drift check reports differently ends in "reported: <status>"', () => {
+  const drift = { checkedAt: 'x', checked: 2, items: [{ item: '2', status: 'done', note: '#902 merged' }] }
+  const { tree } = boardTree({ drift, tasks: [t('1', 'done', 'one'), t('2', 'waiting', 'two', { pr: '#902' })] })
+  assert.deepEqual(tree.split('\n'), ['1  done     one', '2  waiting  two   reported: done'])
+})

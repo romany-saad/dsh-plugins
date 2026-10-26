@@ -16,6 +16,7 @@ function readFilters(args = {}) {
   const parts = []
   if (args.item !== undefined) parts.push('item ' + args.item)
   if (Array.isArray(args.status) && args.status.length) parts.push(args.status.join(', '))
+  if (args.checkDrift === true) parts.push('drift check')
   return parts
 }
 
