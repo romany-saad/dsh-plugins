@@ -31,7 +31,7 @@ To try a package from a checkout, install it by path into a scratch profile: `ds
 
 ## Layout
 
-- `packages/<name>/`: one plugin, with its own `package.json`, `README.md`, `cordis.patch.yml` when it ships a patch layer, and tests.
+- `packages/<name>/`: one plugin, with its own `package.json`, a consumer-facing `README.md` with screenshots in `docs/images/`, `DEVELOPMENT.md` for maintainer notes, `cordis.patch.yml` when it ships a patch layer, and tests.
 - Each package declares the DSH packages it uses as `peerDependencies`, so it runs against the DSH the profile already has.
 
 ## Releases
@@ -40,7 +40,7 @@ Each release is a tag `<package>@<version>`, for example `dsh-cockpit@0.1.0`. Pr
 
 ## Contributing
 
-Pull requests are welcome. Every pull request gets one code review before the maintainer merges it.
+Pull requests are welcome. Every pull request gets one code review before the maintainer merges it. See [CONTRIBUTING.md](CONTRIBUTING.md): among other rules, a change a user can see updates that package's README and retakes its screenshots.
 
 ## License
 
