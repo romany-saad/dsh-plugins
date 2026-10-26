@@ -18,6 +18,7 @@
   "exports": {
     ".": "./index.js",
     "./reader": "./reader.js",
+    "./client": "./client/client.js",
     "./board.schema.json": "./board.schema.json",
     "./package.json": "./package.json"
   },
@@ -25,17 +26,26 @@
     "index.js",
     "reader.js",
     "lib",
+    "client/client.js",
     "examples",
     "board.schema.json",
     "cordis.patch.yml",
     "README.md"
   ],
   "scripts": {
-    "test": "node --import ./test/no-network.mjs --test test/*.test.js"
+    "test": "node --import ./test/no-network.mjs --test test/*.test.js",
+    "build:client": "node client/build.mjs"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-renderer"
+      ]
     }
   },
   "peerDependencies": {

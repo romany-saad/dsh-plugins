@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedText, boardRows, modelText, needsYou, notes, progressText, refUrl, reportedText, titleText } from '../lib/rows.js'
+import { SEGMENT_MAX, blockedText, boardFlags, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, titleParts, titleText } from '../lib/rows.js'
 import { t } from './helpers.mjs'
 
 test('needsYou: waitingOn owner, any case and spacing, open tasks only', () => {
@@ -191,4 +191,111 @@ test('reported: the last drift entry of a row whose status still differs, tagged
   assert.deepEqual(boardRows({ drift: { checkedAt: 'x', error: 'exit 3' }, tasks: [t('1', 'now', 'a')] })[0].reported, undefined)
   const bad = { drift: { checkedAt: 'x', items: [null, 3, 'x', { item: 1, status: 'done' }, { item: '1', status: 'done' }] }, tasks: [t('1', 'now', 'a')] }
   assert.deepEqual(boardRows(bad)[0].reported, { status: 'done' }, 'a hand-written entry that is not an object with a string item is skipped')
+})
+
+// ---- The Board tab's model (design 6) ----
+
+test('shortRef: #n in the parent repository, repo#n in another, anything else as stored', () => {
+  const parent = 'Romany-Saad/resturants-app#883'
+  assert.equal(shortRef('Romany-Saad/resturants-app#884', parent), '#884')
+  assert.equal(shortRef('romany-saad/RESTURANTS-APP#884', parent), '#884', 'GitHub names ignore case')
+  assert.equal(shortRef('romany-saad/dsh-plugins#1', parent), 'dsh-plugins#1')
+  assert.equal(shortRef('romany-saad/dsh-plugins#1'), 'dsh-plugins#1')
+  for (const r of ['#884', 'PROJ-12', 'https://x.example/1']) assert.equal(shortRef(r, parent), r)
+  assert.equal(shortRef('  '), undefined)
+})
+
+test('titleParts: the issue apart from what, without repeating a leading issue', () => {
+  const parent = 'o/r#1'
+  assert.deepEqual(titleParts({ what: 'Log reader', issue: 'x/dsh-plugins#9' }, parent), { issue: 'x/dsh-plugins#9', ref: 'dsh-plugins#9', what: 'Log reader' })
+  assert.deepEqual(titleParts({ what: '#883 effort', issue: '#883' }), { issue: '#883', ref: '#883', what: 'effort' })
+  assert.deepEqual(titleParts({ what: 'x' }), { what: 'x' })
+})
+
+test('prText: "PR #n" from a short, full or URL reference; "PR" otherwise', () => {
+  assert.equal(prText('#892'), 'PR #892')
+  assert.equal(prText('o/r#892'), 'PR #892')
+  assert.equal(prText('https://github.com/o/r/pull/892'), 'PR #892')
+  assert.equal(prText('https://gitlab.example/g/p/-/merge_requests/7/'), 'PR #7')
+  assert.equal(prText('feature-branch'), 'PR')
+  assert.equal(prText(''), undefined)
+})
+
+test('rowCells: nextAction shows as written with no "Next:" label; others are labelled once', () => {
+  const rows = boardRows({ tasks: [
+    t('1', 'next', 'a', { nextAction: 'Owner: merge #892.', why: 'W' }),
+    t('2', 'waiting', 'b', { waitingOn: 'CI', nextAction: 'N' }),
+    t('3', 'waiting', 'c', { startWhen: 'after 0.1 ships' }),
+    t('4', 'next', 'd', { why: 'Because.' }),
+    t('5', 'waiting', 'e', { waitingOn: 'owner', nextAction: 'merge it', readyCommand: 'gh pr merge 5' }),
+  ] })
+  const c = rows.map((r) => rowCells(r))
+  assert.equal(c[0].line, 'Owner: merge #892.')
+  assert.ok(!c.some((x) => /Next:/.test(x.line ?? '')))
+  assert.deepEqual(c[0].detail, [{ key: 'Reason', value: 'W', mono: false }])
+  assert.equal(c[1].line, 'Waiting on CI')
+  assert.deepEqual(c[1].detail.map((d) => d.key), ['Next'])
+  assert.equal(c[2].line, 'Start when: after 0.1 ships')
+  assert.equal(c[3].line, 'Reason: Because.')
+  assert.equal(c[4].line, undefined, 'a Needs you row keeps its ask in the card')
+  assert.equal(c[4].needsYou, true)
+  assert.equal(c[4].command, undefined, 'the card holds the command')
+})
+
+test('rowCells: marks by shape, dropped and done closed; reported tag and its note', () => {
+  const drift = { checkedAt: 'x', items: [{ item: '2', status: 'done', note: '#902 merged' }] }
+  const rows = boardRows({ drift, tasks: [t('1', 'done', 'a'), t('2', 'waiting', 'b'), t('3', 'next', 'c'), t('4', 'now', 'd'), t('5', 'dropped', 'e', { nextAction: 'stale' })] })
+  const c = rows.map((r) => rowCells(r))
+  assert.deepEqual(c.map((x) => x.mark), ['check', 'dot-waiting', 'ring', 'dot-now', 'dash'])
+  assert.deepEqual(c.map((x) => x.wrap), [false, true, true, true, false])
+  assert.equal(c[4].line, undefined)
+  assert.deepEqual(c[1].reported, { text: 'reported: done', note: '#902 merged' })
+  assert.ok(c[1].detail.some((d) => d.key === 'Reported' && d.value === 'done: #902 merged'))
+})
+
+test('rowCells: the parent row has progress and no status; a problem names its reference', () => {
+  const tasks = [t('r', 'now', 'root'), t('a', 'next', 'a', { parent: 'r', dependsOn: ['release notes'] }), t('b', 'next', 'b', { parent: 'a' })]
+  const rows = boardRows({ tasks })
+  const flags = boardFlags(tasks)
+  const c = rows.map((r) => rowCells(r, flags.filter((f) => f.item === r.item)))
+  assert.equal(c[0].parent, true)
+  assert.equal(c[0].status, undefined)
+  assert.deepEqual(c[0].progress, { done: 0, dropped: 0, total: 1, needsYou: 0 })
+  assert.deepEqual(c[1].problems, ["Blocked by 'release notes' (not on the board)"])
+  assert.deepEqual([c[1].indent, c[1].elbow, c[2].indent, c[2].elbow], [0, false, 1, true])
+})
+
+test('boardSegments: one per work task, a kind per shape, tooltips that say why', () => {
+  const tasks = [
+    t('r', 'now', 'root'),
+    t('1', 'done', 'a', { parent: 'r' }),
+    t('2', 'now', 'b', { parent: 'r', model: 'opus', effort: 'high' }),
+    t('3', 'waiting', 'c', { parent: 'r', waitingOn: 'CI' }),
+    t('4', 'waiting', 'd', { parent: 'r', waitingOn: 'owner' }),
+    t('5', 'next', 'e', { parent: 'r', dependsOn: ['1'] }),
+    t('6', 'next', 'f', { parent: 'r', dependsOn: ['3', 'ghost'] }),
+    t('7', 'dropped', 'g', { parent: 'r' }),
+  ]
+  const s = boardSegments({ tasks })
+  assert.deepEqual(s.segments.map((g) => g.kind), ['done', 'now', 'waiting', 'needs you', 'ready', 'blocked', 'dropped'])
+  assert.equal(new Set(s.segments.map((g) => g.kind)).size, 7, 'blocked and waiting differ')
+  assert.equal(s.segments[1].tooltip, 'b · now · opus high')
+  assert.equal(s.segments[2].tooltip, 'c · waiting · on CI')
+  assert.equal(s.segments[5].tooltip, "f · blocked by 3 (waiting), 'ghost' (not on the board)")
+  assert.deepEqual([s.done, s.dropped, s.total, s.continuous], [1, 1, 7, false])
+  const many = Array.from({ length: SEGMENT_MAX + 1 }, (_, i) => t(String(i), 'next', 'w'))
+  assert.equal(boardSegments({ tasks: many }).continuous, true)
+  assert.equal(boardSegments({ tasks: many.slice(1) }).continuous, false)
+})
+
+test('driftState and driftWords: not run, failed, matches, differs', () => {
+  const rows = (drift) => boardRows({ drift, tasks: [t('1', 'waiting', 'a'), t('2', 'waiting', 'b')] })
+  assert.equal(driftWords(driftState(undefined, [])), 'not run yet')
+  const failed = driftState({ checkedAt: 'x', error: 'exit 3' }, [])
+  assert.deepEqual(failed, { kind: 'failed', error: 'exit 3', at: 'x' })
+  assert.equal(driftWords(driftState({ checkedAt: 'x', checked: 2, items: [] }, rows())), 'matches')
+  const one = { checkedAt: 'x', items: [{ item: '1', status: 'done' }] }
+  assert.equal(driftWords(driftState(one, rows(one))), '1 differs')
+  const two = { checkedAt: 'x', items: [{ item: '1', status: 'done' }, { item: '2', status: 'done' }] }
+  assert.equal(driftWords(driftState(two, rows(two))), '2 differ')
 })
