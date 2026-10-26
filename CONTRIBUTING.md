@@ -20,7 +20,7 @@ The README answers, in this order:
 6. **Limits**: what it does not do, and known problems.
 7. Links to `CHANGELOG.md` and the license.
 
-Leave out what only a maintainer needs: file-by-file layout, internals, extension points used, design reasoning, test and build commands, and the history of decisions. Put those in `packages/<name>/DEVELOPMENT.md` and link it in one line at the bottom of the README.
+Leave out what only a maintainer needs: file-by-file layout, internals, extension points used, design reasoning, test and build commands, and the history of decisions. Put those in `packages/<name>/DEVELOPING.md` and link it in one line at the bottom of the README.
 
 Write in plain words and second person ("select text", "you see"). Name what the user sees on screen, not the code behind it.
 
