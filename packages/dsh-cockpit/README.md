@@ -2,7 +2,7 @@
 
 A durable task board for a DeepSeek Harness hub session: the session that coordinates builders across many pull requests. A board is a tree of steps, each linked to its work by free-form fields, and it is kept as one local JSON file that other processes can read.
 
-**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools, its read routes and the web GUI's Board tab, and runs the optional drift check; the progress strip and the chat tool cards follow in a later pull request.
+**Status: in development.** The design is in [issue #1](https://github.com/romany-saad/dsh-plugins/issues/1). The plugin registers its four board tools, its read routes, and in the web GUI the Board tab, the progress strip above the chat input and the chat cards of the board tools; it runs the optional drift check.
 
 ## What is here
 
@@ -23,8 +23,10 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
   - the rows in tree order and fixed columns (id · status · title · PR · chevron): status by shape and word (done a check, next a ring, now an info dot, waiting a grey dot, dropped a dash with the title struck through), one meta line (the next action as written, "Waiting on CI", "Start when: …"), "Blocked by …", "ready", "reported: done", and an expandable detail with the reason, start condition, model, branch, worktree and command;
   - on the parent row, the progress in words (dropped counted apart) and a thin bar with one segment per task that text counts (the row's children), each kind its own shape.
   Titles show `#12` for the board parent's repository and `repo#12` for another, with the full reference in the link and its tooltip. Board text is rendered only as text; only `http(s)` URLs become links, opening in a new tab. The tab runs no command and writes nothing.
+- The **progress strip** above the chat input (the `conversation.input.dock` slot, after the Todo, Goal and Queue docks), shown only while the session has a bound board. It is one line: the same segments as the parent row's bar (one continuous bar above 24), then "<key> · N of M done · <focus> · Board ›". The focus is the first of: a task blocked, naming the blocker and its status ("#887 blocked by #886 (waiting)"); the tasks in progress ("2 in progress: #885, #886"). When a task waits on the owner it reads "⚠ Needs you: <next action> · Copy command · Board ›" instead, with the CommandBox's copy ("2 need you" for more, with no Copy). A click on the strip or a segment opens the Board tab at that row. The strip and the tab share one poll of the view route.
+- **Chat cards** for `board_open`, `board_read`, `board_add` and `board_update` (keyed `tool.call.toolview` views): one row, "Board · <title>", the title from `lib/present.js` on the arguments or the result's recorded meta title; a result `{ ok: false }` shows its code. Opened, the card shows the result's tree text, else its JSON.
 - `lib/config.js`: the config and its defaults, and `linkOptions(config, board)`, which turns the `links` patterns into the options of `refUrl` and `boardRows`.
-- `lib/present.js`: one-line titles for the tool cards.
+- `lib/present.js`: one-line titles for the tool cards, inlined into the client bundle too.
 - `cordis.patch.yml`: the bundle patch (`dsh.bundle.patch`).
 - `lib/task.js`: the task model. Statuses `next`, `now`, `waiting`, `done` and `dropped`; `done` and `dropped` are closed, so they block nothing. Fields: item, what, status, why, issue, pr, branch, worktree, provider, model, effort, nextAction, waitingOn, readyCommand, startWhen, parent, dependsOn, extra, updatedAt. Fields it does not know are kept.
 - `lib/rows.js`: what each row says, derived and never stored: ready, blocked by, needs you (`waitingOn` is `owner`, in any case), progress (dropped counted apart from done), flags (`unknown_parent`, `unknown_dependency`, `parent_loop`, `duplicate_issue`, `duplicate_pr`), and links. Only full `http(s)` URLs link, unless the caller passes `links` URL patterns (`{ref}`, `{repo}`, `{number}`).
@@ -33,7 +35,7 @@ A durable task board for a DeepSeek Harness hub session: the session that coordi
 - `lib/drift.js`: the drift runner and record. It keeps only the entries whose status differs from their task's, and `checked` counts every entry.
 - `examples/board-drift-gh.sh`: an example drift command (see Drift).
 - `reader.js` (`@romany-saad/dsh-cockpit/reader`): `listBoards(dir?)`, `readBoard(keyOrFile, dir?)` and `boardTree(board)`, with no DSH imports. A miss names the folder it looked in and where `DSH_HOME` came from.
-- `board.schema.json`: the file format as a JSON Schema, for a hub that writes the file without the plugin.
+- `board.schema.json`: the file format as a JSON Schema, also for a local file that a hub without the plugin writes and the reader reads the same way; that file is never the plugin's own store.
 
 ## Config
 
@@ -67,7 +69,7 @@ The peers are `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths`, which 
 
 ```sh
 pnpm test
-node client/build.mjs   # after changing client/src or lib/rows.js
+node client/build.mjs   # after changing client/src, lib/rows.js or lib/present.js
 ```
 
 ## License

@@ -1,8 +1,9 @@
-// Tool-card titles: one short line per call saying what it did. Pure: they
-// depend only on the call's args and, for the result, on the value's own
-// presentationMeta projection. DSH's web client picks its renderer through
-// tool.call.toolview instead (dsh-tools README, "Host presentation
-// descriptors"); the chat cards of a later step reuse these titles.
+// Tool-card titles: one short line per call saying what it did. Pure, with
+// no imports: they depend only on the call's args and, for the result, on the
+// value's own presentationMeta projection. DSH's web client ignores
+// presentCall/presentResult and picks its renderer through tool.call.toolview
+// (dsh-tools README, "Host presentation descriptors"), so client/build.mjs
+// inlines this file and the chat cards use callTitle and the recorded meta title.
 
 const MAX = 48
 const clip = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > MAX ? t.slice(0, MAX - 1) + '…' : t }

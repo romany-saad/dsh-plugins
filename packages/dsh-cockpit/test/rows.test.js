@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SEGMENT_MAX, blockedText, boardFlags, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, titleParts, titleText } from '../lib/rows.js'
+import { SEGMENT_MAX, blockedText, boardFlags, boardParent, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, stripModel, stripText, titleParts, titleText } from '../lib/rows.js'
 import { t } from './helpers.mjs'
 
 test('needsYou: waitingOn owner, any case and spacing, open tasks only', () => {
@@ -316,4 +316,34 @@ test('driftState and driftWords: not run, failed, matches, differs', () => {
   assert.equal(driftWords(driftState(one, rows(one))), '1 differs')
   const two = { checkedAt: 'x', items: [{ item: '1', status: 'done' }, { item: '2', status: 'done' }] }
   assert.equal(driftWords(driftState(two, rows(two))), '2 differ')
+})
+
+test('stripModel: the parent bar\'s segments and counts, and the focus in order: needs you, blocked, in progress', () => {
+  const P = 'o/r#883'
+  const tasks = [
+    t('r', 'now', 'root', { issue: '#883' }),
+    t('1', 'done', 'a', { issue: '#884', parent: 'r' }),
+    t('2', 'now', 'Work reports', { issue: '#885', parent: 'r' }),
+    t('3', 'waiting', 'b', { issue: 'o/r#886', parent: 'r', waitingOn: 'CI' }),
+    t('4', 'next', 'Docs', { issue: '#887', parent: 'r', dependsOn: ['3'] }),
+    t('5', 'dropped', 'x', { parent: 'r' }),
+  ]
+  const board = { key: 'sim-883', parent: P, tasks }
+  const rows = boardRows(board)
+  const m = stripModel(board)
+  assert.deepEqual(m.bar, boardSegments(board, rows, boardParent(rows)), 'the same model as the parent row')
+  assert.equal(stripText(m), 'sim-883 · 1 of 5 done · 1 dropped · #887 blocked by #886 (waiting) · Board ›')
+  assert.equal(m.item, '4')
+  const free = { ...board, tasks: tasks.filter((x) => x.item !== '4') }
+  assert.equal(stripModel(free).focus, 'in progress: #885 Work reports')
+  const two = { ...free, tasks: free.tasks.map((x) => (x.item === '3' ? { ...x, status: 'now' } : x)) }
+  assert.equal(stripModel(two).focus, '2 in progress: #885, #886')
+  const idle = { ...board, tasks: [tasks[0], tasks[1], tasks[5]] }
+  assert.equal(stripModel(idle).focus, undefined, 'the parent row itself is not a focus')
+  const owner = { ...board, tasks: tasks.map((x) => (x.item === '3' ? { ...x, waitingOn: 'owner', nextAction: 'merge PR #902', readyCommand: 'gh pr merge 902' } : x)) }
+  const n = stripModel(owner)
+  assert.deepEqual([n.kind, n.item, n.command], ['needs you', '3', 'gh pr merge 902'])
+  assert.equal(stripText(n), '⚠ Needs you: merge PR #902 · Copy command · Board ›')
+  const noAction = { ...owner, tasks: owner.tasks.map((x) => (x.item === '3' ? { ...x, nextAction: undefined, readyCommand: undefined } : x)) }
+  assert.equal(stripText(stripModel(noAction)), '⚠ Needs you: o/r#886 b · Board ›', 'no action: the title, and no Copy')
 })

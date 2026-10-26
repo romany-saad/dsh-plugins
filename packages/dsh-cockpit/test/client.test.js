@@ -10,7 +10,7 @@ import { bundle } from '../client/build.mjs'
 const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
 
 /** The bundle's exports; useState gives a row's open state (false unless open). */
-function load({ open = false } = {}) {
+function load({ open = false, primitives } = {}) {
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
     useState: (init) => [typeof init === 'function' ? init() : init === false ? open : init, () => {}],
@@ -19,7 +19,11 @@ function load({ open = false } = {}) {
   }
   let row
   vm.runInNewContext(code, { window: { __ModuleLoader__: { load: (r) => { row = r } } } })
-  const exports = row.factory((name) => { if (name !== 'react') throw new Error('unexpected require ' + name); return React })
+  const exports = row.factory((name) => {
+    if (name === 'react') return React
+    if (name === '@deepseek-ai/dsh-client-ui-primitives' && primitives) return primitives
+    throw new Error('unexpected require ' + name)
+  })
   return { row, exports }
 }
 
@@ -81,22 +85,39 @@ test('the bundle is what client/build.mjs builds from the sources', () => {
   assert.equal(code, bundle(), 'run node client/build.mjs')
 })
 
-test('the bundle registers the Board tab and its body, and requires only react', () => {
-  const { row, exports } = load()
-  assert.equal(row.id, '@romany-saad/dsh-cockpit')
-  assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs'])
-  const calls = { tabs: [], slots: [] }
+/** apply() against a stub ctx: the tab, the slots and what openTab was asked. */
+function register(exports) {
+  const calls = { tabs: [], slots: [], opened: [] }
   exports.apply({
     effect: (fn) => fn(),
     sidebarRightTabs: { register: (d) => { calls.tabs.push(d); return () => {} } },
+    sidebarRight: { openTab: (kind, options) => { calls.opened.push([kind, options]) } },
     slots: { inject: (_name, fn) => fn(), register: (entry, Component) => { calls.slots.push({ entry, Component }); return () => {} } },
   })
+  return calls
+}
+
+test('the bundle registers the Board tab, the four tool cards and the strip; materializing it requires only react', () => {
+  const { row, exports } = load()
+  assert.equal(row.id, '@romany-saad/dsh-cockpit')
+  assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight'])
+  const calls = register(exports)
   assert.equal(calls.tabs.length, 1)
   assert.equal(calls.tabs[0].id, '@romany-saad/dsh-cockpit')
   assert.equal(calls.tabs[0].title(), 'Board', 'still "Board" in 0.1')
-  assert.deepEqual(calls.slots.map((s) => s.entry.name), ['sidebar.right.pane.tab'], 'the tab only: no strip, no tool cards in this step')
-  assert.equal(calls.slots[0].entry.key, calls.tabs[0].id)
+  assert.deepEqual(calls.slots.map((s) => [s.entry.name, s.entry.key ?? s.entry.id]), [
+    ['sidebar.right.pane.tab', '@romany-saad/dsh-cockpit'],
+    ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'],
+    ['conversation.input.dock', 'dsh-cockpit-progress'],
+  ])
   assert.equal(JSON.stringify(calls.slots[0].entry.inject('s1')), '{"sessionId":"s1"}')
+  const dock = calls.slots[5].entry
+  assert.equal(dock.order, 30, 'after the Todo, Goal and Queue docks')
+  const props = dock.inject('s1')
+  assert.equal(props.sessionId, 's1')
+  props.openBoard()
+  props.openBoard('5')
+  assert.equal(JSON.stringify(calls.opened), JSON.stringify([['dsh-cockpit-board', undefined], ['dsh-cockpit-board', { params: { item: '5' } }]]))
 })
 
 test('header: key and parent left, revision and time right; the drift line only when configured or present', () => {
@@ -257,4 +278,149 @@ test('the CommandBox copy state machine: Copied, Copy failed, back to Copy', asy
   assert.equal(await exports.copyText('x', { writeText: async () => { throw new Error('denied') } }), 'failed')
   assert.equal(await exports.copyText('x', undefined), 'failed')
   assert.match(exports.CSS, /\.dshc-cmd code\{[^}]*white-space:pre-wrap;overflow-wrap:anywhere/)
+})
+
+// ---- The progress strip ----
+
+/** Text and nodes of any element tree, function components expanded. */
+function expand(node) {
+  const out = []
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    if (typeof n.type === 'function') return walk(n.type({ ...n.props, children: n.children.length ? n.children : n.props.children }))
+    out.push(n)
+    walk(n.children)
+  }
+  walk(node)
+  return out
+}
+function textOf(node) {
+  if (node === null || node === undefined || node === false) return ''
+  if (Array.isArray(node)) return node.map(textOf).join('')
+  if (typeof node !== 'object') return String(node)
+  if (typeof node.type === 'function') return textOf(node.type({ ...node.props, children: node.children.length ? node.children : node.props.children }))
+  if (node.type === 'svg') return ''
+  return textOf(node.children)
+}
+const strip = (view, openBoard) => { const { exports } = load(); const m = exports.dockModel(view); return { m, tree: exports.StripView({ m, openBoard }) } }
+const withTasks = (view, fn) => ({ ...view, board: { ...view.board, tasks: fn(view.board.tasks) } })
+
+test('the strip, needs you: "⚠ Needs you: <action> · Copy command · Board ›", copying the ready command', () => {
+  const { m, tree } = strip(live)
+  assert.equal(m.kind, 'needs you')
+  assert.equal(m.line, '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. · Copy command · Board ›')
+  assert.equal(textOf(tree), 'Needs you: Owner: once CI is green, merge PR #892 by hand.Copy command·Board ›', 'the action as written, no key or count')
+  const all = expand(tree)
+  const copy = all.find((n) => n.type === 'button' && n.props['data-copy-state'] === 'idle')
+  assert.equal(copy.props['aria-label'], 'Copy command for #884 Profile and guard')
+  const two = withTasks(live, (ts) => ts.map((t) => (t.item === '6b' ? { ...t, waitingOn: 'Owner' } : t)))
+  assert.equal(strip(two).m.line, '⚠ 2 need you · Board ›', 'two asks: a count and no Copy')
+  assert.ok(!expand(strip(two).tree).some((n) => n.props['data-copy-state']))
+})
+
+test('the strip, normal: "<key> · N of M done · <focus> · Board ›"; blocked names the blocker and its status, then in progress', () => {
+  const calm = withTasks(live, (ts) => ts.map((t) => (t.item === '1' ? { ...t, status: 'done', waitingOn: undefined } : t)))
+  const { m, tree } = strip(calm)
+  assert.equal(m.kind, 'normal')
+  assert.equal(m.line, "sim-883 · 2 of 5 done · 1 dropped · dsh-plugins#1 blocked by 'release notes' (not on the board) · Board ›")
+  assert.ok(textOf(tree).includes('sim-883'))
+  const blocked = withTasks(calm, (ts) => ts.map((t) => (t.item === '5' ? { ...t, dependsOn: ['1'] } : t.item === '1' ? { ...t, status: 'now' } : t)))
+  assert.equal(strip(blocked).m.focus, 'dsh-plugins#1 blocked by #884 (now)', 'the blocker and its status, short refs as the titles show them')
+  const busy = withTasks(calm, (ts) => ts.filter((t) => t.item !== '5' && t.item !== '6b').map((t) => (t.item === '2' ? { ...t, status: 'now' } : t)))
+  assert.equal(strip(busy).m.focus, 'in progress: #888 Log reader')
+  const two = withTasks(busy, (ts) => ts.map((t) => (t.item === '1' ? { ...t, status: 'now' } : t)))
+  assert.equal(strip(two).m.focus, '2 in progress: #884, #888')
+  const done = withTasks(calm, (ts) => ts.filter((t) => t.item === '883' || t.item === '2'))
+  assert.equal(strip(done).m.line, 'sim-883 · 1 of 1 done · Board ›')
+})
+
+test('the strip: the same segments and counts as the parent row\'s bar, each with a tooltip; nothing moves', () => {
+  const { exports } = load()
+  const { m, tree } = strip(live)
+  const rowSegs = nodes(live).filter((n) => 'data-segment' in n.props).map((s) => [s.props['data-item'], s.props['data-segment'], s.props.title])
+  const stripSegs = expand(tree).filter((n) => 'data-segment' in n.props).map((s) => [s.props['data-item'], s.props['data-segment'], s.props.title])
+  assert.deepEqual(stripSegs, rowSegs, 'one segment model')
+  assert.ok(stripSegs.every((s) => s[2]), 'every segment has a tooltip')
+  assert.equal(m.done, '1 of 5 done · 1 dropped')
+  assert.ok(!/animation|transition/.test(exports.CSS))
+  // A board without one parent row: one segment per top task.
+  const flat = { key: 'f', board: { key: 'f', tasks: [{ item: '1', what: 'a', status: 'done' }, { item: '2', what: 'b', status: 'next', dependsOn: ['1'] }] } }
+  assert.deepEqual([...strip(flat).m.bar.segments.map((s) => s.kind)], ['done', 'ready'])
+  assert.equal(strip(flat).m.line, 'f · 1 of 2 done · Board ›')
+})
+
+test('the strip above 24 segments is one continuous bar', () => {
+  const tasks = [{ item: 'r', what: 'root', status: 'now' }, ...Array.from({ length: 25 }, (_, i) => ({ item: String(i), what: 'w' + i, status: i < 5 ? 'done' : 'next', parent: 'r' }))]
+  const big = { key: 'big', board: { key: 'big', tasks } }
+  const all = expand(strip(big).tree)
+  assert.equal(all.filter((n) => 'data-segment' in n.props).length, 0)
+  assert.ok(all.some((n) => n.props.className === 'dshc-fill'))
+  const at24 = { ...big, board: { ...big.board, tasks: tasks.slice(0, 25) } }
+  assert.equal(expand(strip(at24).tree).filter((n) => 'data-segment' in n.props).length, 24)
+})
+
+test('the strip opens the Board tab: the strip at its focus row, a segment at its own row, without the click going twice', () => {
+  const opened = []
+  const { tree } = strip(live, (item) => opened.push(item))
+  const all = expand(tree)
+  const bar = all.find((n) => n.props.role === 'button' && n.props.className === 'dshc-strip')
+  assert.equal(bar.props.tabIndex, 0, 'keyboard reachable')
+  assert.equal(bar.props['aria-label'], '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. · Copy command · Board ›')
+  bar.props.onClick({ stopPropagation() {} })
+  const seg = all.find((n) => n.props['data-item'] === '5' && 'data-segment' in n.props)
+  let stopped = false
+  seg.props.onClick({ stopPropagation: () => { stopped = true } })
+  all.find((n) => n.type === 'button' && textOf(n) === 'Board ›').props.onClick({ stopPropagation() {} })
+  assert.deepEqual(opened, ['1', '5', '1'])
+  assert.ok(stopped)
+})
+
+test('the strip hides without a bound board that parsed', () => {
+  const { exports } = load()
+  for (const view of [undefined, { key: null, boards: ['a'] }, { key: 'k', error: 'no such board' }]) assert.equal(exports.dockModel(view), undefined)
+  const dock = register(exports).slots.find((s) => s.entry.name === 'conversation.input.dock')
+  assert.equal(dock.Component({ sessionId: 's' }), null, 'nothing while the first poll runs')
+})
+
+// ---- The chat cards ----
+
+const card = (props, extra) => load(extra).exports.toolCardModel(props)
+const argsOf = (o) => JSON.stringify(o)
+
+test('a card\'s title comes from lib/present.js on the arguments, then the result\'s meta title', () => {
+  assert.equal(card({ toolName: 'board_update', phase: 'preparing', block: { name: 'board_update' } }).state, 'running')
+  assert.equal(card({ toolName: 'board_update', phase: 'start', block: { argsRaw: argsOf({ item: '3', set: { status: 'waiting', pr: '#902' } }) } }).summary, 'update 3 → waiting: pr #902')
+  const open = { call: { argsRaw: argsOf({ key: 'sim-883' }) }, meta: { title: 'open sim-883 (new)' }, content: [{ type: 'text', text: '{"ok":true,"tree":"1  now  #883"}' }], isError: false }
+  const m = card({ toolName: 'board_open', phase: 'result', block: open })
+  assert.deepEqual([m.state, m.title, m.summary], ['ok', 'Board', 'open sim-883 (new)'])
+  assert.equal(load().exports.cardBody(m), '1  now  #883', 'opened: the tree text')
+  const noMeta = { ...open, meta: undefined, call: { argsRaw: argsOf({ item: '2', remove: true }) } }
+  assert.equal(card({ toolName: 'board_update', phase: 'result', block: noMeta }).summary, 'remove 2')
+})
+
+test('a failed {ok:false} card shows its code; a thrown error and an interruption say so', () => {
+  const failed = { call: { argsRaw: '{}' }, content: [{ type: 'text', text: '{"ok":false,"code":"not_bound","message":"m"}' }], isError: false, meta: { title: 'x' } }
+  const f = card({ toolName: 'board_read', phase: 'result', block: failed })
+  assert.deepEqual([f.state, f.summary], ['error', 'read board · not_bound'])
+  const thrown = { call: { argsRaw: argsOf({ key: 'k' }) }, content: [{ type: 'text', text: 'Error: boom' }], isError: true }
+  assert.equal(card({ toolName: 'board_open', phase: 'result', block: thrown }).summary, 'open k · failed')
+  const stopped = { ...thrown, error: { name: 'x', code: 'interrupted' } }
+  assert.equal(card({ toolName: 'board_open', phase: 'result', block: stopped }).state, 'stopped')
+})
+
+test('the card renders folded and opens to the result, through the host\'s DisclosureRow when the shell has it', () => {
+  const block = { call: { argsRaw: argsOf({ key: 'sim-883' }) }, meta: { title: 'open sim-883' }, content: [{ type: 'text', text: '{"ok":true,"tree":"TREE"}' }], isError: false }
+  const row = (expanded, primitives) => {
+    const { exports } = load(primitives ? { primitives } : undefined)
+    const Row = register(exports).slots.find((s) => s.entry.key === 'board_open').Component
+    return Row({ toolName: 'board_open', phase: 'result', block, useDisclosure: () => ({ expanded, toggle() {} }) })
+  }
+  assert.ok(!textOf(row(false)).includes('TREE'), 'folded')
+  assert.match(textOf(row(false)), /Board.*open sim-883/)
+  assert.ok(textOf(row(true)).includes('TREE'), 'opened')
+  const seen = []
+  const DisclosureRow = (p) => { seen.push(p); return { type: 'div', props: {}, children: [p.title, p.collapsedContent, p.children] } }
+  assert.ok(textOf(row(true, { DisclosureRow })).includes('TREE'))
+  assert.deepEqual([seen[0].title, seen[0].expandable, seen[0].open, seen[0].expandOnRowClick], ['Board', true, true, true])
 })
