@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+README rewritten for users; developer reference moved to DEVELOPING.md. No code change.
+
 ## 0.1.1
 
 The package is renamed from `@romany-saad/dsh-cockpit` to `@rs-dsh/dsh-cockpit`, under the npm organization `rs-dsh` ([decision 26](https://github.com/romany-saad/dsh-plugins/issues/2#issuecomment-6410629697)). The plugin id `dsh-cockpit`, its tools, config, board format and data folder `$DSH_HOME/data/dsh-cockpit` stay as they were, so existing boards stay where they are.
