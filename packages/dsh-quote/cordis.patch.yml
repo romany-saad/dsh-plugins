@@ -1,0 +1,5 @@
+# Insert this plugin into the profile roster. Install with `dsh plugin add`;
+# never repeat this entry in the profile's own cordis.patch.yml.
+- insert:
+    - id: dsh-quote
+      name: '@rs-dsh/dsh-quote'
