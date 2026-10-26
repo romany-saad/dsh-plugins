@@ -77,4 +77,4 @@ The model receives each quote with its note, and can answer each one.
 
 - [CHANGELOG.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-quote/CHANGELOG.md)
 - [MIT License](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-quote/LICENSE)
-- For maintainers: [DEVELOPMENT.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-quote/DEVELOPMENT.md)
+- For maintainers: [DEVELOPING.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-quote/DEVELOPING.md)
