@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+The Board tab and the strip show the whole board, and the tab takes less room and looks like the rest of DSH. Tools, config and the board format are unchanged.
 
 - **Board tab:** add whole-board progress matching the strip, isolate each root parent and its subtree in a bordered section, and group standalone roots under Standalone tasks. Every root parent keeps its own direct-child progress bar.
 - **Progress strip:** count leaf tasks across the whole board, including standalone top-level tasks outside the main parent. Parent containers are not counted twice; each parent's tab bar still counts its direct children. Fixes [#23](https://github.com/romany-saad/dsh-plugins/issues/23).
