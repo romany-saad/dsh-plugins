@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- **Board tab, Needs you card:** a step id longer than its column no longer runs into the step's title. It stays on one line with an ellipsis, and hovering shows the full id, as in the step rows.
+- **Board tab:** add whole-board progress matching the strip, isolate each root parent and its subtree in a bordered section, and group standalone roots under Standalone tasks. Every root parent keeps its own direct-child progress bar.
+- **Progress strip:** count leaf tasks across the whole board, including standalone top-level tasks outside the main parent. Parent containers are not counted twice; each parent's tab bar still counts its direct children. Fixes [#23](https://github.com/romany-saad/dsh-plugins/issues/23).
+- **Board tab, less wasted space** ([#28](https://github.com/romany-saad/dsh-plugins/issues/28)): the step id column and the status word are gone from the rows; a step shows its status mark, with the status in the mark's tooltip and the id in the title's. A parent row is now its section's header: title and count on one line, its bar across the whole section. The Needs you card has no id column; its ask and command span the card. The whole-board progress sits in the header, and the spacing is tighter throughout.
+- **Board tab, strip and cards look like DSH:** DSH's own status marks (done, waiting) and icons (warning, link, chevrons, copy), its tag pills, outline buttons and sentence-case section titles, from the shell when it has them, with drawn fallbacks.
+- **Board tab, Needs you card:** a long step id no longer runs into the step's title; it is in the title's tooltip.
 
 ## 0.1.2
 

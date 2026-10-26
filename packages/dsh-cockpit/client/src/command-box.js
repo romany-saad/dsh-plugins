@@ -46,8 +46,10 @@ export function copyIcon(h) {
  * CommandBox({ command, label }) draws the box; label names the button for
  * screen readers ("Copy command for #886").
  */
-export function makeCommandBox(React) {
+export function makeCommandBox(React, { copyIcon: hostCopyIcon } = {}) {
   const h = React.createElement
+  // The host's copy icon when the caller has one, else the drawn one.
+  const drawIcon = () => (hostCopyIcon && hostCopyIcon()) || copyIcon(h)
   function useCopy(text) {
     const [state, setState] = React.useState('idle')
     const timer = React.useRef(undefined)
@@ -67,7 +69,7 @@ export function makeCommandBox(React) {
     const [state, copy] = useCopy(text)
     return h('span', { className: 'dshc-copy' },
       h('button', { type: 'button', className: 'dshc-btn', 'aria-label': state === 'idle' ? label || 'Copy command' : COPY_LABEL[state], 'data-copy-state': state, onClick: copy },
-        icon ? copyIcon(h) : null, state === 'idle' ? words : COPY_LABEL[state]),
+        icon ? drawIcon() : null, state === 'idle' ? words : COPY_LABEL[state]),
       // Announce the result without moving focus.
       h('span', { role: 'status', className: 'dshc-sr' }, state === 'idle' ? '' : COPY_LABEL[state]))
   }

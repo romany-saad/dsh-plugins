@@ -154,29 +154,57 @@ test('Needs you: only waitingOn owner, with the ask as written, Open PR and the 
   assert.equal(open.props.href, 'https://github.com/Romany-Saad/resturants-app/pull/892')
 })
 
-test('Needs you: a long id stays on one line with an ellipsis and the full id as its title', () => {
-  const id = nodes(live).find((n) => cls(n) === 'dshc-mono dshc-id')
-  assert.ok(id, 'the card shows the step id')
-  assert.equal(id.props.title, id.children.join(''), 'the full id on hover, as in the rows')
+test('Needs you: no id column; the step id is in the title\'s tooltip, and the ask and command span the card', () => {
+  const card = nodes(live).find((n) => cls(n) === 'dshc-ni')
+  assert.ok(card, 'the card')
+  assert.ok(!nodes(live).some((n) => /\bdshc-id\b/.test(cls(n))), 'no id column to leave empty under it')
+  const title = nodes(live).find((n) => /dshc-nit/.test(cls(n)))
+  assert.equal(title.props.title, 'Step 1', 'the full id on hover')
   const { exports } = load()
-  const rule = exports.CSS.split('}').find((r) => r.trim().startsWith('.dshc-ni .dshc-id'))
-  for (const d of ['min-width:0', 'overflow:hidden', 'text-overflow:ellipsis', 'white-space:nowrap']) assert.ok(rule.includes(d), d)
+  assert.match(exports.CSS, /\.dshc-ni\{display:grid;grid-template-columns:minmax\(0,1fr\) auto;/)
+  assert.match(exports.CSS, /\.dshc-ask\{grid-column:1\/-1;/, 'the ask starts at the card\'s left edge')
+  assert.match(exports.CSS, /\.dshc-ni \.dshc-cmd\{grid-column:1\/-1;/)
 })
 
-test('rows: fixed columns, tree order, a mark by shape, and dropped struck through and counted apart', () => {
+test('rows: mark · title · PR columns, tree order, a mark by shape, and dropped struck through and counted apart', () => {
   const all = nodes(live)
   assert.deepEqual(all.filter((n) => n.type === 'li').map((n) => n.props['data-item']), ['883', '1', '2', '5', '6b', '7'])
-  for (const r of all.filter((n) => cls(n) === 'dshc-row')) {
-    assert.deepEqual(r.children.filter(Boolean).slice(0, 4).map((k) => cls(k).split(' ').pop()), ['dshc-cid', 'dshc-cst', 'dshc-ct', 'dshc-cpr'])
+  const rowOf = (item) => within(all, item).find((n) => cls(n) === 'dshc-row')
+  for (const item of ['1', '2', '5', '6b', '7']) {
+    const cells = rowOf(item).children.filter(Boolean).slice(0, 3)
+    assert.deepEqual(cells.map((k) => cls(k).split(' ').pop()), ['dshc-cst', 'dshc-ct', 'dshc-cpr'], item)
+    // The status word: no column, but the mark's tooltip and accessible name.
+    assert.equal(cells[0].props.title, live.board.tasks.find((t) => t.item === item).status)
+    assert.equal(cells[0].props['aria-label'], cells[0].props.title)
   }
+  // The parent row is its section's header: title, then its count; no mark column.
+  const cell = (k) => (typeof k.type === 'function' ? k.type({ ...k.props, children: k.props.children }) : k)
+  assert.deepEqual(rowOf('883').children.filter(Boolean).slice(0, 2).map((k) => cls(cell(k)).split(' ')[0]), ['dshc-ct', 'dshc-hdcount'])
+  assert.ok(!all.some((n) => /\bdshc-cid\b/.test(cls(n))), 'no id column')
   const { exports } = load()
-  assert.match(exports.CSS, /grid-template-columns:36px 68px minmax\(0,1fr\) 60px 20px/)
+  assert.match(exports.CSS, /\.dshc-row\{display:grid;grid-template-columns:16px minmax\(0,1fr\) auto 20px;/)
+  assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\{grid-template-columns:minmax\(0,1fr\) auto;/, 'no empty chevron column on a parent with nothing to open')
+  assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\[data-expandable\]\{grid-template-columns:minmax\(0,1fr\) auto 20px;/)
+  assert.match(exports.CSS, /\.dshc-parentrow \.dshc-cmeta,\.dshc-parentrow \.dshc-detail\{grid-column:1\/-1\}/, 'the bar spans the section')
   assert.ok(!/animation|transition/.test(exports.CSS), 'nothing moves')
   const mark = (item) => within(all, item).map(cls).find((c) => /dshc-(ring|dot|check|dash)/.test(c)) || ''
   assert.deepEqual(['2', '5', '1', '7'].map(mark), ['dshc-check', 'dshc-ring', 'dshc-dot dshc-dot-waiting', 'dshc-dash'])
   assert.match(cls(all.find((n) => n.type === 'li' && n.props['data-item'] === '7')), /dshc-dropped/)
   assert.match(exports.CSS, /\.dshc-dropped \.dshc-tt\{text-decoration:line-through\}/)
   assert.ok(render(live).includes('1 of 5 done · 1 dropped · 1 needs you'))
+})
+
+test('with the host\'s ui-primitives: StateDot marks for done and waiting, the host icons; now stays a still dot', () => {
+  const used = []
+  const comp = (name) => { const f = (props) => { used.push([name, props]); return { type: 'host-' + name, props, children: [] } }; return f }
+  const primitives = Object.fromEntries(['StateDot', 'IconWarningTriangleOutlineRegular', 'IconRightUpOutlineRegular', 'IconChevronRightOutlineRegular', 'IconChevronDownOutlineRegular', 'IconCopyOutlineRegular'].map((n) => [n, comp(n)]))
+  const all = nodes(live, { primitives })
+  const dots = used.filter(([n]) => n === 'StateDot').map(([, p]) => [p.state, p.appearance])
+  assert.deepEqual(dots, [['idle', undefined], ['done', 'step'], ['idle', undefined]], 'waiting #1, done #2, waiting #6b')
+  assert.ok(!dots.some(([s]) => s === 'ongoing'), 'never the spinner: nothing moves')
+  for (const n of ['IconWarningTriangleOutlineRegular', 'IconRightUpOutlineRegular', 'IconChevronRightOutlineRegular', 'IconCopyOutlineRegular']) assert.ok(used.some(([u]) => u === n), n)
+  assert.ok(within(all, '5').some((n) => cls(n) === 'dshc-ring'), 'next keeps the drawn ring')
+  assert.ok(within(all, '7').some((n) => cls(n) === 'dshc-dash'), 'dropped keeps the drawn dash')
 })
 
 test('rows: no "Next:" label; Waiting on <who>; Start when; blocked by short refs; problems name the reference', () => {
@@ -205,7 +233,8 @@ test('titles: a short cross-repo reference, the full one in its link; open title
   const title = (item) => within(all, item).find((n) => /dshc-tt/.test(cls(n)))
   assert.match(cls(title('5')), /dshc-wrap/)
   assert.match(cls(title('2')), /dshc-trunc/)
-  assert.equal(title('2').props.title, '#888 Log reader')
+  assert.equal(title('2').props.title, '#888 Log reader · step 2', 'a truncated title in full, with the step id')
+  assert.equal(title('5').props.title, 'step 5', 'a wrapped title shows in full; its tooltip has the id')
 })
 
 test('links: the PR cell is the link through the links config; with no patterns nothing but full URLs links', () => {
@@ -250,7 +279,7 @@ test('the parent row: a now child with children is a now segment, and the bar co
     { item: '3', what: 'b', status: 'now', parent: 'r', model: 'opus', effort: 'high' },
     { item: '3b', what: 'c', status: 'done', parent: '3' },
   ] } }
-  const segs = nodes(view).filter((n) => 'data-segment' in n.props)
+  const segs = within(nodes(view), 'r').filter((n) => 'data-segment' in n.props)
   assert.deepEqual(segs.map((s) => [s.props['data-item'], s.props['data-segment']]), [['1', 'done'], ['3', 'now']])
   assert.equal(segs[1].props.title, 'b · now · opus high')
   assert.ok(render(view).includes('1 of 2 done'))
@@ -259,7 +288,7 @@ test('the parent row: a now child with children is a now segment, and the bar co
 
 test('the parent row: progress in words and the thin bar, one segment per child, by shape', () => {
   const all = nodes(live)
-  const segs = all.filter((n) => 'data-segment' in n.props)
+  const segs = within(all, '883').filter((n) => 'data-segment' in n.props)
   assert.deepEqual(segs.map((s) => [s.props['data-item'], s.props['data-segment']]), [['1', 'needs you'], ['2', 'done'], ['5', 'blocked'], ['6b', 'waiting'], ['7', 'dropped']])
   assert.equal(segs[3].props.title, 'Board rule in Bosla · waiting · on release')
   const { exports } = load()
@@ -269,6 +298,56 @@ test('the parent row: progress in words and the thin bar, one segment per child,
   assert.match(exports.CSS, /\[data-segment=now\]\{background:linear-gradient\(to right,var\(--dshc-info\) var\(--dshc-half\),transparent var\(--dshc-half\)\);box-shadow:inset 0 0 0 1px var\(--dshc-info\)\}/)
   assert.doesNotMatch(exports.CSS, /\[data-segment=now\]\{[^}]*(animation|transition)/)
   assert.match(exports.CSS, /\[data-segment=waiting\]\{background:/)
+})
+
+test('the Board tab groups each root tree separately, with a whole-board leaf bar and a local bar for every root parent', () => {
+  const view = { key: 'forest', board: { key: 'forest', tasks: [
+    { item: 'a', what: 'First project', status: 'now' },
+    { item: 'a1', what: 'Finished work', status: 'done', parent: 'a' },
+    { item: 'a2', what: 'Nested project', status: 'now', parent: 'a' },
+    { item: 'a21', what: 'Nested work', status: 'waiting', waitingOn: 'CI', parent: 'a2' },
+    { item: 'b', what: 'Second project', status: 'now' },
+    { item: 'b1', what: 'Ready work', status: 'next', parent: 'b' },
+    { item: 'publish', what: 'Publish release', status: 'waiting', waitingOn: 'release' },
+    { item: 'old', what: 'Abandoned task', status: 'dropped' },
+  ] } }
+  const all = nodes(view)
+  const overall = all.find((n) => cls(n) === 'dshc-overall')
+  assert.ok(overall, 'a dedicated overall section')
+  assert.equal(overall.type, 'section')
+  assert.equal(overall.props['aria-label'], 'Whole board')
+  assert.ok(textOf(overall).includes('Whole board'))
+  const segments = (ns) => ns.filter((n) => 'data-segment' in n.props).map((n) => [n.props['data-item'], n.props['data-segment']])
+  assert.deepEqual(segments(expand(overall)), [
+    ['a1', 'done'], ['a21', 'waiting'], ['b1', 'ready'], ['publish', 'waiting'], ['old', 'dropped'],
+  ], 'all leaves, including standalone tasks, but no parent tasks')
+  const groups = all.filter((n) => 'data-board-group' in n.props)
+  assert.deepEqual(groups.map((n) => [n.type, n.props['data-board-group']]), [
+    ['section', 'a'], ['section', 'b'], ['section', 'standalone'],
+  ])
+  const rows = (section) => expand(section).filter((n) => n.type === 'li').map((n) => n.props['data-item'])
+  assert.deepEqual(groups.map(rows), [['a', 'a1', 'a2', 'a21'], ['b', 'b1'], ['publish', 'old']])
+  assert.ok(textOf(groups[2]).includes('Standalone tasks'))
+  // Inspect the root's own bar, not its nested parent's bar or the overall bar.
+  const localSegments = (item) => segments(within(all, item))
+  assert.deepEqual(localSegments('a'), [['a1', 'done'], ['a2', 'now']], 'direct children, not descendant leaves')
+  assert.deepEqual(localSegments('b'), [['b1', 'ready']], 'a second parent still has its local bar')
+})
+
+test('the Board tab keeps the whole-board summary for a single tree and groups flat roots as standalone tasks', () => {
+  const single = nodes(live)
+  assert.equal(single.filter((n) => cls(n) === 'dshc-overall').length, 1)
+  assert.deepEqual(single.filter((n) => 'data-board-group' in n.props).map((n) => n.props['data-board-group']), ['883'])
+  const flat = nodes({ key: 'flat', board: { key: 'flat', tasks: [
+    { item: 'one', what: 'First task', status: 'done' },
+    { item: 'two', what: 'Second task', status: 'next' },
+  ] } })
+  const groups = flat.filter((n) => 'data-board-group' in n.props)
+  assert.deepEqual(groups.map((n) => n.props['data-board-group']), ['standalone'])
+  assert.ok(textOf(groups[0]).includes('Standalone tasks'))
+  const overall = flat.find((n) => cls(n) === 'dshc-overall')
+  assert.ok(overall)
+  assert.deepEqual(expand(overall).filter((n) => 'data-segment' in n.props).map((n) => n.props['data-item']), ['one', 'two'])
 })
 
 test('card error and stopped text use the tab colour names, set on the card in both themes', () => {
@@ -357,10 +436,12 @@ test('the strip, normal: "<key> · N of M done · <focus> · Board ›"; blocked
   assert.equal(strip(done).m.line, 'sim-883 · 1 of 1 done · Board ›')
 })
 
-test('the strip: the same segments and counts as the parent row\'s bar, each with a tooltip; nothing moves', () => {
+test('the strip: whole-board leaf segments, each with a tooltip; nothing moves', () => {
   const { exports } = load()
   const { m, tree } = strip(live)
-  const rowSegs = nodes(live).filter((n) => 'data-segment' in n.props).map((s) => [s.props['data-item'], s.props['data-segment'], s.props.title])
+  const overall = nodes(live).find((n) => cls(n) === 'dshc-overall')
+  assert.ok(overall, 'the Board tab has a whole-board summary')
+  const rowSegs = expand(overall).filter((n) => 'data-segment' in n.props).map((s) => [s.props['data-item'], s.props['data-segment'], s.props.title])
   const stripSegs = expand(tree).filter((n) => 'data-segment' in n.props).map((s) => [s.props['data-item'], s.props['data-segment'], s.props.title])
   assert.deepEqual(stripSegs, rowSegs, 'one segment model')
   assert.ok(stripSegs.every((s) => s[2]), 'every segment has a tooltip')
@@ -373,6 +454,21 @@ test('the strip: the same segments and counts as the parent row\'s bar, each wit
   const epics = { key: 'e', board: { key: 'e', tasks: ['a', 'b'].flatMap((p) => [{ item: p, what: p, status: 'now' }, ...[1, 2, 3].map((i) => ({ item: p + i, what: p + i, status: i === 1 ? 'done' : 'next', parent: p }))]) } }
   assert.equal(strip(epics).m.done, '2 of 6 done', 'two epics: their work tasks, not the epics')
   assert.deepEqual([...strip(epics).m.bar.segments.map((s) => s.item)], ['a1', 'a2', 'a3', 'b1', 'b2', 'b3'])
+})
+
+test('the rendered strip includes a waiting top-level task outside a completed parent (#23)', () => {
+  const view = { key: 'release', board: { key: 'release', tasks: [
+    { item: 'root', what: 'Implementation', status: 'done' },
+    { item: 'build', what: 'Build', status: 'done', parent: 'root' },
+    { item: 'publish', what: 'Publish', status: 'waiting', waitingOn: 'CI' },
+  ] } }
+  const { m, tree } = strip(view)
+  assert.equal(m.line, 'release · 1 of 2 done · Board ›')
+  const segments = expand(tree).filter((n) => 'data-segment' in n.props)
+  assert.deepEqual(segments.map((n) => [n.props['data-item'], n.props['data-segment']]), [
+    ['build', 'done'], ['publish', 'waiting'],
+  ])
+  assert.equal(segments[1].props.title, 'Publish · waiting · on CI')
 })
 
 test('the strip at narrow widths: the action or focus first, then the count, the segments, and the key last; the full text in the tooltip', () => {

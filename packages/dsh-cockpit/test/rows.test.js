@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SEGMENT_MAX, blockedText, boardFlags, boardParent, firstByItem, stripTitle, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, stripModel, stripText, titleParts, titleText } from '../lib/rows.js'
+import { SEGMENT_MAX, blockedText, boardFlags, firstByItem, stripTitle, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, stripModel, stripText, titleParts, titleText } from '../lib/rows.js'
 import { t } from './helpers.mjs'
 
 test('needsYou: waitingOn owner, any case and spacing, open tasks only', () => {
@@ -318,7 +318,7 @@ test('driftState and driftWords: not run, failed, matches, differs', () => {
   assert.equal(driftWords(driftState(two, rows(two))), '2 differ')
 })
 
-test('stripModel: the parent bar\'s segments and counts, and the focus in order: needs you, blocked, in progress', () => {
+test('stripModel: whole-board leaf counts, and the focus in order: needs you, blocked, in progress', () => {
   const P = 'o/r#883'
   const tasks = [
     t('r', 'now', 'root', { issue: '#883' }),
@@ -331,7 +331,7 @@ test('stripModel: the parent bar\'s segments and counts, and the focus in order:
   const board = { key: 'sim-883', parent: P, tasks }
   const rows = boardRows(board)
   const m = stripModel(board)
-  assert.deepEqual(m.bar, boardSegments(board, rows, boardParent(rows)), 'the same model as the parent row')
+  assert.deepEqual(m.bar, boardSegments(board, rows, undefined), 'the whole-board leaf model')
   assert.equal(stripText(m), 'sim-883 · 1 of 5 done · 1 dropped · #887 blocked by #886 (waiting) · Board ›')
   assert.equal(m.item, '4')
   const free = { ...board, tasks: tasks.filter((x) => x.item !== '4') }
@@ -347,6 +347,36 @@ test('stripModel: the parent bar\'s segments and counts, and the focus in order:
   const noAction = { ...owner, tasks: owner.tasks.map((x) => (x.item === '3' ? { ...x, nextAction: undefined, readyCommand: undefined } : x)) }
   assert.equal(stripText(stripModel(noAction)), '⚠ Needs you: o/r#886 b · Board ›', 'no action: the title, and no Copy')
 })
+test('stripModel includes a waiting standalone task outside a completed parent (#23)', () => {
+  const tasks = [
+    t('root', 'done', 'Implementation'),
+    t('a', 'done', 'Build', { parent: 'root' }),
+    t('b', 'dropped', 'Optional', { parent: 'root' }),
+    t('publish', 'waiting', 'Publish package', { waitingOn: 'CI' }),
+  ]
+  const board = { key: 'release', tasks }
+  const m = stripModel(board)
+  assert.equal(m.done, '1 of 3 done · 1 dropped')
+  assert.deepEqual(m.bar.segments.map((s) => [s.item, s.kind]), [
+    ['a', 'done'], ['b', 'dropped'], ['publish', 'waiting'],
+  ])
+  assert.equal(m.bar.segments[2].tooltip, 'Publish package · waiting · on CI')
+  assert.equal(boardSegments(board, boardRows(board), 'root').total, 2, 'parent bar stays local')
+})
+
+test('stripModel counts nested leaves once, regardless of parent status', () => {
+  const tasks = [
+    t('root', 'done', 'Root'),
+    t('group', 'done', 'Group', { parent: 'root' }),
+    t('leaf', 'waiting', 'Pending work', { parent: 'group' }),
+    t('apart', 'done', 'Standalone'),
+  ]
+  const m = stripModel({ tasks })
+  assert.deepEqual(m.bar.segments.map((s) => s.item), ['leaf', 'apart'])
+  assert.equal(m.done, '1 of 2 done')
+  assert.equal(stripModel({ tasks: [] }).done, '0 of 0 done')
+})
+
 test('stripModel with two or more parent rows counts their work tasks; firstByItem keeps the first of a repeated item', () => {
   const tasks = [t('a', 'now', 'A'), t('a1', 'done', 'x', { parent: 'a' }), t('a2', 'next', 'y', { parent: 'a' }), t('b', 'now', 'B'), t('b1', 'now', 'z', { parent: 'b' })]
   const m = stripModel({ key: 'k', tasks })
