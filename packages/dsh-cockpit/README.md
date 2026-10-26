@@ -18,13 +18,13 @@ The panel and the strip only show the board. They run no command and change noth
 dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.1.2
 ```
 
-If npm is not an option, install from git instead, pinned to the release tag: `'github:romany-saad/dsh-plugins#dsh-cockpit@0.1.2&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.1.2&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
 ## Configure
 
-It works with no config. To change something, add a row to the profile's `cordis.patch.yml`, naming only what you change. To link `#12` and `owner/repo#12` to GitHub:
+It works with no config. To change something, add a `dsh-cockpit` row to the profile's `cordis.patch.yml`, naming only what you change. Keep one such row: a row with the same id replaces the whole config, so put every setting you change in it. To link `#12` and `owner/repo#12` to GitHub:
 
 ```yaml
 - id: dsh-cockpit
@@ -38,20 +38,20 @@ It works with no config. To change something, add a row to the profile's `cordis
 For `#12`, `{repo}` comes from the board's parent ticket. Without `links`, only full URLs become links.
 
 - `tools: { enabled: false }` registers no board tools.
-- `route: { enabled: false }` turns off the data the Board tab and the strip read, so they show nothing.
+- `route: { enabled: false }` turns off the data the Board tab and the strip read; the tab then says the board is unavailable.
 
 ### Drift
 
-Drift is a step whose status no longer matches its work, such as a merged PR on a step that still says `waiting`. The plugin knows no tracker, so the check is a command you configure, `drift: { command: '...', cwd: '...' }`; it runs only when the agent asks for a drift check. In `mode: report` (the default) it only reports the differences, and the hub decides what to change; in `mode: apply` it sets the reported statuses itself. [`examples/board-drift-gh.sh`](examples/board-drift-gh.sh) is an example to copy: it reports steps whose PR `gh` says is merged.
+Drift is a step whose status no longer matches its work, such as a merged PR on a step that still says `waiting`. The plugin knows no tracker, so the check is a command you configure, `drift: { command: '...', cwd: '...' }`; it runs only when the agent asks for a drift check. What the command gets and must print is in the example and in DEVELOPING.md (linked below). In `mode: report` (the default) it only reports the differences, and the hub decides what to change; in `mode: apply` it sets the reported statuses itself. [`examples/board-drift-gh.sh`](examples/board-drift-gh.sh) is an example to copy: it reports steps whose PR `gh` says is merged.
 
 ## Use
 
 Ask the hub to keep a board for the effort, or let it use the tools on its own:
 
 - **Open a board** with a key, such as `bosla-883`, and optionally the parent ticket. The session stays bound to it, also after a resume.
-- **Add steps**, each with what it is and its issue or PR. `parent` puts a step under another; `dependsOn` lists steps that come first, so a step shows as blocked until they are done.
+- **Add steps**, each with what it is and its issue or PR. `parent` puts a step under another; `dependsOn` lists steps that come first, so a step shows as blocked until they are done or dropped.
 - **Update a step** as the work moves: `next`, `now`, `waiting`, `done` or `dropped`, and a next action.
-- **Needs you:** a step with `waitingOn: owner` shows in the "Needs you" list and on the strip, with its next action and a command to copy.
+- **Needs you:** a step with `waitingOn: owner` shows in the "Needs you" list and on the strip, with its next action, and its `readyCommand` to copy when it has one.
 
 ## Reading a board from a script
 
@@ -61,7 +61,7 @@ const board = await readBoard('bosla-883')
 console.log(boardTree(board).tree)
 ```
 
-`listBoards()` lists the keys. Boards are read from `$DSH_HOME`, or `~/.dsh`.
+`listBoards()` lists the keys. Boards are files in `$DSH_HOME/data/dsh-cockpit/boards/` (by default `~/.dsh/data/dsh-cockpit/boards/`).
 
 ## Links
 
