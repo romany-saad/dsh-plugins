@@ -1,6 +1,6 @@
 // Built by client/build.mjs from client/src, lib/rows.js and lib/present.js; do not edit.
-window.__ModuleLoader__.load({ id: "@romany-saad/dsh-cockpit", factory: (shellRequire) => {
-var module = { exports: {} }; var exports = module.exports; var __packageId = "@romany-saad/dsh-cockpit";
+window.__ModuleLoader__.load({ id: "@rs-dsh/dsh-cockpit", factory: (shellRequire) => {
+var module = { exports: {} }; var exports = module.exports; var __packageId = "@rs-dsh/dsh-cockpit";
 var __local = {
 "../../lib/rows.js": (() => {
 // What each board row says: one model shared by the tree text (lib/tree.js),

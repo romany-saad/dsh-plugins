@@ -100,14 +100,14 @@ function register(exports) {
 
 test('the bundle registers the Board tab, the four tool cards and the strip; materializing it requires only react', () => {
   const { row, exports } = load()
-  assert.equal(row.id, '@romany-saad/dsh-cockpit')
+  assert.equal(row.id, '@rs-dsh/dsh-cockpit')
   assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight'])
   const calls = register(exports)
   assert.equal(calls.tabs.length, 1)
-  assert.equal(calls.tabs[0].id, '@romany-saad/dsh-cockpit')
+  assert.equal(calls.tabs[0].id, '@rs-dsh/dsh-cockpit')
   assert.equal(calls.tabs[0].title(), 'Board', 'still "Board" in 0.1')
   assert.deepEqual(calls.slots.map((s) => [s.entry.name, s.entry.key ?? s.entry.id]), [
-    ['sidebar.right.pane.tab', '@romany-saad/dsh-cockpit'],
+    ['sidebar.right.pane.tab', '@rs-dsh/dsh-cockpit'],
     ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'],
     ['conversation.input.dock', 'dsh-cockpit-progress'],
   ])
