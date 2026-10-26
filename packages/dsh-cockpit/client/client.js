@@ -960,12 +960,16 @@ const CSS = [
   '.dshc-parentrow .dshc-cmeta,.dshc-parentrow .dshc-detail{grid-column:1/-1}',
   '.dshc-hdcount{font-size:12px;color:var(--dshc-s);white-space:nowrap;text-align:right}',
   '.dshc-cst{display:flex;align-items:center;justify-content:center;height:20px}',
-  '.dshc-check{color:var(--dshc-ok-mark);flex:none}',
-  '.dshc-mark{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex:none}',
-  '.dshc-dot{width:8px;height:8px;border-radius:50%}',
-  '.dshc-dot-now{background:var(--dshc-info)}.dshc-dot-waiting{background:var(--dshc-mark)}',
-  '.dshc-ring{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--dshc-s)}',
-  '.dshc-dash{width:8px;height:0;border-top:1.5px solid var(--dshc-mark)}',
+  // The status marks: one 12 px circle each, a 1.5 px ring as DSH's StateDot step draws it,
+  // filled or patterned like the status's bar segment (Mark).
+  // corner-shape:round: DSH gives every element squircle corners; its own round marks opt out the same way.
+  '.dshc-mk{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;width:12px;height:12px;border-radius:50%;corner-shape:round;border:1.5px solid var(--dshc-mark);color:#fff}',
+  '.dshc-mk[data-mark=done]{border-color:var(--dshc-ok-mark);background:var(--dshc-ok-mark)}',
+  '.dshc-mk[data-mark=now]{border-color:var(--dshc-info);background:linear-gradient(to right,var(--dshc-info) 50%,transparent 50%)}',
+  '.dshc-mk[data-mark=waiting]{background:var(--dshc-mark)}',
+  '.dshc-mk[data-mark=needs-you]{border-color:var(--dshc-warn-mark);background:var(--dshc-warn-mark)}',
+  '.dshc-mk[data-mark=next]{border-color:var(--dshc-s)}',
+  '.dshc-mk[data-mark=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) center/6px 1.5px no-repeat}',
   '.dshc-ct{display:flex;align-items:flex-start;min-width:0}',
   '.dshc-indent{flex:none}',
   '.dshc-elbow{flex:none;width:8px;height:8px;border-left:1px solid var(--dshc-mark);border-bottom:1px solid var(--dshc-mark);margin:4px 6px 0 2px}',
@@ -978,7 +982,7 @@ const CSS = [
   '.dshc-block{display:flex;align-items:flex-start;gap:6px;color:var(--dshc-p)}.dshc-block svg{flex:none;margin-top:2px}.dshc-block b{font-weight:500}.dshc-block .dshc-st{color:var(--dshc-t)}',
   '.dshc-mprob{display:flex;align-items:flex-start;gap:6px;color:var(--dshc-err)}.dshc-mprob svg{flex:none;margin-top:2px}',
   // Tags as the host's Tag draws them: a pill with a tinted fill; the text colours keep the 4.5:1 mixes.
-  '.dshc-tag{align-self:flex-start;display:inline-flex;align-items:center;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:16px;white-space:nowrap}',
+  '.dshc-tag{align-self:flex-start;display:inline-flex;align-items:center;border-radius:999px;corner-shape:round;padding:1px 8px;font-size:11px;font-weight:500;line-height:16px;white-space:nowrap}',
   '.dshc-tag-warn{color:var(--dshc-warn);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent)}',
   '.dshc-tag-ok{color:var(--dshc-ok);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent)}',
   '.dshc-tag-quiet{color:var(--dshc-s);background:var(--dshc-l2)}',
@@ -994,7 +998,8 @@ const CSS = [
   // border-radius from segmentRadius).
   '.dshc-barbox{display:block;width:100%;height:' + SEG_HEIGHT + 'px;margin:4px 0 2px}',
   '.dshc-bar{display:flex;gap:' + SEG_GAP + 'px;height:' + SEG_HEIGHT + 'px}',
-  '.dshc-seg{flex:none;min-width:' + SEG_MIN + 'px;height:' + SEG_HEIGHT + 'px;border-radius:0;cursor:pointer;--dshc-half:50%}',
+  // The bar's round ends are half-height pill caps: round, not DSH's default squircle corner.
+  '.dshc-seg{flex:none;min-width:' + SEG_MIN + 'px;height:' + SEG_HEIGHT + 'px;border-radius:0;corner-shape:round;cursor:pointer;--dshc-half:50%}',
   // Before the first measure only (layout effect, so never painted): share the width.
   '.dshc-bar:not([data-px]) .dshc-seg{flex:1 1 0}',
   '.dshc-seg[data-segment=done]{background:var(--dshc-ok-mark)}',
@@ -1006,7 +1011,7 @@ const CSS = [
   // A 1 px line at a whole pixel (3 px down of 8), not center, which falls on 3.5 px.
   '.dshc-seg[data-segment=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat}',
   // The continuous bar: the same height and round ends.
-  '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
+  '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;corner-shape:round;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
   '.dshc-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;gap:6px}',
   '.dshc-empty p{margin:0}.dshc-empty-t{font-weight:500}.dshc-empty-s{font-size:12px;line-height:16px;color:var(--dshc-s);max-width:280px}',
   '.dshc-msg{padding:12px;color:var(--dshc-s);overflow-wrap:anywhere}',
@@ -1066,7 +1071,8 @@ function hostIcon(name, size, fallback, className) {
   return typeof Icon === 'function' ? h(Icon, { size, className }) : fallback()
 }
 const warnIcon = (size = 12) => hostIcon('IconWarningTriangleOutlineRegular', size, () => svg(size, [h('path', { key: 1, d: 'M8 2.5l6 10.5H2z' }), h('path', { key: 2, d: 'M8 6.5v3' }), h('path', { key: 3, d: 'M8 11.6v.1' })]))
-const checkIcon = () => svg(14, h('path', { d: 'M3.5 8.5l3 3 6-7' }), { strokeWidth: 1.8, className: 'dshc-check' })
+// The check inside the drawn done mark (no host): white on the filled circle, as the host's step draws it.
+const checkIcon = () => svg(10, h('path', { d: 'M3.5 8.5l3 3 6-7' }), { strokeWidth: 2.4, className: 'dshc-check' })
 // The host has no lock icon; this one is drawn on its 16 px grid and stroke.
 const lockIcon = () => svg(12, [h('rect', { key: 1, x: 3.5, y: 7, width: 9, height: 6.5, rx: 1.5 }), h('path', { key: 2, d: 'M5.5 7V5a2.5 2.5 0 015 0v2' })])
 const extIcon = () => hostIcon('IconRightUpOutlineRegular', 12, () => svg(12, [h('path', { key: 1, d: 'M9 3.5h3.5V7' }), h('path', { key: 2, d: 'M12.5 3.5L7 9' }), h('path', { key: 3, d: 'M11 9.5v2.5a1 1 0 01-1 1H4.5a1 1 0 01-1-1V6.5a1 1 0 011-1H7' })], { strokeWidth: 1.5 }))
@@ -1262,24 +1268,23 @@ function Problems({ list }) {
       h('span', { className: 'dshc-go', 'aria-label': 'Go to row', role: 'img' }, downIcon()))))
 }
 
-/** The host StateDot state for a mark: done a filled step with its check, waiting an idle dot. */
-const DOT_STATE = { check: 'done', 'dot-waiting': 'idle' }
-const DOT_APPEARANCE = { check: 'step' }
-
 /**
- * The status mark: the host's StateDot (as the todo list draws its items)
- * for done and waiting. now stays a still info dot: the host's ongoing
- * state is a spinner, and nothing on the board moves. next (a ring) and
- * dropped (a dash) have no StateDot of their own and stay drawn. Without the
- * host, all are drawn.
+ * The status mark: one 12 px circle per status, in DSH's step style (the
+ * StateDot `step` appearance: a 1.5 px ring, filled when settled), each
+ * shaped like its bar segment so a row and the bar read the same: done the
+ * host's filled step with its check, now a ring half filled (still: the
+ * host's ongoing state is a spinner, and nothing on the board moves),
+ * waiting filled grey (orange when it needs you), next an empty ring,
+ * dropped a ring with a dash through it. Without the host, done is drawn too.
  */
-function Mark({ mark }) {
+function Mark({ mark, needsYou }) {
   const StateDot = primitives()?.StateDot
-  if (typeof StateDot === 'function' && DOT_STATE[mark]) return h(StateDot, { state: DOT_STATE[mark], appearance: DOT_APPEARANCE[mark], size: 12 })
-  if (mark === 'check') return checkIcon()
-  const cls = mark === 'ring' ? 'dshc-ring' : mark === 'dash' ? 'dshc-dash' : 'dshc-dot dshc-' + mark
-  return h('span', { className: 'dshc-mark', 'aria-hidden': true }, h('span', { className: cls }))
+  if (mark === 'check' && typeof StateDot === 'function') return h(StateDot, { state: 'done', appearance: 'step', size: MARK_PX })
+  const kind = mark === 'check' ? 'done' : mark === 'ring' ? 'next' : mark === 'dash' ? 'dropped' : mark === 'dot-now' ? 'now' : needsYou ? 'needs-you' : 'waiting'
+  return h('span', { className: 'dshc-mk', 'data-mark': kind, 'aria-hidden': true }, mark === 'check' ? checkIcon() : null)
 }
+/** Every status mark's box: the host StateDot step's own default size. */
+const MARK_PX = 12
 
 const tag = (key, cls, words, title) => h('span', { key, className: 'dshc-tag ' + cls, title }, words)
 
@@ -1365,7 +1370,7 @@ function TaskRow({ boardKey, parent, row, task, flags, bar }) {
   const tip = (c.wrap ? '' : row.title + ' · ') + 'step ' + row.item
   return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
     h('div', { className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined, onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
-      c.parent ? null : h('span', { className: 'dshc-cst', role: 'img', 'aria-label': c.status, title: c.status }, c.mark ? h(Mark, { mark: c.mark }) : null),
+      c.parent ? null : h('span', { className: 'dshc-cst', role: 'img', 'aria-label': c.status, title: c.status }, c.mark ? h(Mark, { mark: c.mark, needsYou: c.needsYou }) : null),
       h('span', { className: 'dshc-ct' },
         c.indent ? h('span', { className: 'dshc-indent', style: { width: c.indent * 16 } }) : null,
         c.elbow ? h('span', { className: 'dshc-elbow', 'aria-hidden': true }) : null,

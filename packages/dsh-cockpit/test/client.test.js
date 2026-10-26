@@ -187,24 +187,27 @@ test('rows: mark · title · PR columns, tree order, a mark by shape, and droppe
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\[data-expandable\]\{grid-template-columns:minmax\(0,1fr\) auto 20px;/)
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-cmeta,\.dshc-parentrow \.dshc-detail\{grid-column:1\/-1\}/, 'the bar spans the section')
   assert.ok(!/animation|transition/.test(exports.CSS), 'nothing moves')
-  const mark = (item) => within(all, item).map(cls).find((c) => /dshc-(ring|dot|check|dash)/.test(c)) || ''
-  assert.deepEqual(['2', '5', '1', '7'].map(mark), ['dshc-check', 'dshc-ring', 'dshc-dot dshc-dot-waiting', 'dshc-dash'])
+  const mark = (item) => within(all, item).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
+  assert.deepEqual(['2', '5', '1', '6b', '7'].map(mark), ['done', 'next', 'needs-you', 'waiting', 'dropped'], 'a waiting step that needs you is marked apart')
+  // One size for every mark: a 12 px circle with DSH's 1.5 px step ring.
+  assert.match(exports.CSS, /\.dshc-mk\{box-sizing:border-box;[^}]*width:12px;height:12px;border-radius:50%;corner-shape:round;border:1\.5px solid/, 'round, not DSH\'s default squircle')
+  assert.ok(!/\.dshc-(dot|ring|dash)\{/.test(exports.CSS), 'no smaller drawn dots left')
   assert.match(cls(all.find((n) => n.type === 'li' && n.props['data-item'] === '7')), /dshc-dropped/)
   assert.match(exports.CSS, /\.dshc-dropped \.dshc-tt\{text-decoration:line-through\}/)
   assert.ok(render(live).includes('1 of 5 done · 1 dropped · 1 needs you'))
 })
 
-test('with the host\'s ui-primitives: StateDot marks for done and waiting, the host icons; now stays a still dot', () => {
+test('with the host\'s ui-primitives: the StateDot step for done at the marks\' one size, the host icons; now stays still', () => {
   const used = []
   const comp = (name) => { const f = (props) => { used.push([name, props]); return { type: 'host-' + name, props, children: [] } }; return f }
   const primitives = Object.fromEntries(['StateDot', 'IconWarningTriangleOutlineRegular', 'IconRightUpOutlineRegular', 'IconChevronRightOutlineRegular', 'IconChevronDownOutlineRegular', 'IconCopyOutlineRegular'].map((n) => [n, comp(n)]))
   const all = nodes(live, { primitives })
-  const dots = used.filter(([n]) => n === 'StateDot').map(([, p]) => [p.state, p.appearance])
-  assert.deepEqual(dots, [['idle', undefined], ['done', 'step'], ['idle', undefined]], 'waiting #1, done #2, waiting #6b')
+  const dots = used.filter(([n]) => n === 'StateDot').map(([, p]) => [p.state, p.appearance, p.size])
+  assert.deepEqual(dots, [['done', 'step', 12]], 'done #2 only: the same 12 px as the drawn marks')
   assert.ok(!dots.some(([s]) => s === 'ongoing'), 'never the spinner: nothing moves')
   for (const n of ['IconWarningTriangleOutlineRegular', 'IconRightUpOutlineRegular', 'IconChevronRightOutlineRegular', 'IconCopyOutlineRegular']) assert.ok(used.some(([u]) => u === n), n)
-  assert.ok(within(all, '5').some((n) => cls(n) === 'dshc-ring'), 'next keeps the drawn ring')
-  assert.ok(within(all, '7').some((n) => cls(n) === 'dshc-dash'), 'dropped keeps the drawn dash')
+  const mark = (item) => within(all, item).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
+  assert.deepEqual(['5', '6b', '7'].map(mark), ['next', 'waiting', 'dropped'], 'the statuses with no StateDot step are drawn in its style')
 })
 
 test('rows: no "Next:" label; Waiting on <who>; Start when; blocked by short refs; problems name the reference', () => {
