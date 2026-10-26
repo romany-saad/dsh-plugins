@@ -2,12 +2,12 @@
 
 A task board for a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) hub, the session that coordinates the work of an effort across many pull requests. The board is a tree of steps, each linked to its issue and PR, kept as a local file that you and your scripts can read.
 
-![The Board tab: a Needs you card with a command to copy, then each step with its status, PR, next action and what blocks it](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-tab.png)
+![The Board tab: whole-board progress, a Needs you card, separate parent sections with local progress, and standalone tasks](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-tab.png)
 
 ## What you get
 
 - **Four board tools** for the agent: open a board, read it, add steps and update them.
-- **The Board tab** in the web GUI's right sidebar: a "Needs you" list of what waits on you, which steps are blocked and which are ready, links to their PRs and issues, and drift.
+- **The Board tab** in the web GUI's right sidebar: whole-board progress, a "Needs you" list, separate sections for each top-level parent and its children, and a Standalone tasks section. Each parent has its own local progress. Each step shows its status mark, what is blocked or ready, and links to its PR and issue; hover a mark for its status and a title for the step id. It uses DSH's own icons and status marks, in the light and dark themes.
 - **A progress strip** above the chat input: how far the board is, and what is blocked or needs you.
 - **A card per board tool call** in the chat.
 - **A small reader** for scripts, with no DSH needed.
@@ -55,7 +55,11 @@ Ask the hub to keep a board for the effort, or let it use the tools on its own:
 - **Update a step** as the work moves: `next`, `now`, `waiting`, `done` or `dropped`, and a next action.
 - **Needs you:** a step with `waitingOn: owner` shows in the "Needs you" list and on the strip, with its next action, and its `readyCommand` to copy when it has one.
 
-The strip above the message box shows the board's progress, one segment per step, and the step that needs you. **Copy command** copies that step's `readyCommand`, and **Board ›** opens the Board tab.
+The strip above the message box shows progress across the whole board: one segment per leaf step (a step with no children), including standalone top-level steps. Parents are not counted again, so a completed group cannot hide a waiting step elsewhere on the board. Done and dropped are counted separately. The **Whole board** bar at the top of the Board tab uses the same counts as the strip. Below it, each top-level parent and its subtree occupy a separate bordered section; root steps without children appear under **Standalone tasks**. Each parent's local bar counts only its direct children, so its count can differ from the whole-board total. Above 24 leaf steps, the strip uses one continuous bar.
+
+![Whole-board progress: 3 of 4 done, including a waiting standalone step outside the completed parent](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/strip-whole-board.png)
+
+When a step needs you, the strip shows its next action. **Copy command** copies that step's `readyCommand`, and **Board ›** opens the Board tab.
 
 ![The progress strip above the message box: a segment per step, the step that needs you, Copy command and Board ›](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/strip.png)
 

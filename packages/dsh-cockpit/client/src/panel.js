@@ -10,12 +10,27 @@
 // become links, in a new tab with rel="noopener noreferrer". Nothing here
 // writes to the board or runs a command.
 const React = require('react')
-const { EMPTY_STATE, boardFlags, boardParent, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
+const { EMPTY_STATE, boardFlags, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, wholePx } = require('./segments.js')
-const { CommandBox, CopyButton } = makeCommandBox(React)
 const h = React.createElement
+
+/**
+ * The host's shared components and icons (ui-primitives: StateDot, the
+ * Icon* set, DisclosureRow), so the tab, the strip and the cards look like
+ * the rest of DSH. Required on first use; null when the shell has none, and
+ * then every use falls back to a drawn equivalent.
+ */
+let primitivesCache
+function primitives() {
+  if (primitivesCache === undefined) {
+    try { primitivesCache = require('@deepseek-ai/dsh-client-ui-primitives') || null } catch { primitivesCache = null }
+  }
+  return primitivesCache
+}
+const cardPrimitives = primitives
+const { CommandBox, CopyButton } = makeCommandBox(React, { copyIcon: () => copyHostIcon() })
 
 // The package name, which client/build.mjs defines from package.json.
 const ID = __packageId
@@ -57,59 +72,87 @@ const CSS = [
   '.dshc-wrap{display:block;min-width:0;overflow-wrap:anywhere}',
   '[data-dsh-cockpit-board] a{color:inherit;text-decoration:none}[data-dsh-cockpit-board] a:hover{text-decoration:underline}',
   '.dshc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-  '.dshc-hd{padding:12px 12px 10px;border-bottom:1px solid var(--dshc-border)}',
+  '.dshc-hd{padding:10px 12px;border-bottom:1px solid var(--dshc-border)}',
   '.dshc-hd1{display:flex;align-items:baseline;justify-content:space-between;gap:12px}',
   '.dshc-hdl{display:flex;align-items:baseline;gap:8px;min-width:0}',
   '.dshc-key{font-size:13px;font-weight:500;flex:none;max-width:60%}',
   '.dshc-parent{font-size:12px;color:var(--dshc-t)}',
   '.dshc-meta{font-size:12px;color:var(--dshc-t);white-space:nowrap;flex:none}',
   '.dshc-drift{font-size:12px;line-height:16px;color:var(--dshc-t);margin-top:2px}',
-  '.dshc-sec{padding:10px 12px 12px;border-bottom:1px solid var(--dshc-border)}',
-  '.dshc-sech{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;line-height:16px;margin-bottom:8px}',
+  '.dshc-sec{padding:8px 12px 10px;border-bottom:1px solid var(--dshc-border)}',
+  // Section titles as the host's panels write them (the todo panel): 12-13 px, medium, sentence case.
+  '.dshc-sech{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;line-height:18px;margin-bottom:6px}',
   '.dshc-warn{color:var(--dshc-warn)}.dshc-err{color:var(--dshc-err)}',
-  '.dshc-ni{display:grid;grid-template-columns:36px minmax(0,1fr) auto;column-gap:8px;row-gap:4px;background:var(--dshc-l1);border:1px solid var(--dshc-border);border-radius:8px;padding:8px}',
-  '.dshc-ni+.dshc-ni{margin-top:8px}',
-  // One line with an ellipsis, as the rows' .dshc-cid: a long id must not run into the title.
-  '.dshc-ni .dshc-id{color:var(--dshc-t);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  // The card: title and Open link on one line; the ask and the command span the whole card.
+  // The step id is in the title's tooltip, so no column is kept for it.
+  '.dshc-ni{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;row-gap:4px;background:var(--dshc-l1);border:1px solid var(--dshc-border);border-radius:var(--dsw-radius-md,8px);padding:8px 10px}',
+  '.dshc-ni+.dshc-ni{margin-top:6px}',
   '.dshc-nit{font-weight:500}',
-  '.dshc-ask{grid-column:2/4;font-size:12px;line-height:16px;color:var(--dshc-s);overflow-wrap:anywhere}',
-  '.dshc-ni .dshc-cmd{grid-column:1/4}',
+  '.dshc-ask{grid-column:1/-1;font-size:12px;line-height:16px;color:var(--dshc-s);overflow-wrap:anywhere}',
+  '.dshc-ni .dshc-cmd{grid-column:1/-1;margin-top:2px}',
   '.dshc-open{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--dshc-s);white-space:nowrap}',
   '.dshc-cmd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;background:var(--dshc-l2);border:1px solid var(--dshc-border);border-radius:6px;padding:4px 4px 4px 10px;margin-top:4px;position:relative}',
   '.dshc-cmd code{font-family:' + MONO + ';font-size:12px;line-height:18px;padding:3px 0;color:var(--dshc-p);white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}',
-  '.dshc-btn{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:4px;border:1px solid var(--dshc-border);background:var(--dshc-l0);color:var(--dshc-p);font:inherit;font-size:12px;font-weight:500;line-height:1;cursor:pointer;white-space:nowrap;flex:none}',
+  // The host's small outline button (ui-primitives Button, variant outline, size sm), 24 px tall in a box.
+  '.dshc-btn{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--dsw-radius-sm,6px);border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));background:transparent;color:var(--dshc-p);font:inherit;font-size:12px;font-weight:500;line-height:1;cursor:pointer;white-space:nowrap;flex:none}',
+  '.dshc-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
   '.dshc-btn[data-copy-state=failed]{color:var(--dshc-err)}',
   '.dshc-prob{display:grid;grid-template-columns:16px minmax(0,1fr) 20px;column-gap:8px;align-items:start;width:100%;min-height:28px;padding:4px 0;border:0;background:none;font:inherit;font-size:12px;line-height:18px;color:var(--dshc-p);text-align:left;cursor:pointer}',
   '.dshc-prob .dshc-ic{color:var(--dshc-err);display:flex;padding-top:2px}.dshc-prob .dshc-go{color:var(--dshc-t);display:flex;justify-content:center;padding-top:2px}',
+  // The whole board's progress, inside the header: the count on the key's line, the bar under it.
+  '.dshc-overall{margin-top:8px}',
+  '.dshc-overall-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-overall-title strong{font-weight:500;color:var(--dshc-p)}',
+  // The sections line up with the header's text and the Needs you cards (12 px in).
+  '.dshc-groups{padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}',
+  '.dshc-group{border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-md,8px);overflow:hidden}',
+  '.dshc-group-title{margin:0;padding:6px 10px;background:var(--dshc-l1);font-size:12px;font-weight:500;line-height:18px;color:var(--dshc-s);border-bottom:1px solid var(--dshc-border)}',
+  '.dshc-group .dshc-li:last-child{border-bottom:0}',
   '.dshc-tree{margin:0;padding:0;list-style:none}',
   '.dshc-li{list-style:none;border-bottom:1px solid var(--dshc-border)}',
   '.dshc-li:focus{outline:2px solid var(--dshc-info);outline-offset:-2px}',
-  '.dshc-row{display:grid;grid-template-columns:36px 68px minmax(0,1fr) 60px 20px;column-gap:8px;row-gap:2px;align-items:start;padding:6px 12px}',
+  // A task row: the status mark (16 px), the title, the PR, the chevron. The
+  // status word and the step id are in the mark's and the title's tooltips,
+  // as in the host's todo list, and in the expanded detail.
+  '.dshc-row{display:grid;grid-template-columns:16px minmax(0,1fr) auto 20px;column-gap:8px;row-gap:2px;align-items:start;padding:6px 8px 6px 10px}',
   '.dshc-row>*{min-height:20px}',
+  // A parent row is its section's header: the title and the count on one line, the bar under them at full width.
   '.dshc-li.dshc-parentrow{background:var(--dshc-l1)}',
-  '.dshc-parentrow .dshc-ct{font-weight:600}',
-  '.dshc-cid{font-size:12px;color:var(--dshc-t);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '.dshc-cst{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dshc-s)}',
-  '.dshc-check{color:var(--dshc-ok-mark);flex:none}',
-  '.dshc-mark{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex:none}',
-  '.dshc-dot{width:8px;height:8px;border-radius:50%}',
-  '.dshc-dot-now{background:var(--dshc-info)}.dshc-dot-waiting{background:var(--dshc-mark)}',
-  '.dshc-ring{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--dshc-s)}',
-  '.dshc-dash{width:8px;height:0;border-top:1.5px solid var(--dshc-mark)}',
+  // The chevron column (and its gap) only takes room when the parent has details to open,
+  // so the count ends where the bar does.
+  '.dshc-parentrow .dshc-row{grid-template-columns:minmax(0,1fr) auto;padding:6px 10px}',
+  '.dshc-parentrow .dshc-row[data-expandable]{grid-template-columns:minmax(0,1fr) auto 20px;padding-right:8px}',
+  '.dshc-parentrow .dshc-ct{font-weight:500}',
+  '.dshc-parentrow .dshc-cmeta,.dshc-parentrow .dshc-detail{grid-column:1/-1}',
+  '.dshc-hdcount{font-size:12px;color:var(--dshc-s);white-space:nowrap;text-align:right}',
+  '.dshc-cst{display:flex;align-items:center;justify-content:center;height:20px}',
+  // The status marks: one 12 px circle each, a 1.5 px ring as DSH's StateDot step draws it,
+  // filled or patterned like the status's bar segment (Mark).
+  // corner-shape:round: DSH gives every element squircle corners; its own round marks opt out the same way.
+  '.dshc-mk{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;width:12px;height:12px;border-radius:50%;corner-shape:round;border:1.5px solid var(--dshc-mark);color:#fff}',
+  '.dshc-mk[data-mark=done]{border-color:var(--dshc-ok-mark);background:var(--dshc-ok-mark)}',
+  '.dshc-mk[data-mark=now]{border-color:var(--dshc-info);background:linear-gradient(to right,var(--dshc-info) 50%,transparent 50%)}',
+  '.dshc-mk[data-mark=waiting]{background:var(--dshc-mark)}',
+  '.dshc-mk[data-mark=needs-you]{border-color:var(--dshc-warn-mark);background:var(--dshc-warn-mark)}',
+  '.dshc-mk[data-mark=next]{border-color:var(--dshc-s)}',
+  '.dshc-mk[data-mark=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) center/6px 1.5px no-repeat}',
   '.dshc-ct{display:flex;align-items:flex-start;min-width:0}',
   '.dshc-indent{flex:none}',
   '.dshc-elbow{flex:none;width:8px;height:8px;border-left:1px solid var(--dshc-mark);border-bottom:1px solid var(--dshc-mark);margin:4px 6px 0 2px}',
-  '.dshc-closed .dshc-ct,.dshc-closed .dshc-cst{color:var(--dshc-s)}',
+  '.dshc-closed .dshc-ct{color:var(--dshc-s)}',
   '.dshc-dropped .dshc-tt{text-decoration:line-through}',
-  '.dshc-cpr{font-size:12px;color:var(--dshc-s);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.dshc-cpr{font-size:12px;color:var(--dshc-s);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px}',
   '.dshc-chev{display:flex;align-items:center;justify-content:center;height:20px;padding:0;border:0;background:none;color:var(--dshc-t);cursor:pointer}',
-  '.dshc-chev svg[data-open]{transform:rotate(90deg)}',
-  '.dshc-cmeta{grid-column:3/5;display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:16px;color:var(--dshc-s);min-height:0}',
+  '.dshc-chevic{display:inline-flex}.dshc-chevic[data-open]{transform:rotate(90deg)}',
+  '.dshc-cmeta{grid-column:2/4;display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:16px;color:var(--dshc-s);min-height:0}',
   '.dshc-block{display:flex;align-items:flex-start;gap:6px;color:var(--dshc-p)}.dshc-block svg{flex:none;margin-top:2px}.dshc-block b{font-weight:500}.dshc-block .dshc-st{color:var(--dshc-t)}',
   '.dshc-mprob{display:flex;align-items:flex-start;gap:6px;color:var(--dshc-err)}.dshc-mprob svg{flex:none;margin-top:2px}',
-  '.dshc-tag{align-self:flex-start;border:1px solid currentColor;border-radius:4px;padding:0 6px;font-size:11px;font-weight:600;line-height:16px}',
-  '.dshc-tag-warn{color:var(--dshc-warn)}.dshc-tag-ok{color:var(--dshc-ok)}.dshc-tag-quiet{color:var(--dshc-s)}',
-  '.dshc-detail{grid-column:2/5;margin-top:6px;padding-top:8px;border-top:1px dashed var(--dshc-border);min-height:0}',
+  // Tags as the host's Tag draws them: a pill with a tinted fill; the text colours keep the 4.5:1 mixes.
+  '.dshc-tag{align-self:flex-start;display:inline-flex;align-items:center;border-radius:999px;corner-shape:round;padding:1px 8px;font-size:11px;font-weight:500;line-height:16px;white-space:nowrap}',
+  '.dshc-tag-warn{color:var(--dshc-warn);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent)}',
+  '.dshc-tag-ok{color:var(--dshc-ok);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent)}',
+  '.dshc-tag-quiet{color:var(--dshc-s);background:var(--dshc-l2)}',
+  '.dshc-detail{grid-column:2/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--dshc-border);min-height:0}',
   '.dshc-detail dl{display:grid;grid-template-columns:80px minmax(0,1fr);column-gap:8px;row-gap:4px;margin:0 0 4px;font-size:12px;line-height:16px}',
   '.dshc-detail dt{color:var(--dshc-t)}.dshc-detail dd{margin:0;color:var(--dshc-s);overflow-wrap:anywhere}.dshc-detail dd.dshc-mono{color:var(--dshc-p)}',
   '.dshc-pp{color:var(--dshc-s);font-weight:400}',
@@ -121,7 +164,8 @@ const CSS = [
   // border-radius from segmentRadius).
   '.dshc-barbox{display:block;width:100%;height:' + SEG_HEIGHT + 'px;margin:4px 0 2px}',
   '.dshc-bar{display:flex;gap:' + SEG_GAP + 'px;height:' + SEG_HEIGHT + 'px}',
-  '.dshc-seg{flex:none;min-width:' + SEG_MIN + 'px;height:' + SEG_HEIGHT + 'px;border-radius:0;cursor:pointer;--dshc-half:50%}',
+  // The bar's round ends are half-height pill caps: round, not DSH's default squircle corner.
+  '.dshc-seg{flex:none;min-width:' + SEG_MIN + 'px;height:' + SEG_HEIGHT + 'px;border-radius:0;corner-shape:round;cursor:pointer;--dshc-half:50%}',
   // Before the first measure only (layout effect, so never painted): share the width.
   '.dshc-bar:not([data-px]) .dshc-seg{flex:1 1 0}',
   '.dshc-seg[data-segment=done]{background:var(--dshc-ok-mark)}',
@@ -133,7 +177,7 @@ const CSS = [
   // A 1 px line at a whole pixel (3 px down of 8), not center, which falls on 3.5 px.
   '.dshc-seg[data-segment=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat}',
   // The continuous bar: the same height and round ends.
-  '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
+  '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;corner-shape:round;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
   '.dshc-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;gap:6px}',
   '.dshc-empty p{margin:0}.dshc-empty-t{font-weight:500}.dshc-empty-s{font-size:12px;line-height:16px;color:var(--dshc-s);max-width:280px}',
   '.dshc-msg{padding:12px;color:var(--dshc-s);overflow-wrap:anywhere}',
@@ -185,14 +229,23 @@ function useStyle() {
   }, [])
 }
 
-// ---- Icons (16 px grid, stroke) ----
+// ---- Icons: the host's own (ui-primitives) when the shell has them, else a drawn fallback ----
 const svg = (size, children, extra) => h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, ...extra }, children)
-const warnIcon = (size = 12) => svg(size, [h('path', { key: 1, d: 'M8 2.5l6 10.5H2z' }), h('path', { key: 2, d: 'M8 6.5v3' }), h('path', { key: 3, d: 'M8 11.6v.1' })])
-const checkIcon = () => svg(14, h('path', { d: 'M3.5 8.5l3 3 6-7' }), { strokeWidth: 1.8, className: 'dshc-check' })
+/** The host icon `name` at size, else fallback(). extra goes on a wrapper only when given (the host icons take size and className). */
+function hostIcon(name, size, fallback, className) {
+  const Icon = primitives()?.[name]
+  return typeof Icon === 'function' ? h(Icon, { size, className }) : fallback()
+}
+const warnIcon = (size = 12) => hostIcon('IconWarningTriangleOutlineRegular', size, () => svg(size, [h('path', { key: 1, d: 'M8 2.5l6 10.5H2z' }), h('path', { key: 2, d: 'M8 6.5v3' }), h('path', { key: 3, d: 'M8 11.6v.1' })]))
+// The check inside the drawn done mark (no host): white on the filled circle, as the host's step draws it.
+const checkIcon = () => svg(10, h('path', { d: 'M3.5 8.5l3 3 6-7' }), { strokeWidth: 2.4, className: 'dshc-check' })
+// The host has no lock icon; this one is drawn on its 16 px grid and stroke.
 const lockIcon = () => svg(12, [h('rect', { key: 1, x: 3.5, y: 7, width: 9, height: 6.5, rx: 1.5 }), h('path', { key: 2, d: 'M5.5 7V5a2.5 2.5 0 015 0v2' })])
-const extIcon = () => svg(12, [h('path', { key: 1, d: 'M9 3.5h3.5V7' }), h('path', { key: 2, d: 'M12.5 3.5L7 9' }), h('path', { key: 3, d: 'M11 9.5v2.5a1 1 0 01-1 1H4.5a1 1 0 01-1-1V6.5a1 1 0 011-1H7' })], { strokeWidth: 1.5 })
-const downIcon = () => svg(14, [h('path', { key: 1, d: 'M8 3.5v9' }), h('path', { key: 2, d: 'M4.5 9L8 12.5 11.5 9' })], { strokeWidth: 1.5 })
-const chevIcon = (open) => svg(14, h('path', { d: 'M6 4l4 4-4 4' }), { 'data-open': open || undefined })
+const extIcon = () => hostIcon('IconRightUpOutlineRegular', 12, () => svg(12, [h('path', { key: 1, d: 'M9 3.5h3.5V7' }), h('path', { key: 2, d: 'M12.5 3.5L7 9' }), h('path', { key: 3, d: 'M11 9.5v2.5a1 1 0 01-1 1H4.5a1 1 0 01-1-1V6.5a1 1 0 011-1H7' })], { strokeWidth: 1.5 }))
+const downIcon = () => hostIcon('IconChevronDownOutlineRegular', 14, () => svg(14, [h('path', { key: 1, d: 'M8 3.5v9' }), h('path', { key: 2, d: 'M4.5 9L8 12.5 11.5 9' })], { strokeWidth: 1.5 }))
+const chevIcon = (open) => h('span', { className: 'dshc-chevic', 'data-open': open || undefined, 'aria-hidden': true },
+  hostIcon('IconChevronRightOutlineRegular', 14, () => svg(14, h('path', { d: 'M6 4l4 4-4 4' }))))
+const copyHostIcon = () => { const Icon = primitives()?.IconCopyOutlineRegular; return typeof Icon === 'function' ? h(Icon, { size: 12 }) : null }
 
 /** An http(s) URL, or undefined: nothing else ever becomes an href. */
 const safeUrl = (url) => (typeof url === 'string' && /^https?:\/\/\S+$/i.test(url) ? url : undefined)
@@ -317,7 +370,8 @@ function showRow(item, root) {
   el.focus({ preventScroll: true })
 }
 
-function Header({ board, view, rows, now }) {
+/** The header: key, parent and time, the drift line, then the whole board's count and bar (the strip's), in one block. */
+function Header({ board, view, rows, now, overall }) {
   const drift = driftState(board.drift, rows)
   return h('header', { className: 'dshc-hd' },
     h('div', { className: 'dshc-hd1' },
@@ -325,7 +379,12 @@ function Header({ board, view, rows, now }) {
         h('span', { className: 'dshc-mono dshc-key dshc-trunc', title: board.key }, board.key),
         board.parent ? h('span', { className: 'dshc-parent dshc-trunc', title: board.parent }, board.parent) : null),
       h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
-    showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null)
+    showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null,
+    overall && overall.total
+      ? h('section', { className: 'dshc-overall', 'aria-label': 'Whole board' },
+        h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'), h('span', null, progressText(overall))),
+        h(Bar, { bar: overall }))
+      : null)
 }
 
 /** The title cell's text: the issue (short, linked, full in the tooltip), then what. */
@@ -357,8 +416,7 @@ function NeedsYou({ board, rows, byItem }) {
       const ask = typeof t.nextAction === 'string' && t.nextAction.trim() ? t.nextAction.trim() : undefined
       const command = typeof t.readyCommand === 'string' && t.readyCommand.trim() ? t.readyCommand.trim() : undefined
       return h('div', { key: t.item, className: 'dshc-ni', 'data-item': t.item },
-        h('span', { className: 'dshc-mono dshc-id', title: t.item }, t.item),
-        h(Title, { task: byItem.get(t.item), parent: board.parent, url: r && r.issueUrl, className: 'dshc-wrap dshc-nit' }),
+        h(Title, { task: byItem.get(t.item), parent: board.parent, url: r && r.issueUrl, className: 'dshc-wrap dshc-nit', plainTitle: 'Step ' + t.item }),
         r ? h(OpenLink, { row: r, parent: board.parent }) || h('span', null) : h('span', null),
         ask ? h('span', { className: 'dshc-ask' }, ask) : null,
         command ? h(CommandBox, { command, label: 'Copy command for ' + (r ? r.title : t.item) }) : null)
@@ -376,11 +434,23 @@ function Problems({ list }) {
       h('span', { className: 'dshc-go', 'aria-label': 'Go to row', role: 'img' }, downIcon()))))
 }
 
-function Mark({ mark }) {
-  if (mark === 'check') return checkIcon()
-  const cls = mark === 'ring' ? 'dshc-ring' : mark === 'dash' ? 'dshc-dash' : 'dshc-dot dshc-' + mark
-  return h('span', { className: 'dshc-mark', 'aria-hidden': true }, h('span', { className: cls }))
+/**
+ * The status mark: one 12 px circle per status, in DSH's step style (the
+ * StateDot `step` appearance: a 1.5 px ring, filled when settled), each
+ * shaped like its bar segment so a row and the bar read the same: done the
+ * host's filled step with its check, now a ring half filled (still: the
+ * host's ongoing state is a spinner, and nothing on the board moves),
+ * waiting filled grey (orange when it needs you), next an empty ring,
+ * dropped a ring with a dash through it. Without the host, done is drawn too.
+ */
+function Mark({ mark, needsYou }) {
+  const StateDot = primitives()?.StateDot
+  if (mark === 'check' && typeof StateDot === 'function') return h(StateDot, { state: 'done', appearance: 'step', size: MARK_PX })
+  const kind = mark === 'check' ? 'done' : mark === 'ring' ? 'next' : mark === 'dash' ? 'dropped' : mark === 'dot-now' ? 'now' : needsYou ? 'needs-you' : 'waiting'
+  return h('span', { className: 'dshc-mk', 'data-mark': kind, 'aria-hidden': true }, mark === 'check' ? checkIcon() : null)
 }
+/** Every status mark's box: the host StateDot step's own default size. */
+const MARK_PX = 12
 
 const tag = (key, cls, words, title) => h('span', { key, className: 'dshc-tag ' + cls, title }, words)
 
@@ -427,13 +497,16 @@ function Bar({ bar, onSegment = (item, e) => showRow(item, boardOf(e)), width, f
     }))))
 }
 
+/** "2 of 2 done · 1 needs you": a parent's count, on its title line. */
+function Count({ progress }) {
+  return h('span', { className: 'dshc-hdcount dshc-pp' }, progressText({ ...progress, needsYou: 0 }),
+    progress.needsYou ? [' · ', h('span', { key: 'n', className: 'dshc-need' }, progress.needsYou + ' needs you')] : null)
+}
+
 function Meta({ c, bar, parent }) {
   const lines = []
+  // A root parent's bar; its count is on its title line (TaskRow).
   if (bar) lines.push(h(Bar, { key: 'bar', bar }))
-  if (c.progress) {
-    lines.push(h('span', { key: 'p', className: 'dshc-pp' }, progressText({ ...c.progress, needsYou: 0 }),
-      c.progress.needsYou ? [' · ', h('span', { key: 'n', className: 'dshc-need' }, c.progress.needsYou + ' needs you')] : null))
-  }
   if (c.line) lines.push(h('span', { key: 'line', className: 'dshc-wrap', 'data-line': '' }, c.line))
   if (c.needsYou) lines.push(tag('you', 'dshc-tag-warn', 'Needs you · see top'))
   if (c.blockedBy.length) {
@@ -459,18 +532,20 @@ function TaskRow({ boardKey, parent, row, task, flags, bar }) {
   const toggle = () => { expanded.set(id, !open); setOpen(!open) }
   const isOpen = c.expandable && open
   const cls = 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.closed ? ' dshc-closed' : '') + (row.dropped ? ' dshc-dropped' : '')
+  // The step id and the status word, which have no column: in the title's and the mark's tooltips.
+  const tip = (c.wrap ? '' : row.title + ' · ') + 'step ' + row.item
   return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
-    h('div', { className: 'dshc-row', onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
-      h('span', { className: 'dshc-mono dshc-cid', title: row.item }, row.item),
-      h('span', { className: 'dshc-cst' }, c.mark ? h(Mark, { mark: c.mark }) : null, c.status ? h('span', null, c.status) : null),
+    h('div', { className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined, onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
+      c.parent ? null : h('span', { className: 'dshc-cst', role: 'img', 'aria-label': c.status, title: c.status }, c.mark ? h(Mark, { mark: c.mark, needsYou: c.needsYou }) : null),
       h('span', { className: 'dshc-ct' },
         c.indent ? h('span', { className: 'dshc-indent', style: { width: c.indent * 16 } }) : null,
         c.elbow ? h('span', { className: 'dshc-elbow', 'aria-hidden': true }) : null,
-        h(Title, { task, parent, url: row.issueUrl, className: c.wrap ? 'dshc-wrap' : 'dshc-trunc', plainTitle: c.wrap ? undefined : row.title })),
-      h('span', { className: 'dshc-cpr' }, c.pr ? h(Link, { url: c.prUrl, title: row.pr }, c.pr) : null),
+        h(Title, { task, parent, url: row.issueUrl, className: c.wrap ? 'dshc-wrap' : 'dshc-trunc', plainTitle: tip })),
+      c.parent ? h(Count, { progress: c.progress }) : h('span', { className: 'dshc-cpr' }, c.pr ? h(Link, { url: c.prUrl, title: row.pr }, c.pr) : null),
       c.expandable
         ? h('button', { type: 'button', className: 'dshc-chev', 'aria-expanded': isOpen, 'aria-label': 'Details for ' + row.title, onClick: (e) => { e.stopPropagation(); toggle() } }, chevIcon(isOpen))
-        : h('span', null),
+        // A task row keeps its chevron column; a parent row gives the room to its count.
+        : c.parent ? null : h('span', null),
       h(Meta, { c, bar, parent }),
       isOpen ? h(Detail, { c, title: row.title }) : null))
 }
@@ -494,19 +569,33 @@ function BoardView({ view, now }) {
   const list = Array.isArray(view.problems) ? view.problems : problems(tasks, flags)
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
-  // The thin bar sits in the board's one parent row (the root with children)
-  // and counts that row's children, as its progress text does.
-  const parentItem = boardParent(rows)
-  const bar = parentItem !== undefined ? boardSegments(board, rows, parentItem) : undefined
+  const overall = boardSegments(board, rows, undefined)
+  const groups = []
+  const standalone = []
+  let group
+  for (const row of rows) {
+    if (row.depth === 0) {
+      group = row.progress ? { item: row.item, title: row.title, rows: [] } : undefined
+      if (group) groups.push(group)
+    }
+    if (group) group.rows.push(row)
+    else standalone.push(row)
+  }
+  if (standalone.length) groups.push({ item: 'standalone', title: 'Standalone tasks', rows: standalone, standalone: true })
   return h('div', null,
-    h(Header, { board, view, rows, now }),
+    h(Header, { board, view, rows, now, overall }),
     h(NeedsYou, { board, rows, byItem }),
     h(Problems, { list }),
     rows.length
-      ? h('ul', { className: 'dshc-tree', role: 'list' }, rows.map((row) => h(TaskRow, {
+      ? h('div', { className: 'dshc-groups' }, groups.map((g) => h('section', {
+        key: (g.standalone ? 'standalone' : 'parent:') + g.item,
+        className: 'dshc-group', 'data-board-group': g.item, 'aria-label': g.title,
+      },
+      g.standalone ? h('h3', { className: 'dshc-group-title' }, g.title) : null,
+      h('ul', { className: 'dshc-tree', role: 'list' }, g.rows.map((row) => h(TaskRow, {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
-        bar: bar && row.item === parentItem ? bar : undefined,
-      })))
+        bar: row.depth === 0 && row.progress ? boardSegments(board, rows, row.item) : undefined,
+      }))))))
       : h('p', { className: 'dshc-msg' }, 'No tasks yet.'))
 }
 
@@ -686,18 +775,6 @@ function cardBody(m) {
   if (!m.output) return ''
   if (m.value && typeof m.value === 'object') return typeof m.value.tree === 'string' ? m.value.tree : JSON.stringify(m.value, null, 2)
   return m.output
-}
-
-/**
- * The host's DisclosureRow and checklist icon, so a card looks like the
- * other tool rows; required on first use, and a plain row without them.
- */
-let primitivesCache
-function cardPrimitives() {
-  if (primitivesCache === undefined) {
-    try { primitivesCache = require('@deepseek-ai/dsh-client-ui-primitives') || null } catch { primitivesCache = null }
-  }
-  return primitivesCache
 }
 
 function BoardToolRow(props) {

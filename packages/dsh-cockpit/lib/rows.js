@@ -457,7 +457,7 @@ export function boardParent(rows) {
 }
 
 /**
- * The rows the strip counts when the board has no one parent row: every
+ * The rows the strip counts across the whole board: every
  * row without children (its work tasks), so two epics of five tasks read
  * "0 of 10 done", never "0 of 2".
  */
@@ -471,8 +471,8 @@ const workRows = (rows) => rows.filter((r) => !r.progress)
  * its status). The tooltip is the title and what the kind means: "#887 Live
  * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
  * on CI". continuous: more than SEGMENT_MAX children.
- * With item undefined (a board with no one parent row), the segments are the
- * work tasks, the rows without children; the progress strip uses that.
+ * With item undefined, the segments are all whole-board work tasks, the
+ * rows without children; the progress strip always uses that.
  * @param {{tasks: object[]}} board
  * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
  * @param {string|undefined} item the parent row's item
@@ -530,8 +530,8 @@ export function driftWords(state) {
 // ---- The progress strip above the chat input (design 6) ----
 
 /**
- * The strip: the parent bar's segments and counts (boardSegments over
- * boardParent, so the strip and the parent row always agree), and one focus.
+ * The strip: whole-board leaf segments and counts, including standalone
+ * top-level tasks without double-counting parent containers, and one focus.
  * - 'needs you' when an open task waits on the owner: text "Needs you: <its
  *   nextAction as written, else its title>", its readyCommand for Copy and
  *   its item; with two or more, "2 need you", no command, the first item.
@@ -548,8 +548,7 @@ export function stripModel(board, rows = boardRows(board)) {
   const byItem = firstByItem(board)
   const home = board?.parent
   const ref = (r) => shortRef(r, home) ?? r
-  const parent = boardParent(rows)
-  const bar = boardSegments(board, rows, parent)
+  const bar = boardSegments(board, rows, undefined)
   const base = { key: text(board?.key), bar, done: progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) }
   const mine = rows.filter((r) => r.needsYou)
   if (mine.length) {
