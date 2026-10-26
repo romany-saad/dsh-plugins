@@ -1,30 +1,38 @@
-// dsh-cockpit's browser half: the read-only Board tab in the right sidebar
-// (design section 6, C · Outline, refined, with the owner's changes).
-// A plain CommonJS body: client/build.mjs wraps it in the module-loader
-// factory and inlines lib/rows.js and client/src/command-box.js, so the tab
-// and the hub's tree text share their rules. Its one shell require is react.
+// dsh-cockpit's browser half (design section 6, C · Outline, refined, with
+// the owner's changes): the read-only Board tab in the right sidebar, the
+// progress strip above the chat input, and the chat cards of the four board
+// tools. A plain CommonJS body: client/build.mjs wraps it in the module-loader
+// factory and inlines lib/rows.js, lib/present.js and client/src/command-box.js,
+// so the tab, the strip, the cards and the hub's tree text share their rules.
+// Its shell require is react; the chat cards also take the host's tool row
+// from ui-primitives when the shell has it (see cardPrimitives).
 // Board text is rendered only as text (React escapes it); only http(s) URLs
 // become links, in a new tab with rel="noopener noreferrer". Nothing here
 // writes to the board or runs a command.
 const React = require('react')
-const { EMPTY_STATE, boardFlags, boardRows, boardSegments, driftState, driftWords, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, titleParts } = require('../../lib/rows.js')
+const { EMPTY_STATE, boardFlags, boardParent, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
+const { callTitle } = require('../../lib/present.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
-const { CommandBox } = makeCommandBox(React)
+const { CommandBox, CopyButton } = makeCommandBox(React)
 const h = React.createElement
 
 // The package name, which client/build.mjs defines from package.json.
 const ID = __packageId
 const KIND = 'dsh-cockpit-board'
 const POLL_MS = 2000
+// With no board bound, a failed answer or a 404 (route.enabled: false), the next poll waits longer.
+const IDLE_MS = 10000
 // Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
 const VIEW = 'api/dsh-cockpit/view'
+// The board tools whose chat cards this bundle draws (tool.call.toolview keys).
+const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update']
 
 // ---- Style: host tokens only (dsh-client-ui-theme), one stylesheet in the head ----
 // The panel's own colour names, set per theme on its root. Where a host token
 // misses the spec's contrast rule in the light theme (text 4.5:1, marks 3:1),
 // the light value mixes it toward label-primary; the PR body has the table.
 const TOKENS = [
-  '[data-dsh-cockpit-board]{',
+  '[data-dsh-cockpit-board],[data-dsh-cockpit-dock]{',
   '--dshc-l0:var(--dsw-alias-bg-base);--dshc-l1:var(--dsw-alias-bg-skeleton);--dshc-l2:var(--dsw-alias-bg-module-platform);',
   '--dshc-border:var(--dsw-alias-border-l1);--dshc-p:var(--dsw-alias-label-primary);--dshc-s:var(--dsw-alias-label-secondary);',
   '--dshc-mark:var(--dsw-alias-label-tertiary);--dshc-info:var(--dsw-alias-state-business-primary);',
@@ -35,7 +43,7 @@ const TOKENS = [
   '--dshc-ok:color-mix(in srgb,var(--dsw-alias-state-success-primary) 60%,var(--dsw-alias-label-primary));',
   '--dshc-ok-mark:color-mix(in srgb,var(--dsw-alias-state-success-primary) 80%,var(--dsw-alias-label-primary));',
   '--dshc-err:color-mix(in srgb,var(--dsw-alias-state-error-primary) 80%,var(--dsw-alias-label-primary))}',
-  'body[data-ds-dark-theme] [data-dsh-cockpit-board]{--dshc-t:var(--dsw-alias-label-tertiary);--dshc-warn:var(--dsw-alias-state-warn-label);',
+  'body[data-ds-dark-theme] [data-dsh-cockpit-board],body[data-ds-dark-theme] [data-dsh-cockpit-dock]{--dshc-t:var(--dsw-alias-label-tertiary);--dshc-warn:var(--dsw-alias-state-warn-label);',
   '--dshc-ok:var(--dsw-alias-state-success-primary);--dshc-ok-mark:var(--dsw-alias-state-success-primary);--dshc-err:var(--dsw-alias-state-error-primary)}',
 ].join('')
 const MONO = 'var(--ds-font-family-code,ui-monospace,monospace)'
@@ -118,6 +126,37 @@ const CSS = [
   '.dshc-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;gap:6px}',
   '.dshc-empty p{margin:0}.dshc-empty-t{font-weight:500}.dshc-empty-s{font-size:12px;line-height:16px;color:var(--dshc-s);max-width:280px}',
   '.dshc-msg{padding:12px;color:var(--dshc-s);overflow-wrap:anywhere}',
+  // The progress strip: one 28 px line, sized like the composer's other docks (the goal strip).
+  '[data-dsh-cockpit-dock]{box-sizing:border-box;margin:0 auto;width:calc(100% - 2 * var(--dsh-composer-side-clearance,0px) - 4 * var(--dsh-composer-dock-inset,0px))}',
+  '[data-dsh-cockpit-dock] *{box-sizing:border-box}',
+  '.dshc-stripbox{container-type:inline-size;container-name:dshc-strip}',
+  '.dshc-strip{width:100%;max-width:calc(var(--dsh-composer-card-max-width,100%) - 4 * var(--dsh-composer-dock-inset,0px));margin:0 auto;height:28px;padding:0 4px 0 10px;display:flex;align-items:center;gap:5px;overflow:hidden;font-size:12px;line-height:16px;white-space:nowrap;color:var(--dshc-s);font-variant-numeric:tabular-nums;border-radius:var(--dsw-radius-sm,8px);background:var(--dshc-l0);border:1px solid var(--dshc-border);cursor:pointer}',
+  // The space, in order of priority: the needs-you action or the focus, the count,
+  // the segments, the key. The key drops below 600 px of strip. Below 460 px the
+  // segments become the 32 px continuous fill and the count drops "· 1 dropped";
+  // a needs-you strip drops the bar there. Below 380 px no bar shows. The focus
+  // takes the rest and ellipsizes only at its end. Count, Copy command and
+  // Board › never shrink. The strip's tooltip has the full text.
+  '.dshc-strip .dshc-bar{flex:0 1000 auto;margin:0;height:6px}',
+  '.dshc-strip .dshc-bar .dshc-seg{min-width:3px}',
+  '.dshc-strip .dshc-fill{flex:0 1000 72px;min-width:32px;margin:0}',
+  '.dshc-strip .dshc-alt{display:none}',
+  '@container dshc-strip (max-width:460px){.dshc-strip .dshc-bar,.dshc-strip .dshc-more,.dshc-strip[data-kind="needs you"] .dshc-fill{display:none}.dshc-strip .dshc-alt{display:block}}',
+  '.dshc-strip .dshc-key{color:var(--dshc-t);font-size:12px;font-weight:400;flex:0 0 auto;max-width:120px}',
+  '@container dshc-strip (max-width:600px){.dshc-strip .dshc-key,.dshc-strip .dshc-key+.dshc-sep{display:none}}',
+  '@container dshc-strip (max-width:380px){.dshc-strip .dshc-fill{display:none}}',
+  '.dshc-strip .dshc-sep{color:var(--dshc-t);flex:none}',
+  '.dshc-strip .dshc-done,.dshc-strip .dshc-go,.dshc-strip .dshc-copy,.dshc-strip .dshc-ic{flex:none}',
+  '.dshc-strip .dshc-done{color:var(--dshc-p)}',
+  '.dshc-strip .dshc-focus{flex:1 1 auto;min-width:0}',
+  '.dshc-strip .dshc-ic{color:var(--dshc-warn);display:inline-flex}',
+  '.dshc-strip .dshc-btn{height:22px;padding:0 6px}',
+  '.dshc-strip .dshc-go{height:22px;padding:0 4px;border:0;border-radius:4px;background:none;font:inherit;font-size:12px;font-weight:500;color:var(--dshc-s);cursor:pointer}',
+  '.dshc-strip .dshc-go:hover,.dshc-strip .dshc-btn:hover{color:var(--dshc-p)}',
+  // The chat cards: the host's tool row, with the result's tree text below it.
+  '.dshc-card-sum{margin-left:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}',
+  '.dshc-card-sum[data-state=error]{color:var(--dsw-alias-state-error-primary)}.dshc-card-sum[data-state=stopped]{color:var(--dsw-alias-state-warn-label)}',
+  '.dshc-card-out{margin:4px 0 4px 4px;max-height:260px;overflow:auto;white-space:pre;font-family:' + MONO + ';font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
 ].join('\n')
 
 function useStyle() {
@@ -153,31 +192,59 @@ function Link({ url, title, className, children }) {
   return h('a', { href, target: '_blank', rel: 'noopener noreferrer', title, className, onClick: stop }, children)
 }
 
-// ---- The view: polled every 2 s ----
-// One request at a time: the next poll starts POLL_MS after the last answer,
-// so an older answer never overwrites a newer one. The state is kept per
-// session, so another session's board never shows while the first poll runs.
-function useView(sessionId) {
-  const [state, setState] = React.useState({ loading: true })
-  React.useEffect(() => {
-    let stopped = false
-    let timer
-    const controller = new AbortController()
-    const load = async () => {
-      try {
-        const res = await fetch(VIEW + '?sessionId=' + encodeURIComponent(sessionId), { signal: controller.signal, cache: 'no-store' })
-        const body = res.headers.get('content-type')?.includes('json') ? await res.json() : { error: await res.text() }
-        if (!stopped) setState(res.ok ? { view: body, sessionId } : { error: body.error || 'HTTP ' + res.status, sessionId })
-      } catch (error) {
-        if (stopped || error.name === 'AbortError') return
-        setState({ error: String(error.message || error), sessionId })
-      }
-      if (!stopped) timer = setTimeout(load, POLL_MS)
+// ---- The view: polled every 2 s, one poller per session ----
+// The tab and the strip share one poller per session, which runs while either
+// is mounted. One request at a time: the next poll starts POLL_MS after the
+// last answer, so an older answer never overwrites a newer one. The state is
+// kept per session, so another session's board never shows while its first
+// poll runs.
+const pollers = new Map()
+
+function poller(sessionId) {
+  let p = pollers.get(sessionId)
+  if (p) return p
+  p = { state: { loading: true }, subs: new Set(), timer: undefined, controller: undefined, stopped: false }
+  const load = async () => {
+    // A hidden page does not poll; it loads again when shown.
+    if (typeof document !== 'undefined' && document.hidden) { p.waiting = true; return }
+    const controller = (p.controller = new AbortController())
+    let next
+    try {
+      const res = await fetch(VIEW + '?sessionId=' + encodeURIComponent(sessionId), { signal: controller.signal, cache: 'no-store' })
+      const body = res.headers.get('content-type')?.includes('json') ? await res.json() : { error: await res.text() }
+      // A failed answer keeps the last view, so a blip neither hides the strip nor blanks the tab.
+      next = res.ok ? { view: body } : { view: p.state.view, error: body.error || 'HTTP ' + res.status }
+    } catch (error) {
+      if (p.stopped || error.name === 'AbortError') return
+      next = { view: p.state.view, error: String(error.message || error) }
     }
-    load()
-    return () => { stopped = true; clearTimeout(timer); controller.abort() }
+    if (p.stopped) return
+    p.state = next
+    for (const fn of p.subs) fn(next)
+    p.timer = setTimeout(load, next.error || !next.view?.key ? IDLE_MS : POLL_MS)
+  }
+  const onShow = () => { if (p.waiting && !document.hidden) { p.waiting = false; clearTimeout(p.timer); load() } }
+  p.start = () => { if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onShow); load() }
+  p.stop = () => {
+    p.stopped = true; clearTimeout(p.timer); if (p.controller) p.controller.abort()
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onShow)
+    if (pollers.get(sessionId) === p) pollers.delete(sessionId)
+  }
+  pollers.set(sessionId, p)
+  return p
+}
+
+function useView(sessionId) {
+  const [state, setState] = React.useState(() => ({ sessionId, ...(pollers.get(sessionId)?.state ?? { loading: true }) }))
+  React.useEffect(() => {
+    const p = poller(sessionId)
+    const fn = (next) => setState({ sessionId, ...next })
+    p.subs.add(fn)
+    if (p.subs.size === 1) p.start()
+    else fn(p.state)
+    return () => { p.subs.delete(fn); if (!p.subs.size) p.stop() }
   }, [sessionId])
-  return state.sessionId === undefined || state.sessionId === sessionId ? state : { loading: true }
+  return state.sessionId === sessionId ? state : { loading: true }
 }
 
 /** The clock for relative times: it ticks once a minute, not on every refresh. */
@@ -227,9 +294,12 @@ const showDrift = (view) => Boolean(view.driftConfigured || view.board?.drift)
 // ---- Rows: expand state kept by board and item across refreshes and remounts ----
 const expanded = new Map()
 
-/** Move focus to a row, centred, without animation (the problems lines). */
-function showRow(item) {
-  const el = typeof document !== 'undefined' && document.querySelector('[data-dsh-cockpit-board] li[data-item="' + String(item).replace(/["\\]/g, '\\$&') + '"]')
+/** The Board body an event happened in, so a row is looked up in that board only. */
+const boardOf = (e) => (e && e.currentTarget && typeof e.currentTarget.closest === 'function' ? e.currentTarget.closest('[data-dsh-cockpit-board]') : null)
+
+/** Move focus to a row of this board (root), centred, without animation. */
+function showRow(item, root) {
+  const el = root && typeof root.querySelector === 'function' && root.querySelector('li[data-item="' + String(item).replace(/["\\]/g, '\\$&') + '"]')
   if (!el) return
   el.scrollIntoView({ block: 'center' })
   el.focus({ preventScroll: true })
@@ -288,7 +358,7 @@ function Problems({ list }) {
   if (!list.length) return null
   return h('section', { className: 'dshc-sec', 'data-problems': '', 'aria-label': 'Board data problems' },
     h('div', { className: 'dshc-sech dshc-err' }, 'Board data problems'),
-    list.map((p, i) => h('button', { key: i, type: 'button', className: 'dshc-prob', 'data-item': p.item, onClick: () => showRow(p.item) },
+    list.map((p, i) => h('button', { key: i, type: 'button', className: 'dshc-prob', 'data-item': p.item, onClick: (e) => showRow(p.item, boardOf(e)) },
       h('span', { className: 'dshc-ic' }, warnIcon(14)),
       h('span', { className: 'dshc-wrap' }, p.text),
       h('span', { className: 'dshc-go', 'aria-label': 'Go to row', role: 'img' }, downIcon()))))
@@ -302,16 +372,16 @@ function Mark({ mark }) {
 
 const tag = (key, cls, words, title) => h('span', { key, className: 'dshc-tag ' + cls, title }, words)
 
-/** The thin bar of the parent row: one segment per work task, by shape; above 24 one fill. */
-function Bar({ bar }) {
+/**
+ * The segmented bar, one segment per counted task, by shape; above 24 one
+ * fill. The parent row draws it full width; the strip at a fixed width
+ * (width). A segment's click goes to onSegment(item), else focuses its row.
+ */
+function Bar({ bar, onSegment = (item, e) => showRow(item, boardOf(e)), width }) {
   const aria = { role: 'img', 'aria-label': progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) + ' (work tasks)' }
-  if (bar.continuous) {
-    const open = bar.total - bar.dropped
-    const width = open > 0 ? Math.round((bar.done / open) * 100) : 100
-    return h('span', { ...aria, className: 'dshc-fill', title: aria['aria-label'] }, h('span', { style: { width: width + '%' } }))
-  }
-  return h('span', { ...aria, className: 'dshc-bar' },
-    bar.segments.map((g) => h('span', { key: g.item, className: 'dshc-seg', 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip, onClick: (e) => { e.stopPropagation(); showRow(g.item) } })))
+  if (bar.continuous) return h(Fill, { bar })
+  return h('span', { ...aria, className: 'dshc-bar', style: width ? { width } : undefined },
+    bar.segments.map((g) => h('span', { key: g.item, className: 'dshc-seg', 'data-segment': g.kind, 'data-item': g.item, title: g.tooltip, onClick: (e) => { e.stopPropagation(); onSegment(g.item, e) } })))
 }
 
 function Meta({ c, bar, parent }) {
@@ -375,8 +445,7 @@ function BoardView({ view, now }) {
   const links = view.links && typeof view.links === 'object' ? view.links : {}
   const rows = boardRows(board, { links })
   // The first task of an item, as the rows draw it, should a hand-edited file repeat one.
-  const byItem = new Map()
-  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  const byItem = firstByItem(board)
   // The route's flags and problems, drawn by the same rules as the hub's text; computed here only without them.
   const flags = Array.isArray(view.flags) ? view.flags : boardFlags(tasks)
   const list = Array.isArray(view.problems) ? view.problems : problems(tasks, flags)
@@ -384,8 +453,8 @@ function BoardView({ view, now }) {
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   // The thin bar sits in the board's one parent row (the root with children)
   // and counts that row's children, as its progress text does.
-  const roots = rows.filter((r) => r.depth === 0 && r.progress)
-  const bar = roots.length === 1 ? boardSegments(board, rows, roots[0].item) : undefined
+  const parentItem = boardParent(rows)
+  const bar = parentItem !== undefined ? boardSegments(board, rows, parentItem) : undefined
   return h('div', null,
     h(Header, { board, view, rows, now }),
     h(NeedsYou, { board, rows, byItem }),
@@ -393,22 +462,197 @@ function BoardView({ view, now }) {
     rows.length
       ? h('ul', { className: 'dshc-tree', role: 'list' }, rows.map((row) => h(TaskRow, {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
-        bar: bar && roots[0] === row ? bar : undefined,
+        bar: bar && row.item === parentItem ? bar : undefined,
       })))
       : h('p', { className: 'dshc-msg' }, 'No tasks yet.'))
 }
 
-function BoardBody({ sessionId }) {
+// Tab id -> the navigation revision already shown, so a remounted body does not jump back to an old click.
+const scrolledTo = new Map()
+
+/**
+ * The strip opens the tab with params { item }; the body shows that row once
+ * it is drawn, once per navigation. useTabInfo is the framework's tab reader.
+ */
+function useShowRow(useTabInfo, ready, root) {
+  const tab = typeof useTabInfo === 'function' ? useTabInfo()?.tab : undefined
+  const nav = tab && tab.navigation
+  const item = nav && nav.params && nav.params.item
+  const revision = nav && nav.revision
+  React.useEffect(() => {
+    if (!ready || item === undefined || scrolledTo.get(tab.id) === revision) return
+    scrolledTo.set(tab.id, revision)
+    showRow(item, root.current)
+  }, [ready, item, revision])
+}
+
+function BoardBody({ sessionId, useTabInfo }) {
   useStyle()
   const { loading, view, error } = useView(sessionId)
   const now = useMinute()
-  const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '' }, child)
+  const root = React.useRef(null)
+  useShowRow(useTabInfo, Boolean(view && view.board), root)
+  const wrap = (child) => h('section', { 'data-dsh-cockpit-board': '', ref: root }, child)
   if (loading) return wrap(h('p', { className: 'dshc-msg' }, 'Loading board…'))
-  if (error) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, 'Board unavailable: ' + error))
+  // A failed poll keeps the last view; only with none is the error shown.
+  if (!view) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, 'Board unavailable: ' + error))
   return wrap(h(BoardView, { view, now }))
 }
 
-const inject = ['slots', 'sidebarRightTabs']
+// ---- The progress strip above the chat input (conversation.input.dock) ----
+
+/** The strip's model for one view answer (pure; exported for tests): undefined, so nothing shows, without a bound board that parsed. */
+function dockModel(view) {
+  if (!view || !view.key || !view.board || !Array.isArray(view.board.tasks)) return undefined
+  const board = { ...view.board, key: view.board.key || view.key }
+  const m = stripModel(board, boardRows(board, { links: view.links }))
+  // The count, and what a narrow strip may leave out of it (" · 1 dropped").
+  const count = m.bar.done + ' of ' + m.bar.total + ' done'
+  return { ...m, count, more: m.done.slice(count.length) || undefined, line: stripText(m), tooltip: stripTitle(m) }
+}
+
+/** The bar's width in the strip at its widest: 10 px a segment, between 48 and 120 px; it shrinks to 3 px a segment. */
+const stripBarWidth = (bar) => Math.min(120, Math.max(48, bar.segments.length * 10))
+
+/** The continuous fill: done of the open (not dropped) tasks. */
+function Fill({ bar, className }) {
+  const label = progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) + ' (work tasks)'
+  const open = bar.total - bar.dropped
+  const fill = open > 0 ? Math.round((bar.done / open) * 100) : 100
+  return h('span', { role: 'img', 'aria-label': label, className: 'dshc-fill' + (className ? ' ' + className : ''), title: label }, h('span', { style: { width: fill + '%' } }))
+}
+
+const sep = (key) => h('span', { key, className: 'dshc-sep', 'aria-hidden': true }, '·')
+
+/** The strip (pure render; exported for tests). openBoard(item?) opens the Board tab at that row. */
+function StripView({ m, openBoard }) {
+  const open = (item) => (e) => { if (e && e.stopPropagation) e.stopPropagation(); if (openBoard) openBoard(item) }
+  const go = h('button', { key: 'go', type: 'button', className: 'dshc-go', onClick: open(m.item) }, 'Board ›')
+  const parts = m.kind === 'needs you'
+    ? [
+      h('span', { key: 'w', className: 'dshc-ic' }, warnIcon(12)),
+      h('span', { key: 'f', className: 'dshc-focus dshc-trunc' },
+        h('span', { className: 'dshc-need' }, m.text.startsWith('Needs you:') ? 'Needs you:' : m.text),
+        m.text.startsWith('Needs you:') ? m.text.slice('Needs you:'.length) : null),
+      m.command ? h(CopyButton, { key: 'c', text: m.command, label: 'Copy command for ' + (m.title || m.item), words: 'Copy command', icon: false }) : null,
+      m.command ? sep('s2') : null,
+      go,
+    ]
+    : [
+      m.key ? h('span', { key: 'k', className: 'dshc-mono dshc-key dshc-trunc', title: m.key }, m.key) : null,
+      m.key ? sep('s1') : null,
+      h('span', { key: 'd', className: 'dshc-done' }, m.count, m.more ? h('span', { className: 'dshc-more' }, m.more) : null),
+      m.focus ? sep('s2') : null,
+      h('span', { key: 'f', className: 'dshc-focus dshc-trunc' }, m.focus || ''),
+      go,
+    ]
+  return h('div', { 'data-dsh-cockpit-dock': '', 'data-strip': m.kind, className: 'dshc-stripbox' },
+    // A div, not a button: the segments and buttons inside take their own clicks.
+    // The tooltip carries the full text, whatever the width cuts.
+    h('div', {
+      className: 'dshc-strip', role: 'button', tabIndex: 0, 'aria-label': m.line, title: m.tooltip, 'data-kind': m.kind, onClick: open(m.item),
+      onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(m.item)() } },
+    },
+      h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: stripBarWidth(m.bar) }),
+      // The narrow strip's bar, shown by the container query instead of the segments.
+      m.bar.continuous ? null : h(Fill, { bar: m.bar, className: 'dshc-alt' }),
+      parts))
+}
+
+function BoardDock({ sessionId, openBoard }) {
+  useStyle()
+  const { view } = useView(sessionId)
+  const m = dockModel(view)
+  return m ? h(StripView, { m, openBoard }) : null
+}
+
+// ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
+
+const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } }
+const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift']
+/**
+ * A settled call's arguments: its call head's argsRaw, else (the call has
+ * left the loaded window) the node's own lazy argument view, else {}.
+ */
+function settledArgs(block) {
+  if (typeof block.call?.argsRaw === 'string') return parseArgs(block.call.argsRaw)
+  const view = block.args
+  if (!view || typeof view.value !== 'function') return {}
+  const out = {}
+  for (const k of CARD_FIELDS) { try { const v = view.value(k); if (v !== undefined) out[k] = v } catch {} }
+  return out
+}
+
+/**
+ * A card's state, title and summary (pure; exported for tests). The summary
+ * is the result meta's title when the host recorded one, else lib/present.js's
+ * call title from the arguments. A result { ok: false } is an error that
+ * names its code. output: the result text, shown when the card is opened.
+ */
+function toolCardModel(props) {
+  const block = props.block || {}
+  const name = props.toolName || block.name
+  if (props.phase === 'preparing') return { state: 'running', title: 'Board', summary: name, output: null }
+  const settled = props.phase === 'result'
+  const args = settled ? settledArgs(block) : parseArgs(block.argsRaw ?? '')
+  if (!settled) return { state: 'running', title: 'Board', summary: callTitle(name, args), output: null }
+  const output = (block.content || []).map((c) => (c && c.type === 'text' ? c.text : JSON.stringify(c))).join('\n') || null
+  let value
+  try { value = output ? JSON.parse(output) : undefined } catch {}
+  if (value && value.ok === false) return { state: 'error', title: 'Board', summary: callTitle(name, args) + ' · ' + String(value.code), output, value }
+  const metaTitle = block.meta && typeof block.meta.title === 'string' ? block.meta.title : undefined
+  const state = block.error?.code === 'interrupted' ? 'stopped' : block.isError ? 'error' : 'ok'
+  const summary = (state === 'ok' && metaTitle ? metaTitle : callTitle(name, args)) + (state === 'error' ? ' · failed' : state === 'stopped' ? ' · stopped' : '')
+  return { state, title: 'Board', summary, output, value }
+}
+
+/** The opened card's text: the result's tree text when it has one, else the result as indented JSON. */
+function cardBody(m) {
+  if (!m.output) return ''
+  if (m.value && typeof m.value === 'object') return typeof m.value.tree === 'string' ? m.value.tree : JSON.stringify(m.value, null, 2)
+  return m.output
+}
+
+/**
+ * The host's DisclosureRow and checklist icon, so a card looks like the
+ * other tool rows; required on first use, and a plain row without them.
+ */
+let primitivesCache
+function cardPrimitives() {
+  if (primitivesCache === undefined) {
+    try { primitivesCache = require('@deepseek-ai/dsh-client-ui-primitives') || null } catch { primitivesCache = null }
+  }
+  return primitivesCache
+}
+
+function BoardToolRow(props) {
+  useStyle()
+  const primitives = cardPrimitives()
+  // The result is parsed once per block, not on every render.
+  const m = React.useMemo(() => toolCardModel(props), [props.phase, props.block, props.toolName])
+  const disclosure = typeof props.useDisclosure === 'function' ? props.useDisclosure() : null
+  const [localOpen, setLocalOpen] = React.useState(false)
+  const open = disclosure ? disclosure.expanded : localOpen
+  const toggle = disclosure ? disclosure.toggle : () => setLocalOpen(!localOpen)
+  const expandable = Boolean(m.output)
+  const Icon = primitives && primitives.IconChecklistOutlineRegular
+  const icon = Icon ? h(Icon, { size: 14 }) : null
+  const summary = h('span', { className: 'dshc-card-sum', 'data-state': m.state, title: m.summary }, m.summary)
+  const body = open && expandable ? h('pre', { className: 'dshc-card-out' }, cardBody(m)) : null
+  const Row = primitives && primitives.DisclosureRow
+  if (Row) {
+    return h('div', { 'data-tool': props.toolName, 'data-state': m.state },
+      h(Row, { icon, title: m.title, open: open && expandable, expandable, onToggle: toggle, running: m.state === 'running', expandOnRowClick: true, collapsedContent: summary, keepContentWhenOpen: true }, body))
+  }
+  return h('div', { 'data-tool': props.toolName, 'data-state': m.state },
+    h('div', {
+      role: expandable ? 'button' : undefined, tabIndex: expandable ? 0 : undefined, 'aria-expanded': expandable ? open : undefined, onClick: expandable ? toggle : undefined,
+      onKeyDown: expandable ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle() } } : undefined,
+      style: { display: 'flex', alignItems: 'center', cursor: expandable ? 'pointer' : 'default' } }, icon, h('span', null, m.title), summary),
+    body)
+}
+
+const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
 
 function apply(ctx) {
   ctx.effect(() => ctx.sidebarRightTabs.register({
@@ -422,6 +666,19 @@ function apply(ctx) {
     key: ID,
     inject: (sessionId) => ({ sessionId }),
   }, BoardBody))
+  // One card per board tool, keyed by its wire name.
+  for (const key of TOOLS) {
+    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key }, BoardToolRow))
+  }
+  // Above the input box, after the Todo, Goal and Queue docks (orders 0, 10, 20).
+  // openTab acts on the on-screen session, the dock's; with an item the tab
+  // scrolls to its row (navigation params, see useShowRow).
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'dsh-cockpit-progress',
+    order: 30,
+    inject: (sessionId) => ({ sessionId, openBoard: (item) => ctx.sidebarRight.openTab(KIND, item === undefined ? undefined : { params: { item } }) }),
+  }, BoardDock))
 }
 
-module.exports = { apply, inject, BoardView, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND }
+module.exports = { apply, inject, BoardView, StripView, dockModel, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }

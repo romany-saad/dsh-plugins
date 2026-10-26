@@ -1,13 +1,13 @@
 // Wrap client/src/panel.js in the DSH module-loader factory: client/client.js.
-// No bundler: the source is one CommonJS body whose only shell require is
-// react, from the shell's module table. The core's pure, import-free ES
+// No bundler: the source is one CommonJS body whose shell requires (react and
+// @deepseek-ai/dsh-client-ui-primitives) come from the shell's module table. The core's pure, import-free ES
 // modules below are inlined, so the tab and the hub's tree text share one copy
 // of their rules. `node client/build.mjs` writes the file; `--check` fails
 // when the committed file is not what the sources build.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const LOCAL = ['../../lib/rows.js', './command-box.js']
+const LOCAL = ['../../lib/rows.js', '../../lib/present.js', './command-box.js']
 const OUT = new URL('./client.js', import.meta.url)
 
 /** An import-free ES module as an expression of its exports. */
@@ -24,7 +24,7 @@ export function bundle() {
   const id = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).name
   const body = readFileSync(new URL('./src/panel.js', import.meta.url), 'utf8')
   const local = LOCAL.map((s) => JSON.stringify(s) + ': ' + inline(s)).join(',\n')
-  return `// Built by client/build.mjs from client/src and lib/rows.js; do not edit.
+  return `// Built by client/build.mjs from client/src, lib/rows.js and lib/present.js; do not edit.
 window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (shellRequire) => {
 var module = { exports: {} }; var exports = module.exports; var __packageId = ${JSON.stringify(id)};
 var __local = {

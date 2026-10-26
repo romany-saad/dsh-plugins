@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-cockpit/board.schema.json",
   "title": "dsh-cockpit board, format version 1",
-  "description": "One board file: $DSH_HOME/data/dsh-cockpit/boards/<encodeURIComponent(key)>.json. A hub without the plugin writes the same file (decision 14); write it to a temporary file, then rename it over the board file. Fields this schema does not name are allowed and kept.",
+  "description": "One board file: $DSH_HOME/data/dsh-cockpit/boards/<encodeURIComponent(key)>.json. This schema is also the format of a local file that a hub without the plugin writes (decision 14), at a path its own setup names, read the same way (the reader takes a file path); it is never the plugin's own store, whose files only the plugin writes. Write such a file to a temporary file, then rename it over the board file. Fields this schema does not name are allowed and kept.",
   "type": "object",
   "required": [
     "format",

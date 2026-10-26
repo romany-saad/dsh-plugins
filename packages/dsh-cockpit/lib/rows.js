@@ -431,6 +431,38 @@ export const SEGMENT_MAX = 24
 export const segmentKind = (r) => r.done ? 'done' : r.dropped ? 'dropped' : r.needsYou ? 'needs you' : r.status === 'now' ? 'now'
   : r.status === 'next' ? (r.ready ? 'ready' : 'blocked') : 'waiting'
 
+/** Tasks by item, the first of a repeated item, as the rows draw it. */
+export function firstByItem(board) {
+  const byItem = new Map()
+  for (const t of Array.isArray(board?.tasks) ? board.tasks : []) if (!byItem.has(t.item)) byItem.set(t.item, t)
+  return byItem
+}
+
+/**
+ * What blocks a next or waiting row: each open dependency on the board with
+ * its status, then each dependency not on the board. ref formats a reference.
+ * ["#886 (waiting)", "'release notes' (not on the board)"]
+ */
+function blockerTexts(row, task, byItem, ref = (r) => r) {
+  const deps = Array.isArray(task?.dependsOn) ? task.dependsOn : []
+  const waits = row.status === 'next' || row.status === 'waiting'
+  const unknown = waits ? deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)") : []
+  return row.blockedBy.map((b) => ref(b.ref) + ' (' + b.status + ')').concat(unknown)
+}
+
+/** The board's one parent row (a top row with children, when there is exactly one), else undefined. */
+export function boardParent(rows) {
+  const roots = rows.filter((r) => r.depth === 0 && r.progress)
+  return roots.length === 1 ? roots[0].item : undefined
+}
+
+/**
+ * The rows the strip counts when the board has no one parent row: every
+ * row without children (its work tasks), so two epics of five tasks read
+ * "0 of 10 done", never "0 of 2".
+ */
+const workRows = (rows) => rows.filter((r) => !r.progress)
+
 /**
  * The parent row's thin bar: one segment per child of that row, in tree
  * order, the same tasks its progress text counts, so the bar and "2 of 8
@@ -439,18 +471,21 @@ export const segmentKind = (r) => r.done ? 'done' : r.dropped ? 'dropped' : r.ne
  * its status). The tooltip is the title and what the kind means: "#887 Live
  * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
  * on CI". continuous: more than SEGMENT_MAX children.
+ * With item undefined (a board with no one parent row), the segments are the
+ * work tasks, the rows without children; the progress strip uses that.
  * @param {{tasks: object[]}} board
  * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
- * @param {string} item the parent row's item
+ * @param {string|undefined} item the parent row's item
  */
 export function boardSegments(board, rows, item) {
-  const tasks = Array.isArray(board?.tasks) ? board.tasks : []
-  const byItem = new Map()
-  for (const t of tasks) if (!byItem.has(t.item)) byItem.set(t.item, t)
-  const at = rows.findIndex((r) => r.item === item)
+  const byItem = firstByItem(board)
   const children = []
-  if (at >= 0) {
-    for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
+  if (item === undefined) children.push(...workRows(rows))
+  else {
+    const at = rows.findIndex((r) => r.item === item)
+    if (at >= 0) {
+      for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
+    }
   }
   const segments = children.map((r) => {
     const kind = segmentKind(r)
@@ -458,9 +493,7 @@ export function boardSegments(board, rows, item) {
     if (kind === 'now') said = ['now', modelText(byItem.get(r.item) ?? {}, ' ')]
     else if (kind === 'waiting') said = ['waiting', r.waitingOn ? 'on ' + r.waitingOn : '']
     else if (kind === 'blocked') {
-      const deps = Array.isArray(byItem.get(r.item)?.dependsOn) ? byItem.get(r.item).dependsOn : []
-      const unknown = deps.filter((d) => !byItem.has(d)).map((d) => "'" + d + "' (not on the board)")
-      const blockers = r.blockedBy.map((b) => b.ref + ' (' + b.status + ')').concat(unknown)
+      const blockers = blockerTexts(r, byItem.get(r.item), byItem)
       said = [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
     }
     return { item: r.item, kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
@@ -492,6 +525,69 @@ export function driftWords(state) {
   if (state.kind === 'not run') return 'not run yet'
   if (state.kind === 'failed' || state.kind === 'matches') return state.kind
   return state.count + (state.count === 1 ? ' differs' : ' differ')
+}
+
+// ---- The progress strip above the chat input (design 6) ----
+
+/**
+ * The strip: the parent bar's segments and counts (boardSegments over
+ * boardParent, so the strip and the parent row always agree), and one focus.
+ * - 'needs you' when an open task waits on the owner: text "Needs you: <its
+ *   nextAction as written, else its title>", its readyCommand for Copy and
+ *   its item; with two or more, "2 need you", no command, the first item.
+ * - else 'normal', with focus, in tree order, the first present of: a task
+ *   that is blocked, naming each blocker and its status ("#887 blocked by
+ *   #886 (waiting)"); the tasks in progress ("in progress: #885 Work
+ *   reports", "2 in progress: #885, #886"); else none. A parent row (a
+ *   top row with children) is not a candidate: its tasks are.
+ * References show short, as the titles do (shortRef).
+ * @param {{key?: string, tasks: object[], parent?: string}} board
+ * @param {ReturnType<typeof boardRows>} [rows] boardRows(board), when the caller has them
+ */
+export function stripModel(board, rows = boardRows(board)) {
+  const byItem = firstByItem(board)
+  const home = board?.parent
+  const ref = (r) => shortRef(r, home) ?? r
+  const parent = boardParent(rows)
+  const bar = boardSegments(board, rows, parent)
+  const base = { key: text(board?.key), bar, done: progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) }
+  const mine = rows.filter((r) => r.needsYou)
+  if (mine.length) {
+    const first = mine[0]
+    const ask = text(byItem.get(first.item)?.nextAction) ?? first.title
+    return mine.length === 1
+      ? { ...base, kind: 'needs you', item: first.item, title: first.title, text: 'Needs you: ' + ask, command: first.readyCommand }
+      : { ...base, kind: 'needs you', item: first.item, title: first.title, text: mine.length + ' need you' }
+  }
+  // The parent rows (top rows with children) are not candidates: their tasks are.
+  const open = rows.filter((r) => !r.closed && !(r.depth === 0 && r.progress))
+  for (const r of open) {
+    const blockers = blockerTexts(r, byItem.get(r.item), byItem, ref)
+    if (blockers.length) return { ...base, kind: 'normal', item: r.item, focus: ref(refOf(byItem.get(r.item))) + ' blocked by ' + blockers.join(', ') }
+  }
+  const now = open.filter((r) => r.status === 'now')
+  if (now.length === 1) return { ...base, kind: 'normal', item: now[0].item, focus: 'in progress: ' + shortTitle(byItem.get(now[0].item), home) }
+  if (now.length) return { ...base, kind: 'normal', item: now[0].item, focus: now.length + ' in progress: ' + now.map((r) => ref(refOf(byItem.get(r.item)))).join(', ') }
+  return { ...base, kind: 'normal' }
+}
+
+/** "#885 Work reports": the title with its issue short (titleParts). */
+const shortTitle = (task, parent) => { const p = titleParts(task ?? {}, parent); return [p.ref, p.what].filter(Boolean).join(' ') }
+
+/**
+ * The strip as one line, its accessible name and the shape the design gives:
+ * "sim-883 · 4 of 6 done · #887 blocked by #886 (waiting) · Board ›", or
+ * "⚠ Needs you: merge PR #902 · Copy command · Board ›".
+ */
+export function stripText(m) {
+  if (m.kind === 'needs you') return ['⚠ ' + m.text, m.command ? 'Copy command' : '', 'Board ›'].filter(Boolean).join(' · ')
+  return [m.key, m.done, m.focus, 'Board ›'].filter(Boolean).join(' · ')
+}
+
+/** The strip's tooltip: what it says in full, with the needs-you task's title. */
+export function stripTitle(m) {
+  if (m.kind === 'needs you') return '⚠ ' + m.text + (m.title && m.text.startsWith('Needs you:') ? ' (' + m.title + ')' : '') + ' · ' + m.done
+  return [m.key, m.done, m.focus].filter(Boolean).join(' · ')
 }
 
 /** What the tab shows with no board: the design's title and one line. */

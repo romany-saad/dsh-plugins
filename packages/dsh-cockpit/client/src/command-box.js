@@ -39,8 +39,10 @@ export function copyIcon(h) {
 }
 
 /**
- * The hook and component, built on the caller's React.
+ * The hook and components, built on the caller's React.
  * useCopy(text) -> [state, copy]; copy(event) copies text and stops the click.
+ * CopyButton({ text, label, words, icon }) is the button with its live region,
+ * announcing Copied or Copy failed without moving focus; words is its idle text.
  * CommandBox({ command, label }) draws the box; label names the button for
  * screen readers ("Copy command for #886").
  */
@@ -61,14 +63,18 @@ export function makeCommandBox(React) {
     }
     return [state, copy]
   }
-  function CommandBox({ command, label }) {
-    const [state, copy] = useCopy(command)
-    return h('div', { className: 'dshc-cmd', 'data-command-box': '' },
-      h('code', null, command),
+  function CopyButton({ text, label, words = COPY_LABEL.idle, icon = true }) {
+    const [state, copy] = useCopy(text)
+    return h('span', { className: 'dshc-copy' },
       h('button', { type: 'button', className: 'dshc-btn', 'aria-label': state === 'idle' ? label || 'Copy command' : COPY_LABEL[state], 'data-copy-state': state, onClick: copy },
-        copyIcon(h), COPY_LABEL[state]),
+        icon ? copyIcon(h) : null, state === 'idle' ? words : COPY_LABEL[state]),
       // Announce the result without moving focus.
       h('span', { role: 'status', className: 'dshc-sr' }, state === 'idle' ? '' : COPY_LABEL[state]))
   }
-  return { CommandBox, useCopy }
+  function CommandBox({ command, label }) {
+    return h('div', { className: 'dshc-cmd', 'data-command-box': '' },
+      h('code', null, command),
+      h(CopyButton, { text: command, label }))
+  }
+  return { CommandBox, CopyButton, useCopy }
 }
