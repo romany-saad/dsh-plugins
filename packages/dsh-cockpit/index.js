@@ -1,10 +1,12 @@
 // @romany-saad/dsh-cockpit: the DSH host plugin. Registers the four board
-// tools inside ctx.inject(['tools'], …), so they come and go with the tools
-// service and with this plugin.
+// tools inside ctx.inject(['tools'], …) and the read routes inside
+// ctx.inject(['connection'], …), so they come and go with those services and
+// with this plugin.
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { resolveConfig } from './lib/config.js'
 import { presentation } from './lib/present.js'
+import { registerRoutes } from './lib/route.js'
 import { createStore } from './lib/store.js'
 import { RESULT_SPEC, TOOL_SPECS, createBoardTools } from './lib/tools.js'
 
@@ -36,9 +38,12 @@ export function createDefinitions(bodies) {
  */
 export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig ?? {})
-  if (!config.tools.enabled) return
   // $DSH_HOME/data/dsh-cockpit, with the home resolved as the rest of DSH does.
-  const store = createStore({ dataDir: dshHomePath('data', 'dsh-cockpit') })
+  const dataDir = dshHomePath('data', 'dsh-cockpit')
+  // The read routes, owner-only on the host connection (lib/route.js).
+  if (config.route.enabled) ctx.inject(['connection'], (connCtx) => registerRoutes(connCtx, { dataDir, config }))
+  if (!config.tools.enabled) return
+  const store = createStore({ dataDir })
   const bodies = createBoardTools({ store, drift: config.drift, dshHome: resolveDshHome() })
   ctx.inject(['tools'], (toolsCtx) => {
     for (const definition of createDefinitions(bodies)) toolsCtx.tools.register(definition)

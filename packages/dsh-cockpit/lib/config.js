@@ -51,6 +51,9 @@ export function resolveConfig(config = {}) {
   }
 }
 
+/** Whether the profile configured a drift command: a blank one is none (design 5). */
+export const driftConfigured = (config) => config.drift.command.trim() !== ''
+
 /**
  * The options lib/rows.js takes for links on one board: refUrl(ref, kind,
  * linkOptions(config, board)) and boardRows(board, linkOptions(config, board)).
