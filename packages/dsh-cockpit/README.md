@@ -22,15 +22,12 @@ That adds the dependency to the profile's `package.json` and the package to its 
 - **The peers** `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths` come from the DSH that boots the profile. pnpm may warn that they are missing from the profile itself.
 - **The web GUI half** (the tab, the strip and the cards) needs a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
-The bundle patch gives the defaults (see Config). A profile changes them in its own `cordis.patch.yml`. A patch with the same id replaces the whole config, so it restates every field. On GitHub, to link `#12` and `owner/repo#12`:
+The bundle patch gives the defaults (see Config). A profile changes them in its own `cordis.patch.yml`. A patch with the same id replaces the whole config, and the plugin fills every field it leaves out with its default, so the patch names only what it changes. On GitHub, to link `#12` and `owner/repo#12`:
 
 ```yaml
 - id: dsh-cockpit
   name: '@romany-saad/dsh-cockpit'
   config:
-    tools: { enabled: true }
-    route: { enabled: true }
-    drift: { command: '', cwd: '', mode: report }
     links:
       issue: 'https://github.com/{repo}/issues/{number}'
       pr: 'https://github.com/{repo}/pull/{number}'
@@ -83,7 +80,7 @@ The bundle patch gives the defaults (see Config). A profile changes them in its 
     links: { issue: '', pr: '' }  # URL patterns with {ref}, {repo}, {number}; empty: only full URLs link, in the Board tab too
 ```
 
-A profile patch with the same id replaces the whole config, so it restates the fields it keeps. Install shows the patch for GitHub links.
+A profile patch with the same id replaces the whole config. A field it leaves out takes its default above, so a field it means to keep at a non-default value must be restated. Install shows the patch for GitHub links.
 
 ## Drift
 
@@ -97,8 +94,6 @@ Drift is a task whose status no longer matches its linked work, such as a merged
 
 `examples/board-drift-gh.sh` is an example to copy and change. It reports `done` for each open task whose `pr` `gh pr view` reports as merged, and needs `gh` and `jq`; it fails when either is missing or gh can read none of the PRs. The plugin never runs it unless you name it in `drift.command`, for example `drift: { command: 'bash /path/to/board-drift-gh.sh', cwd: '/path/to/repo', mode: report }`.
 
-The peers are `@deepseek-ai/dsh-tools` and `@deepseek-ai/dsh-home-paths`, which the profile's DSH provides.
-
 ## Test
 
 ```sh
@@ -108,4 +103,4 @@ node client/build.mjs   # after changing client/src, lib/rows.js or lib/present.
 
 ## License
 
-[MIT](../../LICENSE)
+[MIT](LICENSE)

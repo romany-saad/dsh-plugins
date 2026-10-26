@@ -30,7 +30,7 @@ To try a package from a checkout, install it by path into a scratch profile: `ds
 
 ## Releases
 
-Each release is a tag `<package>@<version>`, for example `dsh-cockpit@0.1.0`. Profiles pin the tag, or its commit if pnpm rejects the tag. Publishing to npm is parked (#2).
+Each release is a tag `<package>@<version>`, for example `dsh-cockpit@0.1.0`. Profiles pin the tag, which pnpm accepts with `&path:`, or its commit. Publishing to npm is parked (#2).
 
 ## Contributing
 
