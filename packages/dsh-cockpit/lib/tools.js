@@ -1,5 +1,6 @@
 // The four board tools (design section 3), as plain specs and bodies.
 // index.js wraps them with defineTool; tests call the bodies directly.
+import { driftConfigured } from './config.js'
 import { driftResult, runDriftCommand } from './drift.js'
 import { BoardError, FORMAT, VERSION } from './store.js'
 import { STATUSES, STRING_FIELDS, nextItem, orderTask } from './task.js'
@@ -283,7 +284,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
 
     board_read: (args = {}, exec = {}) => guard(async () => {
       const key = await boundKey(exec)
-      const runDrift = args.checkDrift === true && drift.command.trim() !== ''
+      const runDrift = args.checkDrift === true && driftConfigured({ drift })
       let board = existing(key, await read(key))
       // An unknown item is refused before the command runs, so a refused call changes nothing.
       if (args.item !== undefined && !board.tasks.some((t) => t.item === args.item)) return err('item_unknown', `No task ${JSON.stringify(args.item)} on board ${key}.`)
