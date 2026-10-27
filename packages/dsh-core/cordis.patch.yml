@@ -1,0 +1,5 @@
+# Insert the core into the profile roster. Every rs-dsh plugin that uses the
+# core inserts this same row; the loader starts it once.
+- insert:
+    - id: dsh-core
+      name: '@rs-dsh/dsh-core'

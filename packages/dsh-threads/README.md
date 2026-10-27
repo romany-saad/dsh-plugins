@@ -9,7 +9,7 @@ Comment on any passage of a DeepSeek Harness conversation. The passage stays hig
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.1.0
+dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.2.0
 ```
 
 Then reload the DSH web page.
@@ -17,10 +17,10 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.1.0&path:packages/dsh-threads'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.2.0&path:packages/dsh-threads'
 ```
 
-The package adds itself to the profile. Do not also add `dsh-threads` to the profile's own `cordis.patch.yml`.
+The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-threads` or `dsh-core` to the profile's own `cordis.patch.yml`.
 
 ## Requirements
 
@@ -97,7 +97,6 @@ The defaults suit most uses. To change them, add an entry with the plugin's id t
 - **Not on tool output.** You cannot comment on tool calls or their results.
 - **A changed message loses its highlight.** If the text of a passage changes, the thread is kept but its highlight no longer shows. The thread notes that the passage is not on the page.
 - **Web GUI only.** In the terminal UI or an export, a sent thread shows as a tagged text block.
-- **Next to dsh-quote, two toolbars.** With dsh-quote installed, **Quote** and **Comment** show side by side in two separate boxes.
 - **The chip shows an `@` sign.** DSH has its own icons for files, folders and sessions only, so thread chips use the generic `@` marker.
 
 ## More

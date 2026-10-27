@@ -6,7 +6,7 @@ For maintainers. Users read [README.md](README.md).
 
 ## Layout
 
-- `client.js`: the browser half. A hand-written bundle with no build step, registered with `window.__ModuleLoader__.load`. Its pure helpers are exported as `_internals` for tests only.
+- `client.js`: the browser half, on dsh-core. A hand-written bundle with no build step, registered with `window.__ModuleLoader__.load`. Its pure helpers are exported as `_internals` for tests only.
 - `index.js`: the Node half. It builds the service and registers the routes.
 - `lib/threads.js`: the record format, anchor and comment checks, and the fold from session events to threads. No DSH imports.
 - `lib/session-text.js`: session events as text, and the replier's three tools. No DSH imports.
@@ -104,9 +104,15 @@ The chip reuses dsh-quote's approach. It is an `inputTriggers` source with a cod
 
 A user-text rule and a `conversation.user.text.node` entry render that block as a card. `escapeTags` keeps a passage from closing a tag early.
 
-## Shared code with dsh-quote
+## The rs-dsh core
 
-The selection toolbar, `oneLine`, `cleanSelection`, the chip stacking and the card styling are near-copies of dsh-quote's. Once this package is released, they are due to move into a shared core package for all rs-dsh plugins, rather than being copied a third time. When both toolbars show, the Comment button places itself next to Quote.
+The Comment button, the comment box and the thread come from [@rs-dsh/dsh-core](../dsh-core/DEVELOPING.md) (`ctx.rsDshCore`):
+
+- **The toolbar.** `selection.register` puts the button in the shared toolbar. Its `when` hides the button where `anchorFor` gives no anchor.
+- **The cards.** `popover.open` draws the comment box and the thread on DSH's `MenuSurface`.
+- **The components.** DSH's `InlineEditor`, `Button`, `MarkdownText` (the AI replies, with the compact variant's text in the primary colour) and `TextShimmer` (Thinking…).
+
+The thread follows the plugin's store through `useSyncExternalStore`, so polling and the highlights update it while it is open. The plugin's own CSS (badges, the cards in sent messages, highlights) is scoped under `[data-rs-dsh="dsh-threads"]`, with `th-` classes.
 
 ## Test
 
@@ -114,7 +120,8 @@ The selection toolbar, `oneLine`, `cleanSelection`, the chip stacking and the ca
 pnpm --filter @rs-dsh/dsh-threads test
 ```
 
-- `client.test.js` loads the real `client.js` in a Node `vm`.
+- `client.test.js` loads the real `client.js` in a Node `vm` for the pure helpers.
+- `apply.test.js` runs it with the real dsh-core on a jsdom page with real React (dsh-core's `test/dom.mjs`) and a fake host route: the toolbar button, posting, polling, Markdown replies, Send to chat, badges, read-only sessions and cleanup.
 - `service.test.js` runs the service over a real `Session` (`appendPluginRecord` as DSH writes it) and the real `BlockAssembler`, with a scripted model that, like DSH, refuses a second stream of one prepared call.
 - A setup file makes `fetch` throw, so no test reaches the network.
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- **Built on the rs-dsh core.** **Quote** now sits in the one selection toolbar it shares with the other rs-dsh plugins, such as **Comment** from dsh-threads. Installing dsh-quote also installs `@rs-dsh/dsh-core`.
+- **DSH's own look.** The note box, the edit box and the chip's hover card use DSH's components and theme: its text box, buttons and menu surface.
+- **Chips keep their order** with other rs-dsh chips: a quote added after a comment thread goes below it.
+
 ## 0.1.0
 
 The first release.

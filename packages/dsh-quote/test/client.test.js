@@ -23,7 +23,7 @@ const q = bundle._internals
 test('bundle id, name and inject match package.json', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(bundle.name, pkg.name)
-  assert.deepEqual([...bundle.inject].sort(), ['conversation', 'inputTriggers', 'locale', 'sessions', 'slots', 'uiConversation'])
+  assert.deepEqual([...bundle.inject].sort(), ['conversation', 'inputTriggers', 'locale', 'rsDshCore', 'sessions', 'slots', 'uiConversation'])
   assert.equal(typeof bundle.apply, 'function')
 })
 
