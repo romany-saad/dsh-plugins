@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
+
+The Whole board bar and the strip order their segments as the Board tab orders its sections. Tools, config and the board format are unchanged.
 
 - **Board tab and strip:** the Whole board bar and the strip now order their segments the way the sections below are drawn: each parent's subtree in turn, then the standalone tasks. Before, a standalone task listed before or between parents in the board file came first or in the middle of the bar, though its section is last.
 
