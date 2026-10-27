@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0
+
+The first release, published under npm's `latest` tag. It is 0.1.0-rc.2, tried in daily use, with no code changes.
+
+- **Comment on a passage** in a reply, your own message, or an expanded reasoning block, and get a brief reply from the session's current model in a thread next to it. The replier reads more of the session when it needs to, and cannot act.
+- **Threads, highlights and badges** stay after a reload. **Send to chat** passes a thread to the agent.
+- **Formerly `@rs-dsh/dsh-comment`.** Threads saved with dsh-comment 0.1.0-rc.1 keep showing.
+
 ## 0.1.0-rc.2
 
 - **Renamed from `@rs-dsh/dsh-comment` to `@rs-dsh/dsh-threads`.** Remove `@rs-dsh/dsh-comment` from your profile and add `@rs-dsh/dsh-threads`. Threads saved with dsh-comment 0.1.0-rc.1 keep showing, and you can reply to them and delete them as before.

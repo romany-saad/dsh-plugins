@@ -4,7 +4,7 @@ Public plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 
 | Package | What it does | Status |
 |---|---|---|
-| [`@rs-dsh/dsh-threads`](packages/dsh-threads) | Comment on any passage of a Web conversation and get a brief reply from the session's own model in a small thread next to it; passages stay highlighted, and a thread can be sent to the chat. Formerly `@rs-dsh/dsh-comment` | 0.1.0-rc.2 (`next`) |
+| [`@rs-dsh/dsh-threads`](packages/dsh-threads) | Comment on any passage of a Web conversation and get a brief reply from the session's own model in a small thread next to it; passages stay highlighted, and a thread can be sent to the chat. Formerly `@rs-dsh/dsh-comment` | 0.1.0 |
 | [`@rs-dsh/dsh-cockpit`](packages/dsh-cockpit) | A durable task board for a hub session that coordinates builders: a tree of steps with free-form link fields (issue, PR, branch, worktree, model, effort), kept as one local JSON file per board that other processes can read | 0.2.1 |
 | [`@rs-dsh/dsh-quote`](packages/dsh-quote) | Quote passages from a Web conversation into your next message as composer chips, each with an optional note you can edit; hover shows the full quote, and sent quotes render as cards | 0.1.0 |
 

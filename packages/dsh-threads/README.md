@@ -4,14 +4,12 @@ Comment on any passage of a DeepSeek Harness conversation. The passage stays hig
 
 ![A highlighted sentence in a reply, with its thread open: the comment "Why 10 minutes and not an hour?" and a short AI reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/thread-reply.png)
 
-> **Release candidate.** 0.1.0-rc.2 is for trying out. Its stored format may still change before 0.1.0.
->
-> **Formerly `@rs-dsh/dsh-comment`.** If you installed `@rs-dsh/dsh-comment@0.1.0-rc.1`, remove it and add this package instead. Threads you saved with it keep showing.
+> **Formerly `@rs-dsh/dsh-comment`.** If you installed `@rs-dsh/dsh-comment`, remove it and add this package instead. Threads you saved with it keep showing.
 
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-threads@next
+dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.1.0
 ```
 
 Then reload the DSH web page.
@@ -19,7 +17,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.1.0-rc.2&path:packages/dsh-threads'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.1.0&path:packages/dsh-threads'
 ```
 
 The package adds itself to the profile. Do not also add `dsh-threads` to the profile's own `cordis.patch.yml`.
@@ -99,6 +97,7 @@ The defaults suit most uses. To change them, add an entry with the plugin's id t
 - **Not on tool output.** You cannot comment on tool calls or their results.
 - **A changed message loses its highlight.** If the text of a passage changes, the thread is kept but its highlight no longer shows. The thread notes that the passage is not on the page.
 - **Web GUI only.** In the terminal UI or an export, a sent thread shows as a tagged text block.
+- **Next to dsh-quote, two toolbars.** With dsh-quote installed, **Quote** and **Comment** show side by side in two separate boxes.
 - **The chip shows an `@` sign.** DSH has its own icons for files, folders and sessions only, so thread chips use the generic `@` marker.
 
 ## More
