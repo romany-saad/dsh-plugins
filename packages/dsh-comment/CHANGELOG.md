@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.2
+
+- **Fix: dsh-cockpit's progress bar broke.** This plugin's CSS classes shared the `dshc-` prefix with dsh-cockpit, so its toolbar style turned cockpit's progress bar into a floating box. Its classes now use their own prefix, `dshcm-`, and a test checks them against the other rs-dsh plugins.
+
 ## 0.1.0-rc.1
 
 The first release candidate, published under npm's `next` tag.

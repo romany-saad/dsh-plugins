@@ -239,51 +239,51 @@ window.__ModuleLoader__.load({
     const STYLE = `
 ::highlight(${HIGHLIGHT}){background-color:rgba(255,190,0,.22);text-decoration:underline;text-decoration-color:rgba(214,140,0,.9);text-decoration-thickness:2px;text-underline-offset:3px}
 ::highlight(${HIGHLIGHT_OPEN}){background-color:rgba(255,190,0,.48);text-decoration:underline;text-decoration-color:rgba(214,140,0,.9);text-decoration-thickness:2px;text-underline-offset:3px}
-.dshc-bar{position:fixed;z-index:1200;display:flex;gap:2px;padding:3px;border-radius:10px;
+.dshcm-bar{position:fixed;z-index:1200;display:flex;gap:2px;padding:3px;border-radius:10px;
   background:var(--dsw-specific-input-major,#2b2b2e);box-shadow:var(--dsw-elevation-soft,0 4px 16px rgba(0,0,0,.25));
   border:.5px solid var(--dsw-alias-border-l2,rgba(127,127,127,.3));font:13px/20px var(--dsw-font-family,system-ui)}
-.dshc-bar[hidden]{display:none}
-.dshc-bar button{appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-primary,#eee);
+.dshcm-bar[hidden]{display:none}
+.dshcm-bar button{appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-primary,#eee);
   padding:3px 10px;border-radius:7px;cursor:pointer;font:inherit}
-.dshc-bar button:hover,.dshc-bar button:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));outline:none}
-.dshc-pop{position:fixed;z-index:1200;width:360px;max-width:calc(100vw - 16px);max-height:min(70vh,560px);display:flex;flex-direction:column;
+.dshcm-bar button:hover,.dshcm-bar button:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));outline:none}
+.dshcm-pop{position:fixed;z-index:1200;width:360px;max-width:calc(100vw - 16px);max-height:min(70vh,560px);display:flex;flex-direction:column;
   box-sizing:border-box;padding:10px;border-radius:12px;
   background:var(--dsw-specific-input-major,#2b2b2e);box-shadow:var(--dsw-elevation-soft,0 4px 16px rgba(0,0,0,.25));
   border:.5px solid var(--dsw-alias-border-l2,rgba(127,127,127,.3));font:13px/20px var(--dsw-font-family,system-ui);
   color:var(--dsw-alias-label-primary,#eee)}
-.dshc-pop [hidden]{display:none!important}
-.dshc-pop blockquote{flex:none;margin:0 0 8px;padding:2px 8px;border-left:3px solid rgba(214,140,0,.9);
+.dshcm-pop [hidden]{display:none!important}
+.dshcm-pop blockquote{flex:none;margin:0 0 8px;padding:2px 8px;border-left:3px solid rgba(214,140,0,.9);
   color:var(--dsw-alias-label-secondary,#aaa);white-space:pre-wrap;overflow-wrap:anywhere;
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
-.dshc-list{flex:auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
-.dshc-msg{white-space:pre-wrap;overflow-wrap:anywhere}
-.dshc-who{display:block;font-size:12px;line-height:16px;color:var(--dsw-alias-label-caption,#888)}
-.dshc-thinking{color:var(--dsw-alias-label-caption,#888);font-style:italic}
-.dshc-error{flex:none;color:var(--dsw-alias-state-error-primary,#e5484d);white-space:pre-wrap}
-.dshc-pop textarea{flex:none;box-sizing:border-box;width:100%;min-height:56px;resize:vertical;padding:6px 8px;border-radius:8px;
+.dshcm-list{flex:auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.dshcm-msg{white-space:pre-wrap;overflow-wrap:anywhere}
+.dshcm-who{display:block;font-size:12px;line-height:16px;color:var(--dsw-alias-label-caption,#888)}
+.dshcm-thinking{color:var(--dsw-alias-label-caption,#888);font-style:italic}
+.dshcm-error{flex:none;color:var(--dsw-alias-state-error-primary,#e5484d);white-space:pre-wrap}
+.dshcm-pop textarea{flex:none;box-sizing:border-box;width:100%;min-height:56px;resize:vertical;padding:6px 8px;border-radius:8px;
   border:.5px solid var(--dsw-alias-border-l4,rgba(127,127,127,.4));background:transparent;color:inherit;font:inherit;outline:none}
-.dshc-actions{flex:none;display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
-.dshc-pop button{appearance:none;border:0;border-radius:7px;padding:3px 12px;cursor:pointer;font:inherit;
+.dshcm-actions{flex:none;display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.dshcm-pop button{appearance:none;border:0;border-radius:7px;padding:3px 12px;cursor:pointer;font:inherit;
   background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));color:inherit}
-.dshc-pop button[data-primary]{background:var(--dsw-alias-button-info-fill,#4c6ef5);color:#fff}
-.dshc-pop button[data-danger]{margin-right:auto;background:transparent;color:var(--dsw-alias-state-error-primary,#e5484d)}
-.dshc-pop button[data-danger]:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15))}
-.dshc-pop button:disabled{opacity:.5;cursor:default}
-.dshc-note{flex:none;margin-bottom:6px;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
-.dshc-layer{position:fixed;inset:0;z-index:1100;pointer-events:none;overflow:hidden}
-.dshc-badge{position:fixed;pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:2px;height:18px;padding:0 5px;border-radius:9px;
+.dshcm-pop button[data-primary]{background:var(--dsw-alias-button-info-fill,#4c6ef5);color:#fff}
+.dshcm-pop button[data-danger]{margin-right:auto;background:transparent;color:var(--dsw-alias-state-error-primary,#e5484d)}
+.dshcm-pop button[data-danger]:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15))}
+.dshcm-pop button:disabled{opacity:.5;cursor:default}
+.dshcm-note{flex:none;margin-bottom:6px;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
+.dshcm-layer{position:fixed;inset:0;z-index:1100;pointer-events:none;overflow:hidden}
+.dshcm-badge{position:fixed;pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:2px;height:18px;padding:0 5px;border-radius:9px;
   font:600 11px/18px var(--dsw-font-family,system-ui);color:#7a4b00;background:#ffd46b;border:0;box-shadow:0 1px 3px rgba(0,0,0,.18)}
-.dshc-badge[data-replying]{animation:dshc-pulse 1.2s ease-in-out infinite}
-.dshc-badge[data-failed]{background:#ffb4b4;color:#7a0000}
-@keyframes dshc-pulse{50%{opacity:.45}}
-.dshc-card{display:block;margin:2px 0 6px;padding:3px 8px;border-left:3px solid rgba(214,140,0,.9);
+.dshcm-badge[data-replying]{animation:dshcm-pulse 1.2s ease-in-out infinite}
+.dshcm-badge[data-failed]{background:#ffb4b4;color:#7a0000}
+@keyframes dshcm-pulse{50%{opacity:.45}}
+.dshcm-card{display:block;margin:2px 0 6px;padding:3px 8px;border-left:3px solid rgba(214,140,0,.9);
   border-radius:4px;background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));white-space:pre-wrap;text-align:left}
-.dshc-card[data-interactive]{cursor:pointer}
-.dshc-card-title{display:block;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
-.dshc-card-passage{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--dsw-alias-label-secondary,#aaa)}
-.dshc-card[data-open] .dshc-card-passage{display:block}
-.dshc-card-msg{display:block;margin-top:2px}
-.dshc-card-msg b{font-weight:600}
+.dshcm-card[data-interactive]{cursor:pointer}
+.dshcm-card-title{display:block;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
+.dshcm-card-passage{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--dsw-alias-label-secondary,#aaa)}
+.dshcm-card[data-open] .dshcm-card-passage{display:block}
+.dshcm-card-msg{display:block;margin-top:2px}
+.dshcm-card-msg b{font-weight:600}
 `
 
     // ------------------------------------------------------------ plugin body
@@ -318,17 +318,17 @@ window.__ModuleLoader__.load({
         const [isOpen, setOpen] = React.useState(false)
         const { passage, messages } = node.data
         const children = [
-          jsx('span', { className: 'dshc-card-title', children: '💬 ' + t('thread') + ' · ' + count(messages.length) }, 'h'),
-          jsx('span', { className: 'dshc-card-passage', children: passage }, 'p'),
+          jsx('span', { className: 'dshcm-card-title', children: '💬 ' + t('thread') + ' · ' + count(messages.length) }, 'h'),
+          jsx('span', { className: 'dshcm-card-passage', children: passage }, 'p'),
         ]
         if (isOpen) {
           messages.forEach((m, i) => children.push(jsxs('span', {
-            className: 'dshc-card-msg',
+            className: 'dshcm-card-msg',
             children: [jsx('b', { children: (m.role === 'user' ? t('you') : t('ai')) + ': ' }), m.text],
           }, 'm' + i)))
         }
         return jsxs('span', {
-          className: 'dshc-card',
+          className: 'dshcm-card',
           'data-dsh-comment': '',
           'data-open': isOpen || undefined,
           'data-interactive': interactive || undefined,
@@ -576,7 +576,7 @@ window.__ModuleLoader__.load({
 
       // One badge after each highlighted passage, in a layer of our own.
       const layer = document.createElement('div')
-      layer.className = 'dshc-layer'
+      layer.className = 'dshcm-layer'
       layer.setAttribute('data-dsh-comment', '')
       const badges = new Map() // key → button
 
@@ -603,7 +603,7 @@ window.__ModuleLoader__.load({
           if (badge === undefined) {
             badge = document.createElement('button')
             badge.type = 'button'
-            badge.className = 'dshc-badge'
+            badge.className = 'dshcm-badge'
             badge.addEventListener('click', (e) => { e.stopPropagation(); openThread(sessionId, threadId) })
             badges.set(k, badge)
             layer.append(badge)
@@ -657,7 +657,7 @@ window.__ModuleLoader__.load({
       style.setAttribute('data-dsh-comment-style', '')
       style.textContent = STYLE
       const bar = document.createElement('div')
-      bar.className = 'dshc-bar'
+      bar.className = 'dshcm-bar'
       bar.setAttribute('role', 'toolbar')
       bar.setAttribute('data-dsh-comment', '')
       bar.hidden = true
@@ -718,7 +718,7 @@ window.__ModuleLoader__.load({
 
       function popover(mode) {
         const el = document.createElement('div')
-        el.className = 'dshc-pop'
+        el.className = 'dshcm-pop'
         el.setAttribute('data-dsh-comment', '')
         el.setAttribute('data-mode', mode)
         el.setAttribute('role', 'dialog')
@@ -735,10 +735,10 @@ window.__ModuleLoader__.load({
         const area = document.createElement('textarea')
         area.placeholder = t('placeholder')
         const error = document.createElement('div')
-        error.className = 'dshc-error'
+        error.className = 'dshcm-error'
         error.hidden = true
         const actions = document.createElement('div')
-        actions.className = 'dshc-actions'
+        actions.className = 'dshcm-actions'
         const cancel = button(t('cancel'))
         const post = button(t('post'), 'data-primary')
         actions.append(cancel, post)
@@ -780,16 +780,16 @@ window.__ModuleLoader__.load({
         const el = popover('thread')
         const preview = document.createElement('blockquote')
         const note = document.createElement('div')
-        note.className = 'dshc-note'
+        note.className = 'dshcm-note'
         const list = document.createElement('div')
-        list.className = 'dshc-list'
+        list.className = 'dshcm-list'
         const area = document.createElement('textarea')
         area.placeholder = t('replyPlaceholder')
         const error = document.createElement('div')
-        error.className = 'dshc-error'
+        error.className = 'dshcm-error'
         error.hidden = true
         const actions = document.createElement('div')
-        actions.className = 'dshc-actions'
+        actions.className = 'dshcm-actions'
         const del = button(t('delete'), 'data-danger')
         const toChat = button(t('toChat'))
         const close = button(t('close'))
@@ -818,25 +818,25 @@ window.__ModuleLoader__.load({
             list.replaceChildren()
             for (const m of current.messages) {
               const item = document.createElement('div')
-              item.className = 'dshc-msg'
+              item.className = 'dshcm-msg'
               item.setAttribute('data-role', m.role)
               const who = document.createElement('span')
-              who.className = 'dshc-who'
+              who.className = 'dshcm-who'
               who.textContent = m.role === 'user' ? t('you') : t('ai') + (m.model ? ' · ' + m.model : '')
               const text = document.createElement('span')
-              text.className = 'dshc-text'
+              text.className = 'dshcm-text'
               text.textContent = m.text
               item.append(who, text)
               list.append(item)
             }
             if (current.replying) {
               const wait = document.createElement('div')
-              wait.className = 'dshc-thinking'
+              wait.className = 'dshcm-thinking'
               wait.textContent = t('thinking')
               list.append(wait)
             } else if (current.failure !== undefined) {
               const fail = document.createElement('div')
-              fail.className = 'dshc-error'
+              fail.className = 'dshcm-error'
               fail.textContent = current.failure + ' '
               if (canWrite) {
                 const again = button(t('retry'))
@@ -963,7 +963,7 @@ window.__ModuleLoader__.load({
       const onPointerDown = (e) => {
         const target = e.target instanceof Element ? e.target : null
         if (target !== null && target.closest('.dshq-bar') !== null) hideBar()
-        if (pop !== null && !(target !== null && (pop.el.contains(target) || target.closest('.dshc-badge') !== null))) closePop()
+        if (pop !== null && !(target !== null && (pop.el.contains(target) || target.closest('.dshcm-badge') !== null))) closePop()
       }
 
       const onClick = (e) => {

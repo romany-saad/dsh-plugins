@@ -4,7 +4,7 @@ Comment on any passage of a DeepSeek Harness conversation. The passage stays hig
 
 ![A highlighted sentence in a reply, with its thread open: the comment "Why 10 minutes and not an hour?" and a short AI reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/thread-reply.png)
 
-> **Release candidate.** 0.1.0-rc.1 is for trying out. Its stored format may still change before 0.1.0.
+> **Release candidate.** 0.1.0-rc.2 is for trying out. Its stored format may still change before 0.1.0.
 
 ## Install
 
@@ -17,7 +17,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-comment@0.1.0-rc.1&path:packages/dsh-comment'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-comment@0.1.0-rc.2&path:packages/dsh-comment'
 ```
 
 The package adds itself to the profile. Do not also add `dsh-comment` to the profile's own `cordis.patch.yml`.

@@ -23,6 +23,21 @@ test('bundle id, name and inject match package.json', () => {
   assert.deepEqual([...bundle.inject].sort(), ['conversation', 'inputTriggers', 'locale', 'sessions', 'slots', 'uiConversation'])
 })
 
+// Every class this bundle styles is its own. dsh-cockpit's "dshc-" prefix
+// once caught this plugin's .dshc-bar, which turned cockpit's progress bar
+// into a fixed toolbar. Each sibling plugin's bundle is read as text.
+test('CSS class names do not collide with the other rs-dsh plugins', () => {
+  const classes = (file) => new Set(readFileSync(new URL(file, import.meta.url), 'utf8').match(/\bdsh[a-z]{1,3}-[a-z0-9-]+/g) ?? [])
+  // dshq-bar is dsh-quote's toolbar, read to sit beside it, never styled.
+  const own = [...classes('../client.js')].filter((c) => c !== 'dshq-bar')
+  assert.deepEqual(own.filter((c) => !c.startsWith('dshcm-')), [], 'one prefix, dshcm-')
+  for (const sibling of ['../../dsh-cockpit/client/client.js', '../../dsh-quote/client.js']) {
+    const theirs = classes(sibling)
+    const shared = own.filter((c) => theirs.has(c))
+    assert.deepEqual(shared, [], sibling + ' shares ' + shared.join(', '))
+  }
+})
+
 test('row keys parse into anchors and back', () => {
   assert.deepEqual(plain(c.parseNodeKey('13:input-message570d9a15-f94e')), { kind: 'user', messageId: '570d9a15-f94e' })
   assert.deepEqual(plain(c.parseNodeKey('14:assistant-step3:12')), { kind: 'assistant', turn: 3, step: 12 })
