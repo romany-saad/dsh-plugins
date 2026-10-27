@@ -9,7 +9,7 @@ function loadBundle() {
   let registered
   const window = { __ModuleLoader__: { load: (entry) => { registered = entry } } }
   vm.runInNewContext(source, { window })
-  assert.equal(registered.id, '@rs-dsh/dsh-comment')
+  assert.equal(registered.id, '@rs-dsh/dsh-threads')
   return registered.factory(() => { throw new Error('no requires at load time') })
 }
 
@@ -30,7 +30,7 @@ test('CSS class names do not collide with the other rs-dsh plugins', () => {
   const classes = (file) => new Set(readFileSync(new URL(file, import.meta.url), 'utf8').match(/\bdsh[a-z]{1,3}-[a-z0-9-]+/g) ?? [])
   // dshq-bar is dsh-quote's toolbar, read to sit beside it, never styled.
   const own = [...classes('../client.js')].filter((c) => c !== 'dshq-bar')
-  assert.deepEqual(own.filter((c) => !c.startsWith('dshcm-')), [], 'one prefix, dshcm-')
+  assert.deepEqual(own.filter((c) => !c.startsWith('dshth-')), [], 'one prefix, dshth-')
   for (const sibling of ['../../dsh-cockpit/client/client.js', '../../dsh-quote/client.js']) {
     const theirs = classes(sibling)
     const shared = own.filter((c) => theirs.has(c))

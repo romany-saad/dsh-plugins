@@ -1,4 +1,4 @@
-// @rs-dsh/dsh-comment: browser half (hand-written, no build step).
+// @rs-dsh/dsh-threads: browser half (hand-written, no build step).
 //
 // Select text in a conversation and press "Comment": the comment is saved
 // with the passage, the passage is highlighted, and the session's own model
@@ -7,7 +7,7 @@
 // which the sent bubble shows as a card.
 //
 // Extension points (DSH 0.2.x), no DOM surgery on host-owned nodes:
-//   host routes api/dsh-comment/*       threads, create, comment, retry, delete
+//   host routes api/dsh-threads/*       threads, create, comment, retry, delete
 //   CSS Custom Highlight API            highlights paint over host text without changing it
 //   inputTriggers.registerSource        chip owner + codec (serialize at submit)
 //   conversation.input.for(actx)        draft snapshot / setDraft / focus
@@ -15,17 +15,17 @@
 // The host's DOM is only read: data-conversation-session, data-chat-node-key
 // and the reasoning rows (data-variant="think", data-expanded).
 window.__ModuleLoader__.load({
-  id: '@rs-dsh/dsh-comment',
+  id: '@rs-dsh/dsh-threads',
   factory: (require) => {
     'use strict'
     const module = { exports: {} }
 
     const SOURCE = 'comment'
-    const NS = 'dsh-comment'
-    const API = 'api/dsh-comment/'
+    const NS = 'dsh-threads'
+    const API = 'api/dsh-threads/'
     const CONTEXT = 64
-    const HIGHLIGHT = 'dsh-comment'
-    const HIGHLIGHT_OPEN = 'dsh-comment-open'
+    const HIGHLIGHT = 'dsh-threads'
+    const HIGHLIGHT_OPEN = 'dsh-threads-open'
 
     // ------------------------------------------------------------ pure logic
 
@@ -96,7 +96,7 @@ window.__ModuleLoader__.load({
     function decodeRef(ref) {
       const value = JSON.parse(ref)
       if (value === null || typeof value !== 'object' || typeof value.passage !== 'string' || !Array.isArray(value.messages)) {
-        throw new Error('dsh-comment: malformed thread reference')
+        throw new Error('dsh-threads: malformed thread reference')
       }
       return {
         passage: value.passage,
@@ -143,7 +143,7 @@ window.__ModuleLoader__.load({
       return {
         source: SOURCE,
         ref: encodeRef(thread),
-        label: '💬 “' + oneLine(thread.anchor.text, 40) + '” · ' + thread.messages.length,
+        label: 'Thread “' + oneLine(thread.anchor.text, 40) + '” · ' + thread.messages.length,
         clipboardText: '> ' + oneLine(thread.anchor.text, 120),
       }
     }
@@ -179,6 +179,22 @@ window.__ModuleLoader__.load({
       const next = { text: text.slice(0, at) + added + text.slice(at), references }
       if (snapshot.command !== undefined) next.command = snapshot.command
       return next
+    }
+
+    // DSH has no plain comment glyph; this is the bubble of its IconNewChatOutline
+    // (dsh-client-ui-primitives) without the plus, at the same 16px view box and stroke.
+    const BUBBLE_PATH = 'M2.37091 11.2501C1.58745 9.89288 1.32067 8.29835 1.61969 6.76006C1.91872 5.22177 2.76342 3.8433 3.99826 2.87846C5.2331 1.91362 6.77494 1.42737 8.33988 1.50925C9.90482 1.59113 11.3875 2.23562 12.5149 3.32406C13.6425 4.41269 14.3387 5.87206 14.4754 7.4334C14.612 8.99474 14.18 10.5529 13.2587 11.8209C12.3375 13.0888 10.9891 13.9813 9.46194 14.3337C8.18691 14.628 6.85895 14.5294 5.64989 14.0605C5.1712 13.8748 4.76962 13.4932 4.26534 13.3967C3.67413 13.2835 2.95257 13.5598 2.03794 14.3337'
+
+    /** The bubble as an SVG element (badge) — aria-hidden, the badge carries the name. */
+    function bubbleSvg(size) {
+      const ns = 'http://www.w3.org/2000/svg'
+      const svg = document.createElementNS(ns, 'svg')
+      for (const [k, v] of [['width', size], ['height', size], ['viewBox', '0 0 16 16'], ['fill', 'none'], ['aria-hidden', 'true'], ['stroke-width', '1.3']]) svg.setAttribute(k, String(v))
+      const path = document.createElementNS(ns, 'path')
+      path.setAttribute('d', BUBBLE_PATH)
+      path.setAttribute('stroke', 'currentColor')
+      svg.append(path)
+      return svg
     }
 
     // ------------------------------------------------------------ strings
@@ -239,51 +255,51 @@ window.__ModuleLoader__.load({
     const STYLE = `
 ::highlight(${HIGHLIGHT}){background-color:rgba(255,190,0,.22);text-decoration:underline;text-decoration-color:rgba(214,140,0,.9);text-decoration-thickness:2px;text-underline-offset:3px}
 ::highlight(${HIGHLIGHT_OPEN}){background-color:rgba(255,190,0,.48);text-decoration:underline;text-decoration-color:rgba(214,140,0,.9);text-decoration-thickness:2px;text-underline-offset:3px}
-.dshcm-bar{position:fixed;z-index:1200;display:flex;gap:2px;padding:3px;border-radius:10px;
+.dshth-bar{position:fixed;z-index:1200;display:flex;gap:2px;padding:3px;border-radius:10px;
   background:var(--dsw-specific-input-major,#2b2b2e);box-shadow:var(--dsw-elevation-soft,0 4px 16px rgba(0,0,0,.25));
   border:.5px solid var(--dsw-alias-border-l2,rgba(127,127,127,.3));font:13px/20px var(--dsw-font-family,system-ui)}
-.dshcm-bar[hidden]{display:none}
-.dshcm-bar button{appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-primary,#eee);
+.dshth-bar[hidden]{display:none}
+.dshth-bar button{appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-primary,#eee);
   padding:3px 10px;border-radius:7px;cursor:pointer;font:inherit}
-.dshcm-bar button:hover,.dshcm-bar button:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));outline:none}
-.dshcm-pop{position:fixed;z-index:1200;width:360px;max-width:calc(100vw - 16px);max-height:min(70vh,560px);display:flex;flex-direction:column;
+.dshth-bar button:hover,.dshth-bar button:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));outline:none}
+.dshth-pop{position:fixed;z-index:1200;width:360px;max-width:calc(100vw - 16px);max-height:min(70vh,560px);display:flex;flex-direction:column;
   box-sizing:border-box;padding:10px;border-radius:12px;
   background:var(--dsw-specific-input-major,#2b2b2e);box-shadow:var(--dsw-elevation-soft,0 4px 16px rgba(0,0,0,.25));
   border:.5px solid var(--dsw-alias-border-l2,rgba(127,127,127,.3));font:13px/20px var(--dsw-font-family,system-ui);
   color:var(--dsw-alias-label-primary,#eee)}
-.dshcm-pop [hidden]{display:none!important}
-.dshcm-pop blockquote{flex:none;margin:0 0 8px;padding:2px 8px;border-left:3px solid rgba(214,140,0,.9);
+.dshth-pop [hidden]{display:none!important}
+.dshth-pop blockquote{flex:none;margin:0 0 8px;padding:2px 8px;border-left:3px solid rgba(214,140,0,.9);
   color:var(--dsw-alias-label-secondary,#aaa);white-space:pre-wrap;overflow-wrap:anywhere;
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
-.dshcm-list{flex:auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
-.dshcm-msg{white-space:pre-wrap;overflow-wrap:anywhere}
-.dshcm-who{display:block;font-size:12px;line-height:16px;color:var(--dsw-alias-label-caption,#888)}
-.dshcm-thinking{color:var(--dsw-alias-label-caption,#888);font-style:italic}
-.dshcm-error{flex:none;color:var(--dsw-alias-state-error-primary,#e5484d);white-space:pre-wrap}
-.dshcm-pop textarea{flex:none;box-sizing:border-box;width:100%;min-height:56px;resize:vertical;padding:6px 8px;border-radius:8px;
+.dshth-list{flex:auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.dshth-msg{white-space:pre-wrap;overflow-wrap:anywhere}
+.dshth-who{display:block;font-size:12px;line-height:16px;color:var(--dsw-alias-label-caption,#888)}
+.dshth-thinking{color:var(--dsw-alias-label-caption,#888);font-style:italic}
+.dshth-error{flex:none;color:var(--dsw-alias-state-error-primary,#e5484d);white-space:pre-wrap}
+.dshth-pop textarea{flex:none;box-sizing:border-box;width:100%;min-height:56px;resize:vertical;padding:6px 8px;border-radius:8px;
   border:.5px solid var(--dsw-alias-border-l4,rgba(127,127,127,.4));background:transparent;color:inherit;font:inherit;outline:none}
-.dshcm-actions{flex:none;display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
-.dshcm-pop button{appearance:none;border:0;border-radius:7px;padding:3px 12px;cursor:pointer;font:inherit;
+.dshth-actions{flex:none;display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.dshth-pop button{appearance:none;border:0;border-radius:7px;padding:3px 12px;cursor:pointer;font:inherit;
   background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));color:inherit}
-.dshcm-pop button[data-primary]{background:var(--dsw-alias-button-info-fill,#4c6ef5);color:#fff}
-.dshcm-pop button[data-danger]{margin-right:auto;background:transparent;color:var(--dsw-alias-state-error-primary,#e5484d)}
-.dshcm-pop button[data-danger]:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15))}
-.dshcm-pop button:disabled{opacity:.5;cursor:default}
-.dshcm-note{flex:none;margin-bottom:6px;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
-.dshcm-layer{position:fixed;inset:0;z-index:1100;pointer-events:none;overflow:hidden}
-.dshcm-badge{position:fixed;pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:2px;height:18px;padding:0 5px;border-radius:9px;
+.dshth-pop button[data-primary]{background:var(--dsw-alias-button-info-fill,#4c6ef5);color:#fff}
+.dshth-pop button[data-danger]{margin-right:auto;background:transparent;color:var(--dsw-alias-state-error-primary,#e5484d)}
+.dshth-pop button[data-danger]:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15))}
+.dshth-pop button:disabled{opacity:.5;cursor:default}
+.dshth-note{flex:none;margin-bottom:6px;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
+.dshth-layer{position:fixed;inset:0;z-index:1100;pointer-events:none;overflow:hidden}
+.dshth-badge{position:fixed;pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:3px;height:18px;padding:0 5px;border-radius:9px;
   font:600 11px/18px var(--dsw-font-family,system-ui);color:#7a4b00;background:#ffd46b;border:0;box-shadow:0 1px 3px rgba(0,0,0,.18)}
-.dshcm-badge[data-replying]{animation:dshcm-pulse 1.2s ease-in-out infinite}
-.dshcm-badge[data-failed]{background:#ffb4b4;color:#7a0000}
-@keyframes dshcm-pulse{50%{opacity:.45}}
-.dshcm-card{display:block;margin:2px 0 6px;padding:3px 8px;border-left:3px solid rgba(214,140,0,.9);
+.dshth-badge[data-replying]{animation:dshth-pulse 1.2s ease-in-out infinite}
+.dshth-badge[data-failed]{background:#ffb4b4;color:#7a0000}
+@keyframes dshth-pulse{50%{opacity:.45}}
+.dshth-card{display:block;margin:2px 0 6px;padding:3px 8px;border-left:3px solid rgba(214,140,0,.9);
   border-radius:4px;background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));white-space:pre-wrap;text-align:left}
-.dshcm-card[data-interactive]{cursor:pointer}
-.dshcm-card-title{display:block;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
-.dshcm-card-passage{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--dsw-alias-label-secondary,#aaa)}
-.dshcm-card[data-open] .dshcm-card-passage{display:block}
-.dshcm-card-msg{display:block;margin-top:2px}
-.dshcm-card-msg b{font-weight:600}
+.dshth-card[data-interactive]{cursor:pointer}
+.dshth-card-title{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
+.dshth-card-passage{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--dsw-alias-label-secondary,#aaa)}
+.dshth-card[data-open] .dshth-card-passage{display:block}
+.dshth-card-msg{display:block;margin-top:2px}
+.dshth-card-msg b{font-weight:600}
 `
 
     // ------------------------------------------------------------ plugin body
@@ -292,7 +308,7 @@ window.__ModuleLoader__.load({
       const React = require('react')
       const { jsx, jsxs } = require('react/jsx-runtime')
 
-      ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-comment: dictionaries')
+      ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-threads: dictionaries')
       const t = ctx.locale.bind(NS)
       const count = (n) => String(t('messageCount')).replace('{n}', String(n))
 
@@ -311,25 +327,28 @@ window.__ModuleLoader__.load({
           serialize: (ref) => Promise.resolve(serializeThread(decodeRef(ref))),
         },
       }
-      ctx.effect(() => ctx.inputTriggers.registerSource(source), 'dsh-comment: chip source')
-      ctx.effect(() => ctx.uiConversation.userText.register(threadRule), 'dsh-comment: user-text rule')
+      ctx.effect(() => ctx.inputTriggers.registerSource(source), 'dsh-threads: chip source')
+      ctx.effect(() => ctx.uiConversation.userText.register(threadRule), 'dsh-threads: user-text rule')
 
       function ThreadCard({ node, interactive }) {
         const [isOpen, setOpen] = React.useState(false)
         const { passage, messages } = node.data
         const children = [
-          jsx('span', { className: 'dshcm-card-title', children: '💬 ' + t('thread') + ' · ' + count(messages.length) }, 'h'),
-          jsx('span', { className: 'dshcm-card-passage', children: passage }, 'p'),
+          jsxs('span', { className: 'dshth-card-title', children: [
+            jsx('svg', { width: 12, height: 12, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true', strokeWidth: 1.3, children: jsx('path', { d: BUBBLE_PATH, stroke: 'currentColor' }) }),
+            t('thread') + ' · ' + count(messages.length),
+          ] }, 'h'),
+          jsx('span', { className: 'dshth-card-passage', children: passage }, 'p'),
         ]
         if (isOpen) {
           messages.forEach((m, i) => children.push(jsxs('span', {
-            className: 'dshcm-card-msg',
+            className: 'dshth-card-msg',
             children: [jsx('b', { children: (m.role === 'user' ? t('you') : t('ai')) + ': ' }), m.text],
           }, 'm' + i)))
         }
         return jsxs('span', {
-          className: 'dshcm-card',
-          'data-dsh-comment': '',
+          className: 'dshth-card',
+          'data-dsh-threads': '',
           'data-open': isOpen || undefined,
           'data-interactive': interactive || undefined,
           onClick: interactive ? () => setOpen((v) => !v) : undefined,
@@ -440,7 +459,7 @@ window.__ModuleLoader__.load({
       const escapeAttr = (s) => (window.CSS && window.CSS.escape ? window.CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&'))
 
       // Inside an assistant row, only the reply's own text counts.
-      const NOT_REPLY = '[data-variant="think"],[data-tool],[data-variant="others"],[data-variant="bash"],button,[data-dsh-comment]'
+      const NOT_REPLY = '[data-variant="think"],[data-tool],[data-variant="others"],[data-variant="bash"],button,[data-dsh-threads]'
 
       /** The elements an anchor's text lives in, in document order. */
       function anchorRoots(region, anchor) {
@@ -466,7 +485,7 @@ window.__ModuleLoader__.load({
             acceptNode(node) {
               const el = node.parentElement
               if (el === null) return NodeFilter.FILTER_REJECT
-              const skip = el.closest(kind === 'assistant' ? NOT_REPLY : 'button,[data-dsh-comment]')
+              const skip = el.closest(kind === 'assistant' ? NOT_REPLY : 'button,[data-dsh-threads]')
               return skip !== null && root.contains(skip) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
             },
           })
@@ -492,7 +511,7 @@ window.__ModuleLoader__.load({
         const el = node instanceof Element ? node : node.parentElement
         if (el === null) return null
         const region = el.closest('[data-conversation-region="chat"][data-conversation-session]')
-        if (region === null || el.closest('[data-composer-card],[data-dsh-comment],[data-dsh-quote],input,textarea,[contenteditable="true"]') !== null) return null
+        if (region === null || el.closest('[data-composer-card],[data-dsh-threads],[data-dsh-quote],input,textarea,[contenteditable="true"]') !== null) return null
         const row = el.closest('[data-chat-node-key]')
         if (row === null) return null
         const where = parseNodeKey(row.getAttribute('data-chat-node-key'))
@@ -576,8 +595,8 @@ window.__ModuleLoader__.load({
 
       // One badge after each highlighted passage, in a layer of our own.
       const layer = document.createElement('div')
-      layer.className = 'dshcm-layer'
-      layer.setAttribute('data-dsh-comment', '')
+      layer.className = 'dshth-layer'
+      layer.setAttribute('data-dsh-threads', '')
       const badges = new Map() // key → button
 
       // Badges sit in the gutter right of the conversation column, level with
@@ -603,12 +622,12 @@ window.__ModuleLoader__.load({
           if (badge === undefined) {
             badge = document.createElement('button')
             badge.type = 'button'
-            badge.className = 'dshcm-badge'
+            badge.className = 'dshth-badge'
             badge.addEventListener('click', (e) => { e.stopPropagation(); openThread(sessionId, threadId) })
             badges.set(k, badge)
             layer.append(badge)
           }
-          badge.textContent = '💬 ' + thread.messages.length
+          badge.replaceChildren(bubbleSvg(12), document.createTextNode(String(thread.messages.length)))
           badge.title = oneLine(thread.messages[0].text, 120)
           badge.setAttribute('aria-label', t('thread') + ': ' + oneLine(thread.messages[0].text, 80))
           badge.toggleAttribute('data-replying', thread.replying === true)
@@ -654,12 +673,12 @@ window.__ModuleLoader__.load({
       // -------------------------------------------------- the popovers
 
       const style = document.createElement('style')
-      style.setAttribute('data-dsh-comment-style', '')
+      style.setAttribute('data-dsh-threads-style', '')
       style.textContent = STYLE
       const bar = document.createElement('div')
-      bar.className = 'dshcm-bar'
+      bar.className = 'dshth-bar'
       bar.setAttribute('role', 'toolbar')
-      bar.setAttribute('data-dsh-comment', '')
+      bar.setAttribute('data-dsh-threads', '')
       bar.hidden = true
       const commentBtn = document.createElement('button')
       commentBtn.type = 'button'
@@ -718,8 +737,8 @@ window.__ModuleLoader__.load({
 
       function popover(mode) {
         const el = document.createElement('div')
-        el.className = 'dshcm-pop'
-        el.setAttribute('data-dsh-comment', '')
+        el.className = 'dshth-pop'
+        el.setAttribute('data-dsh-threads', '')
         el.setAttribute('data-mode', mode)
         el.setAttribute('role', 'dialog')
         return el
@@ -735,10 +754,10 @@ window.__ModuleLoader__.load({
         const area = document.createElement('textarea')
         area.placeholder = t('placeholder')
         const error = document.createElement('div')
-        error.className = 'dshcm-error'
+        error.className = 'dshth-error'
         error.hidden = true
         const actions = document.createElement('div')
-        actions.className = 'dshcm-actions'
+        actions.className = 'dshth-actions'
         const cancel = button(t('cancel'))
         const post = button(t('post'), 'data-primary')
         actions.append(cancel, post)
@@ -780,16 +799,16 @@ window.__ModuleLoader__.load({
         const el = popover('thread')
         const preview = document.createElement('blockquote')
         const note = document.createElement('div')
-        note.className = 'dshcm-note'
+        note.className = 'dshth-note'
         const list = document.createElement('div')
-        list.className = 'dshcm-list'
+        list.className = 'dshth-list'
         const area = document.createElement('textarea')
         area.placeholder = t('replyPlaceholder')
         const error = document.createElement('div')
-        error.className = 'dshcm-error'
+        error.className = 'dshth-error'
         error.hidden = true
         const actions = document.createElement('div')
-        actions.className = 'dshcm-actions'
+        actions.className = 'dshth-actions'
         const del = button(t('delete'), 'data-danger')
         const toChat = button(t('toChat'))
         const close = button(t('close'))
@@ -818,25 +837,25 @@ window.__ModuleLoader__.load({
             list.replaceChildren()
             for (const m of current.messages) {
               const item = document.createElement('div')
-              item.className = 'dshcm-msg'
+              item.className = 'dshth-msg'
               item.setAttribute('data-role', m.role)
               const who = document.createElement('span')
-              who.className = 'dshcm-who'
+              who.className = 'dshth-who'
               who.textContent = m.role === 'user' ? t('you') : t('ai') + (m.model ? ' · ' + m.model : '')
               const text = document.createElement('span')
-              text.className = 'dshcm-text'
+              text.className = 'dshth-text'
               text.textContent = m.text
               item.append(who, text)
               list.append(item)
             }
             if (current.replying) {
               const wait = document.createElement('div')
-              wait.className = 'dshcm-thinking'
+              wait.className = 'dshth-thinking'
               wait.textContent = t('thinking')
               list.append(wait)
             } else if (current.failure !== undefined) {
               const fail = document.createElement('div')
-              fail.className = 'dshcm-error'
+              fail.className = 'dshth-error'
               fail.textContent = current.failure + ' '
               if (canWrite) {
                 const again = button(t('retry'))
@@ -949,7 +968,7 @@ window.__ModuleLoader__.load({
       const observer = new MutationObserver((records) => {
         if (mutTimer !== null) return
         // Our own layer and popovers changing is no reason to recompute.
-        if (records.every((r) => r.target instanceof Element ? r.target.closest('[data-dsh-comment]') !== null : r.target.parentElement?.closest('[data-dsh-comment]') != null)) return
+        if (records.every((r) => r.target instanceof Element ? r.target.closest('[data-dsh-threads]') !== null : r.target.parentElement?.closest('[data-dsh-threads]') != null)) return
         mutTimer = setTimeout(() => { mutTimer = null; syncSessions(); placeHighlights() }, 250)
       })
 
@@ -963,7 +982,7 @@ window.__ModuleLoader__.load({
       const onPointerDown = (e) => {
         const target = e.target instanceof Element ? e.target : null
         if (target !== null && target.closest('.dshq-bar') !== null) hideBar()
-        if (pop !== null && !(target !== null && (pop.el.contains(target) || target.closest('.dshcm-badge') !== null))) closePop()
+        if (pop !== null && !(target !== null && (pop.el.contains(target) || target.closest('.dshth-badge') !== null))) closePop()
       }
 
       const onClick = (e) => {
@@ -972,7 +991,7 @@ window.__ModuleLoader__.load({
         if (sel !== null && !sel.isCollapsed) return
         const target = e.target instanceof Element ? e.target : null
         if (target === null || target.closest('[data-conversation-region="chat"]') === null) return
-        if (target.closest('a,button,input,textarea,[contenteditable="true"],[data-dsh-comment]') !== null) return
+        if (target.closest('a,button,input,textarea,[contenteditable="true"],[data-dsh-threads]') !== null) return
         const hit = threadAtPoint(e.clientX, e.clientY)
         if (hit !== null) openThread(hit.sessionId, hit.threadId)
       }
@@ -1014,10 +1033,10 @@ window.__ModuleLoader__.load({
           bar.remove()
           style.remove()
         }
-      }, 'dsh-comment: selection, highlights and threads')
+      }, 'dsh-threads: selection, highlights and threads')
     }
 
-    module.exports.name = '@rs-dsh/dsh-comment'
+    module.exports.name = '@rs-dsh/dsh-threads'
     module.exports.inject = ['conversation', 'inputTriggers', 'locale', 'sessions', 'slots', 'uiConversation']
     module.exports.apply = apply
     // Pure helpers, exported for tests only.

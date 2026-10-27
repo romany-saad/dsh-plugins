@@ -1,5 +1,5 @@
 # Insert this plugin into the profile roster. Install with `dsh plugin add`;
 # never repeat this entry in the profile's own cordis.patch.yml.
 - insert:
-    - id: dsh-comment
-      name: '@rs-dsh/dsh-comment'
+    - id: dsh-threads
+      name: '@rs-dsh/dsh-threads'
