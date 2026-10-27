@@ -5,11 +5,11 @@
 import { CommentError } from './threads.js'
 
 export const ROUTES = {
-  threads: '/api/dsh-comment/threads', //  GET ?sessionId=S → { threads, canWrite }
-  create: '/api/dsh-comment/create', //    POST { sessionId, anchor, text } → thread
-  comment: '/api/dsh-comment/comment', //  POST { sessionId, threadId, text } → thread
-  retry: '/api/dsh-comment/retry', //      POST { sessionId, threadId } → thread
-  delete: '/api/dsh-comment/delete', //    POST { sessionId, threadId } → { deleted }
+  threads: '/api/dsh-threads/threads', //  GET ?sessionId=S → { threads, canWrite }
+  create: '/api/dsh-threads/create', //    POST { sessionId, anchor, text } → thread
+  comment: '/api/dsh-threads/comment', //  POST { sessionId, threadId, text } → thread
+  retry: '/api/dsh-threads/retry', //      POST { sessionId, threadId } → thread
+  delete: '/api/dsh-threads/delete', //    POST { sessionId, threadId } → { deleted }
 }
 
 const HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }

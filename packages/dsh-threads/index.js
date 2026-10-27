@@ -1,4 +1,4 @@
-// @rs-dsh/dsh-comment: the DSH host plugin. Keeps comment threads in the
+// @rs-dsh/dsh-threads: the DSH host plugin. Keeps comment threads in the
 // session log and answers them with the session's own model. The routes
 // come and go with the host connection and with this plugin.
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
@@ -7,7 +7,7 @@ import { resolveConfig } from './lib/config.js'
 import { registerRoutes } from './lib/route.js'
 import { createCommentService } from './lib/service.js'
 
-export const name = 'dsh-comment'
+export const name = 'dsh-threads'
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
@@ -15,7 +15,7 @@ export const name = 'dsh-comment'
  */
 export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig ?? {})
-  const log = (error) => ctx.logger?.warn?.('dsh-comment: %s', error?.stack ?? error)
+  const log = (error) => ctx.logger?.warn?.('dsh-threads: %s', error?.stack ?? error)
   const service = createCommentService({
     config,
     sessions: () => ctx.get('sessions'),
@@ -26,5 +26,5 @@ export function apply(ctx, rawConfig) {
     log,
   })
   ctx.inject(['connection'], (connCtx) => registerRoutes(connCtx, service, log))
-  ctx.effect(() => () => service.close(), 'dsh-comment: stop replies')
+  ctx.effect(() => () => service.close(), 'dsh-threads: stop replies')
 }

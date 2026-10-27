@@ -3,11 +3,19 @@
 //
 // Two record types, each carrying the session id it belongs to, so a fork
 // (which copies its parent's log) does not show the parent's threads:
-//   plugin:dsh-comment/thread         { v: 1, sessionId, thread }  the whole thread after a change
-//   plugin:dsh-comment/thread-delete  { v: 1, sessionId, threadId }
+//   plugin:dsh-threads/thread         { v: 1, sessionId, thread }  the whole thread after a change
+//   plugin:dsh-threads/thread-delete  { v: 1, sessionId, threadId }
 
-export const RECORD_THREAD = 'plugin:dsh-comment/thread'
-export const RECORD_DELETE = 'plugin:dsh-comment/thread-delete'
+export const RECORD_THREAD = 'plugin:dsh-threads/thread'
+export const RECORD_DELETE = 'plugin:dsh-threads/thread-delete'
+
+// The same records under the plugin's first name, dsh-comment (0.1.0-rc.1).
+// Read, never written: threads saved before the rename keep showing, and a
+// change to one is written under the new name, which then wins.
+const LEGACY_THREAD = 'plugin:dsh-comment/thread'
+const LEGACY_DELETE = 'plugin:dsh-comment/thread-delete'
+const isThread = (type) => type === RECORD_THREAD || type === LEGACY_THREAD
+const isDelete = (type) => type === RECORD_DELETE || type === LEGACY_DELETE
 
 export const LIMITS = {
   comment: 4000, // characters in one comment or reply
@@ -101,10 +109,10 @@ export function foldThreads(events, sessionId) {
     if (event?.ignorable !== true) continue
     const data = event.data
     if (!isObject(data) || data.v !== 1 || data.sessionId !== sessionId) continue
-    if (event.type === RECORD_THREAD && validThread(data.thread)) {
+    if (isThread(event.type) && validThread(data.thread)) {
       // Keep the creation order: a changed thread keeps its place.
       threads.set(data.thread.id, data.thread)
-    } else if (event.type === RECORD_DELETE && typeof data.threadId === 'string') {
+    } else if (isDelete(event.type) && typeof data.threadId === 'string') {
       threads.delete(data.threadId)
     }
   }

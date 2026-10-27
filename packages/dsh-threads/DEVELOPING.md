@@ -1,4 +1,6 @@
-# dsh-comment: development notes
+# dsh-threads: development notes
+
+The package was `@rs-dsh/dsh-comment` up to 0.1.0-rc.1. That name is deprecated on npm and points here.
 
 For maintainers. Users read [README.md](README.md).
 
@@ -19,7 +21,7 @@ For maintainers. Users read [README.md](README.md).
 
 ### Storage
 
-A thread is stored whole after every change, as `plugin:dsh-comment/thread` `{ v: 1, sessionId, thread }`, with `appendPluginRecord` on the live session followed by `sessions.flush`. A deletion is `plugin:dsh-comment/thread-delete` `{ v: 1, sessionId, threadId }`. Reading folds the log from `sessionQuery.readSession`, so running and stopped sessions read the same way.
+A thread is stored whole after every change, as `plugin:dsh-threads/thread` `{ v: 1, sessionId, thread }`, with `appendPluginRecord` on the live session followed by `sessions.flush`. A deletion is `plugin:dsh-threads/thread-delete` `{ v: 1, sessionId, threadId }`. `foldThreads` also reads the same records under the first name, `plugin:dsh-comment/thread` and `plugin:dsh-comment/thread-delete`, and never writes them; a change to such a thread is written under the new name and wins. Reading folds the log from `sessionQuery.readSession`, so running and stopped sessions read the same way.
 
 What that gives, from the DSH source (0.2.1-rc.2):
 
@@ -50,11 +52,11 @@ The routes are exact Fetch routes on the host connection, as in dsh-cockpit: own
 
 | Route | Method | Body / query | Answer |
 |---|---|---|---|
-| `/api/dsh-comment/threads` | GET | `?sessionId=` | `{ threads, canWrite }` |
-| `/api/dsh-comment/create` | POST | `{ sessionId, anchor, text }` | the thread |
-| `/api/dsh-comment/comment` | POST | `{ sessionId, threadId, text }` | the thread |
-| `/api/dsh-comment/retry` | POST | `{ sessionId, threadId }` | the thread |
-| `/api/dsh-comment/delete` | POST | `{ sessionId, threadId }` | `{ deleted }` |
+| `/api/dsh-threads/threads` | GET | `?sessionId=` | `{ threads, canWrite }` |
+| `/api/dsh-threads/create` | POST | `{ sessionId, anchor, text }` | the thread |
+| `/api/dsh-threads/comment` | POST | `{ sessionId, threadId, text }` | the thread |
+| `/api/dsh-threads/retry` | POST | `{ sessionId, threadId }` | the thread |
+| `/api/dsh-threads/delete` | POST | `{ sessionId, threadId }` | `{ deleted }` |
 
 Expected failures answer `{ error, message }` with a 4xx or 5xx status. Anything else answers only its error code, never a message that could hold a path.
 
@@ -109,7 +111,7 @@ The selection toolbar, `oneLine`, `cleanSelection`, the chip stacking and the ca
 ## Test
 
 ```sh
-pnpm --filter @rs-dsh/dsh-comment test
+pnpm --filter @rs-dsh/dsh-threads test
 ```
 
 - `client.test.js` loads the real `client.js` in a Node `vm`.
@@ -133,4 +135,4 @@ The browser half was also checked end to end with Playwright against a running D
 
 ## Release
 
-Bump `version` in `package.json`, add a `CHANGELOG.md` entry, update the version in the README's install lines, merge, then push the tag `dsh-comment@<version>`. `.github/workflows/publish.yml` publishes it. A version with `-`, such as `0.1.0-rc.1`, goes to npm's `next` tag.
+Bump `version` in `package.json`, add a `CHANGELOG.md` entry, update the version in the README's install lines, merge, then push the tag `dsh-threads@<version>`. `.github/workflows/publish.yml` publishes it. A version with `-`, such as `0.1.0-rc.1`, goes to npm's `next` tag.

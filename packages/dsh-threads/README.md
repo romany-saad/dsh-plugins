@@ -1,15 +1,17 @@
-# @rs-dsh/dsh-comment
+# @rs-dsh/dsh-threads
 
 Comment on any passage of a DeepSeek Harness conversation. The passage stays highlighted, and the session's own model replies briefly in a small thread next to it, without touching the main chat.
 
-![A highlighted sentence in a reply, with its thread open: the comment "Why 10 minutes and not an hour?" and a short AI reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/thread-reply.png)
+![A highlighted sentence in a reply, with its thread open: the comment "Why 10 minutes and not an hour?" and a short AI reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/thread-reply.png)
 
-> **Release candidate.** 0.1.0-rc.1 is for trying out. Its stored format may still change before 0.1.0.
+> **Release candidate.** 0.1.0-rc.2 is for trying out. Its stored format may still change before 0.1.0.
+>
+> **Formerly `@rs-dsh/dsh-comment`.** If you installed `@rs-dsh/dsh-comment@0.1.0-rc.1`, remove it and add this package instead. Threads you saved with it keep showing.
 
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-comment@next
+dsh plugin --profile <name> add @rs-dsh/dsh-threads@next
 ```
 
 Then reload the DSH web page.
@@ -17,10 +19,10 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-comment@0.1.0-rc.1&path:packages/dsh-comment'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.1.0-rc.2&path:packages/dsh-threads'
 ```
 
-The package adds itself to the profile. Do not also add `dsh-comment` to the profile's own `cordis.patch.yml`.
+The package adds itself to the profile. Do not also add `dsh-threads` to the profile's own `cordis.patch.yml`.
 
 ## Requirements
 
@@ -34,11 +36,11 @@ The package adds itself to the profile. Do not also add `dsh-comment` to the pro
 
 Select text in a reply, in your own message, or in an expanded reasoning block, and press **Comment**.
 
-![The Comment button above a selected sentence in a reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/select-comment.png)
+![The Comment button above a selected sentence in a reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/select-comment.png)
 
 Type your comment and press **Enter**. **Shift+Enter** starts a new line, and **Esc** cancels.
 
-![The comment box over the conversation, showing the selected passage and a typed question](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/new-comment.png)
+![The comment box over the conversation, showing the selected passage and a typed question](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/new-comment.png)
 
 ### The reply
 
@@ -50,19 +52,19 @@ Each thread is its own small conversation: type a follow-up in the thread and pr
 
 ### Highlights
 
-Commented passages stay highlighted, with a 💬 badge in the margin that counts the thread's messages. Click the highlight or the badge to open the thread. A highlight in a reasoning block shows while the block is expanded.
+Commented passages stay highlighted, with a speech-bubble badge in the margin that counts the thread's messages. Click the highlight or the badge to open the thread. A highlight in a reasoning block shows while the block is expanded.
 
-![Two highlighted passages, one in a sent message and one in a reply, each with a badge in the margin](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/highlights.png)
+![Two highlighted passages, one in a sent message and one in a reply, each with a badge in the margin](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/highlights.png)
 
 ### Send to chat
 
 **Send to chat** puts the thread in the message box as a chip. Add your instruction and send: the agent receives the passage, your comments and the replies.
 
-![A thread chip in the message box above the instruction "Make the TTL configurable."](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/composer-chip.png)
+![A thread chip in the message box above the instruction "Make the TTL configurable."](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/composer-chip.png)
 
 Your sent message shows the thread as a card. Click it to see the whole thread.
 
-![The sent message with the thread card expanded, followed by the instruction](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-comment/docs/images/sent-card.png)
+![The sent message with the thread card expanded, followed by the instruction](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/sent-card.png)
 
 ### Delete a thread
 
@@ -73,7 +75,7 @@ Your sent message shows the thread as a card. Click it to see the whole thread.
 The defaults suit most uses. To change them, add an entry with the plugin's id to the profile's `cordis.patch.yml`:
 
 ```yaml
-- id: dsh-comment
+- id: dsh-threads
   config:
     reply:
       maxRounds: 3
@@ -101,6 +103,6 @@ The defaults suit most uses. To change them, add an entry with the plugin's id t
 
 ## More
 
-- [CHANGELOG.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-comment/CHANGELOG.md)
-- [MIT License](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-comment/LICENSE)
-- For maintainers: [DEVELOPING.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-comment/DEVELOPING.md)
+- [CHANGELOG.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-threads/CHANGELOG.md)
+- [MIT License](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-threads/LICENSE)
+- For maintainers: [DEVELOPING.md](https://github.com/romany-saad/dsh-plugins/blob/main/packages/dsh-threads/DEVELOPING.md)

@@ -11,7 +11,7 @@ export const DEFAULT_CONFIG = {
 }
 
 const fail = (path, want, got) => {
-  throw new Error(`dsh-comment: ${path} must be ${want}, got ${JSON.stringify(got)}`)
+  throw new Error(`dsh-threads: ${path} must be ${want}, got ${JSON.stringify(got)}`)
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -25,13 +25,13 @@ function positive(value, path) {
 export function resolveConfig(config = {}) {
   if (!isObject(config)) fail('config', 'an object', config)
   for (const k of Object.keys(config)) {
-    if (!(k in DEFAULT_CONFIG)) throw new Error(`dsh-comment: unknown config key ${k}; the keys are ${Object.keys(DEFAULT_CONFIG).join(', ')}`)
+    if (!(k in DEFAULT_CONFIG)) throw new Error(`dsh-threads: unknown config key ${k}; the keys are ${Object.keys(DEFAULT_CONFIG).join(', ')}`)
   }
   const reply = { ...DEFAULT_CONFIG.reply }
   if (config.reply !== undefined && config.reply !== null) {
     if (!isObject(config.reply)) fail('reply', 'an object', config.reply)
     for (const [k, v] of Object.entries(config.reply)) {
-      if (!(k in reply)) throw new Error(`dsh-comment: unknown config key reply.${k}; the keys are ${Object.keys(reply).join(', ')}`)
+      if (!(k in reply)) throw new Error(`dsh-threads: unknown config key reply.${k}; the keys are ${Object.keys(reply).join(', ')}`)
       reply[k] = v
     }
   }

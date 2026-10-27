@@ -84,7 +84,7 @@ test('a comment is a plugin record; the reply follows on the session\'s model', 
   assert.equal(created.replying, true)
   assert.equal(created.messages[0].text, 'What if the refresh fails?')
   await settled(service)
-  const records = session.log.filter((e) => e.type.startsWith('plugin:dsh-comment/'))
+  const records = session.log.filter((e) => e.type.startsWith('plugin:dsh-threads/'))
   assert.equal(records.length, 2)
   assert.ok(records.every((e) => e.ignorable === true && e.data.sessionId === 's1'))
   // The session's model: the pending pick (model-b), with a token cap.

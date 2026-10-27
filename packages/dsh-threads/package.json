@@ -1,13 +1,13 @@
 {
-  "name": "@rs-dsh/dsh-comment",
-  "version": "0.1.0-rc.1",
+  "name": "@rs-dsh/dsh-threads",
+  "version": "0.1.0-rc.2",
   "description": "Comment on any passage of a DSH Web conversation and get a brief reply from the session's own model in a small thread next to it, without touching the main chat.",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/romany-saad/dsh-plugins.git",
-    "directory": "packages/dsh-comment"
+    "directory": "packages/dsh-threads"
   },
   "publishConfig": {
     "access": "public",

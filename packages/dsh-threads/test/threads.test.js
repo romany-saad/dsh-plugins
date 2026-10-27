@@ -77,6 +77,23 @@ test('foldThreads skips records that are not ignorable, of another version, or m
   assert.equal(validThread(thread('ok')), true)
 })
 
+// Threads saved by 0.1.0-rc.1, when the plugin was dsh-comment, keep showing.
+test('foldThreads reads records saved under the old name, dsh-comment', () => {
+  const s = 'x'
+  const events = [
+    record('plugin:dsh-comment/thread', threadRecord(s, thread('old')), 1),
+    record('plugin:dsh-comment/thread', threadRecord(s, thread('gone')), 2),
+    record('plugin:dsh-comment/thread-delete', deleteRecord(s, 'gone'), 3),
+    // A later change to an old thread is written under the new name and wins.
+    record(RECORD_THREAD, threadRecord(s, thread('old', { createdAt: 9 })), 4),
+    record('plugin:someone-else/thread', threadRecord(s, thread('foreign')), 5),
+  ]
+  const threads = foldThreads(events, s)
+  assert.deepEqual([...threads.keys()], ['old'])
+  assert.equal(threads.get('old').createdAt, 9)
+  assert.equal(RECORD_THREAD, 'plugin:dsh-threads/thread')
+})
+
 test('config: defaults, overrides and refusals', () => {
   const d = resolveConfig()
   assert.equal(d.reply.enabled, true)
