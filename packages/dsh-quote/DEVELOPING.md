@@ -6,18 +6,20 @@ For maintainers. Users read [README.md](README.md).
 
 - `client.js`: the whole plugin, the browser half. A hand-written bundle with no build step, registered with `window.__ModuleLoader__.load`. The pure helpers are exported as `_internals` for tests only.
 - `index.js`: the Node half, an empty plugin; DSH needs it to load the bundle.
-- `cordis.patch.yml`: inserts the plugin into the profile.
+- `cordis.patch.yml`: inserts the shared `dsh-core` row and the plugin into the profile.
 - `docs/images/`: README screenshots. Not shipped in the package.
 - `test/`: Node tests.
 
 ## How it works
+
+The Quote button, the note box, the edit box and the hover card come from [@rs-dsh/dsh-core](../dsh-core/DEVELOPING.md) (`ctx.rsDshCore`): the shared selection toolbar, `popover.open`, and DSH's `InlineEditor`, `Button` and `MenuSurface`. The plugin's own CSS is scoped under `[data-rs-dsh="dsh-quote"]`, with `q-` classes.
 
 The plugin uses DSH extension points only and never edits nodes the host renders. It reads the host's DOM in three places: the session id on the selection's `[data-conversation-session]` ancestor, the position of a pressed or hovered quote chip among the composer's quote chips, and the chip's own `title` attribute, which it removes while the hover card is open and puts back after.
 
 | Need | Extension point |
 |---|---|
 | A chip in the composer that becomes text at send | `inputTriggers.registerSource` with a `codec`. DSH calls `serialize` once per chip at submit; a failure blocks the send and keeps the draft. |
-| Insert, edit or remove a chip in the right session's draft | The session id from the selection → `sessions.scope` → `conversation.input.for(scope)`, then `setDraft` with the structured draft (`draftSnapshot`), so every other chip survives. |
+| Insert, edit or remove a chip in the right session's draft | `core.composer.insertChip` and `core.composer.editable` (`sessions.scope` → `conversation.input.for`), then `setDraft` with the structured draft (`draftSnapshot`), so every other chip survives. |
 | Open the edit box when a chip is clicked | The source's `openReference`, which DSH calls on a chip click. |
 | Full quote in the hover card | `input.state.getSnapshot().occurrences`, indexed by the hovered chip's position among quote chips. |
 | Quote cards in the sent message | A `uiConversation.userText` rule that finds `<quote>` blocks, and a `conversation.user.text.node` slot entry (key `quote`) that renders them. |
@@ -47,7 +49,7 @@ A literal `</quote>` or `</note>` inside the passage or note is written as `<\/q
 pnpm --filter @rs-dsh/dsh-quote test
 ```
 
-The tests load the real `client.js` in a Node `vm` with a fake module loader and a minimal DOM. No test extracts code from the source with regular expressions. A setup file makes `fetch` throw, so no test reaches the network.
+`client.test.js` loads the real `client.js` in a Node `vm` for the pure helpers. `apply.test.js` runs it with the real dsh-core on a jsdom page with real React (dsh-core's `test/dom.mjs`). No test extracts code from the source with regular expressions. A setup file makes `fetch` throw, so no test reaches the network.
 
 ## Screenshots
 

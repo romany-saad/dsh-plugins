@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-quote",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Quote passages from DSH Web conversations into your next message as composer chips, each with an optional note you can edit; sent quotes render as cards.",
   "license": "MIT",
   "type": "module",
@@ -47,9 +47,13 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-input-trigger",
-        "@deepseek-ai/dsh-client-ui-renderer"
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@rs-dsh/dsh-core"
       ]
     }
+  },
+  "dependencies": {
+    "@rs-dsh/dsh-core": "workspace:^"
   },
   "engines": {
     "node": ">=22"

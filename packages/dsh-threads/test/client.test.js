@@ -20,22 +20,7 @@ const c = bundle._internals
 test('bundle id, name and inject match package.json', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(bundle.name, pkg.name)
-  assert.deepEqual([...bundle.inject].sort(), ['conversation', 'inputTriggers', 'locale', 'sessions', 'slots', 'uiConversation'])
-})
-
-// Every class this bundle styles is its own. dsh-cockpit's "dshc-" prefix
-// once caught this plugin's .dshc-bar, which turned cockpit's progress bar
-// into a fixed toolbar. Each sibling plugin's bundle is read as text.
-test('CSS class names do not collide with the other rs-dsh plugins', () => {
-  const classes = (file) => new Set(readFileSync(new URL(file, import.meta.url), 'utf8').match(/\bdsh[a-z]{1,3}-[a-z0-9-]+/g) ?? [])
-  // dshq-bar is dsh-quote's toolbar, read to sit beside it, never styled.
-  const own = [...classes('../client.js')].filter((c) => c !== 'dshq-bar')
-  assert.deepEqual(own.filter((c) => !c.startsWith('dshth-')), [], 'one prefix, dshth-')
-  for (const sibling of ['../../dsh-cockpit/client/client.js', '../../dsh-quote/client.js']) {
-    const theirs = classes(sibling)
-    const shared = own.filter((c) => theirs.has(c))
-    assert.deepEqual(shared, [], sibling + ' shares ' + shared.join(', '))
-  }
+  assert.deepEqual([...bundle.inject].sort(), ['inputTriggers', 'locale', 'rsDshCore', 'slots', 'uiConversation'])
 })
 
 test('row keys parse into anchors and back', () => {
@@ -72,15 +57,4 @@ test('the chip ref carries the thread, so a restored draft still serializes', ()
   assert.deepEqual(plain(c.decodeRef(insert.ref)), { passage: 'the passage', messages: [{ role: 'user', text: 'q' }, { role: 'ai', text: 'a' }] })
   assert.equal(insert.clipboardText, '> the passage')
   assert.throws(() => c.decodeRef('{}'))
-})
-
-test('chips stack at the top of the draft and shift other references', () => {
-  const file = { source: 'reference', ref: '@a.ts', offset: 4, length: 5, label: 'a.ts', clipboardText: '@a.ts' }
-  let draft = { text: 'see @a.ts', references: [file] }
-  const one = c.makeInsert({ anchor: { text: 'one' }, messages: [] })
-  const two = c.makeInsert({ anchor: { text: 'two' }, messages: [] })
-  draft = c.stackChip(draft, one)
-  draft = c.stackChip(draft, two)
-  assert.equal(draft.text, '> one\n> two\nsee @a.ts')
-  for (const r of draft.references) assert.equal(draft.text.slice(r.offset, r.offset + r.length), r.clipboardText)
 })

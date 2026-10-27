@@ -7,7 +7,7 @@ Quote passages from a DeepSeek Harness conversation into your next message, each
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.1.0
+dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.2.0
 ```
 
 Then reload the DSH web page.
@@ -15,10 +15,10 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.1.0&path:packages/dsh-quote'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.2.0&path:packages/dsh-quote'
 ```
 
-The package adds itself to the profile. Do not also add `dsh-quote` to the profile's own `cordis.patch.yml`.
+The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-quote` or `dsh-core` to the profile's own `cordis.patch.yml`.
 
 ## Requirements
 
@@ -29,13 +29,13 @@ The package adds itself to the profile. Do not also add `dsh-quote` to the profi
 
 ### Quote a passage
 
-Select text anywhere in the conversation and press **Quote**.
+Select text anywhere in the conversation and press **Quote**. With other rs-dsh plugins installed, such as [dsh-threads](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-threads), their actions sit in the same toolbar.
 
 ![The Quote button above a selected sentence in a reply](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-quote/docs/images/select-quote.png)
 
 A box opens for an optional note. Type your note and press **Enter**, or press **Enter** on an empty box to quote without a note. **Shift+Enter** starts a new line in the note, and **Esc** cancels.
 
-![The note box, showing the quoted passage and a typed note, with Cancel and Add](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-quote/docs/images/note-box.png)
+![The note box, showing the quoted passage and a typed note, with Cancel and Add, drawn like DSH's own menus](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-quote/docs/images/note-box.png)
 
 ### Your quotes in the message box
 

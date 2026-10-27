@@ -1,5 +1,9 @@
-# Insert this plugin into the profile roster. Install with `dsh plugin add`;
-# never repeat this entry in the profile's own cordis.patch.yml.
+# Insert this plugin, and the shared rs-dsh core it is drawn with, into the
+# profile roster. Install with `dsh plugin add`; never repeat these entries in
+# the profile's own cordis.patch.yml. Every rs-dsh plugin inserts the same
+# dsh-core row; the loader starts it once.
 - insert:
+    - id: dsh-core
+      name: '@rs-dsh/dsh-core'
     - id: dsh-quote
       name: '@rs-dsh/dsh-quote'
