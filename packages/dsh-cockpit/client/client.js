@@ -462,11 +462,38 @@ function boardParent(rows) {
 }
 
 /**
+ * The Board tab's sections, in the order it draws them: one per root parent
+ * (a top row with children) with its subtree, in tree order, then one
+ * "Standalone tasks" section for every root without children:
+ * [{ item, title, rows, standalone? }].
+ * @param {ReturnType<typeof boardRows>} rows
+ */
+function boardGroups(rows) {
+  const groups = []
+  const standalone = []
+  let group
+  for (const row of rows) {
+    if (row.depth === 0) {
+      group = row.progress ? { item: row.item, title: row.title, rows: [] } : undefined
+      if (group) groups.push(group)
+    }
+    if (group) group.rows.push(row)
+    else standalone.push(row)
+  }
+  if (standalone.length) groups.push({ item: 'standalone', title: 'Standalone tasks', rows: standalone, standalone: true })
+  return groups
+}
+
+/** The rows in the order the Board tab's sections draw them (boardGroups). */
+const sectionOrder = (rows) => boardGroups(rows).flatMap((g) => g.rows)
+
+/**
  * The rows the strip counts across the whole board: every
  * row without children (its work tasks), so two epics of five tasks read
- * "0 of 10 done", never "0 of 2".
+ * "0 of 10 done", never "0 of 2". In section order, so the bar's segments
+ * run as the sections below it do.
  */
-const workRows = (rows) => rows.filter((r) => !r.progress)
+const workRows = (rows) => sectionOrder(rows).filter((r) => !r.progress)
 
 /**
  * The parent row's thin bar: one segment per child of that row, in tree
@@ -477,7 +504,8 @@ const workRows = (rows) => rows.filter((r) => !r.progress)
  * checks · blocked by #886 (waiting)", "… · now · opus high", "… · waiting ·
  * on CI". continuous: more than SEGMENT_MAX children.
  * With item undefined, the segments are all whole-board work tasks, the
- * rows without children; the progress strip always uses that.
+ * rows without children, in section order (boardGroups); the progress strip
+ * always uses that.
  * @param {{tasks: object[]}} board
  * @param {ReturnType<typeof boardRows>} rows the board's rows, from boardRows(board)
  * @param {string|undefined} item the parent row's item
@@ -600,7 +628,7 @@ const EMPTY_STATE = {
   line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
 }
 
-return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, firstByItem, boardParent, boardSegments, driftState, driftWords, stripModel, stripText, stripTitle, EMPTY_STATE }
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, firstByItem, boardParent, boardGroups, sectionOrder, boardSegments, driftState, driftWords, stripModel, stripText, stripTitle, EMPTY_STATE }
 })(),
 "../../lib/present.js": (() => {
 // Tool-card titles: one short line per call saying what it did. Pure, with
@@ -844,7 +872,7 @@ var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? _
 // become links, in a new tab with rel="noopener noreferrer". Nothing here
 // writes to the board or runs a command.
 const React = require('react')
-const { EMPTY_STATE, boardFlags, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
+const { EMPTY_STATE, boardFlags, boardGroups, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, wholePx } = require('./segments.js')
@@ -1404,18 +1432,7 @@ function BoardView({ view, now }) {
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const overall = boardSegments(board, rows, undefined)
-  const groups = []
-  const standalone = []
-  let group
-  for (const row of rows) {
-    if (row.depth === 0) {
-      group = row.progress ? { item: row.item, title: row.title, rows: [] } : undefined
-      if (group) groups.push(group)
-    }
-    if (group) group.rows.push(row)
-    else standalone.push(row)
-  }
-  if (standalone.length) groups.push({ item: 'standalone', title: 'Standalone tasks', rows: standalone, standalone: true })
+  const groups = boardGroups(rows)
   return h('div', null,
     h(Header, { board, view, rows, now, overall }),
     h(NeedsYou, { board, rows, byItem }),

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+The Whole board bar and the strip order their segments as the Board tab orders its sections. Tools, config and the board format are unchanged.
+
+- **Board tab and strip:** the Whole board bar and the strip now order their segments the way the sections below are drawn: each parent's subtree in turn, then the standalone tasks. Before, a standalone task listed before or between parents in the board file came first or in the middle of the bar, though its section is last.
+
 ## 0.2.0
 
 The Board tab and the strip show the whole board, and the tab takes less room and looks like the rest of DSH. Tools, config and the board format are unchanged.

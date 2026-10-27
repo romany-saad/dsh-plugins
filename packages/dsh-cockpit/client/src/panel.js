@@ -10,7 +10,7 @@
 // become links, in a new tab with rel="noopener noreferrer". Nothing here
 // writes to the board or runs a command.
 const React = require('react')
-const { EMPTY_STATE, boardFlags, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
+const { EMPTY_STATE, boardFlags, boardGroups, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, wholePx } = require('./segments.js')
@@ -570,18 +570,7 @@ function BoardView({ view, now }) {
   const flagsOf = new Map()
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const overall = boardSegments(board, rows, undefined)
-  const groups = []
-  const standalone = []
-  let group
-  for (const row of rows) {
-    if (row.depth === 0) {
-      group = row.progress ? { item: row.item, title: row.title, rows: [] } : undefined
-      if (group) groups.push(group)
-    }
-    if (group) group.rows.push(row)
-    else standalone.push(row)
-  }
-  if (standalone.length) groups.push({ item: 'standalone', title: 'Standalone tasks', rows: standalone, standalone: true })
+  const groups = boardGroups(rows)
   return h('div', null,
     h(Header, { board, view, rows, now, overall }),
     h(NeedsYou, { board, rows, byItem }),
