@@ -337,6 +337,25 @@ test('the Board tab groups each root tree separately, with a whole-board leaf ba
   assert.deepEqual(localSegments('b'), [['b1', 'ready']], 'a second parent still has its local bar')
 })
 
+test('the whole-board bar runs in the order of the sections below it, standalone tasks last', () => {
+  const view = { key: 'mixed', board: { key: 'mixed', tasks: [
+    { item: 'early', what: 'Standalone first in the file', status: 'waiting', waitingOn: 'CI' },
+    { item: 'a', what: 'Project', status: 'now' },
+    { item: 'a1', what: 'Work', status: 'done', parent: 'a' },
+    { item: 'mid', what: 'Standalone between parents', status: 'next' },
+    { item: 'b', what: 'Other project', status: 'now' },
+    { item: 'b1', what: 'More work', status: 'now', parent: 'b' },
+  ] } }
+  const all = nodes(view)
+  const overall = all.find((n) => cls(n) === 'dshc-overall')
+  const bar = expand(overall).filter((n) => 'data-segment' in n.props).map((n) => n.props['data-item'])
+  const groups = all.filter((n) => 'data-board-group' in n.props)
+  assert.deepEqual(groups.map((n) => n.props['data-board-group']), ['a', 'b', 'standalone'])
+  const drawn = groups.flatMap((g) => expand(g).filter((n) => n.type === 'li').map((n) => n.props['data-item']))
+  assert.deepEqual(bar, ['a1', 'b1', 'early', 'mid'])
+  assert.deepEqual(bar, drawn.filter((i) => i !== 'a' && i !== 'b'), 'the bar follows the sections')
+})
+
 test('the Board tab keeps the whole-board summary for a single tree and groups flat roots as standalone tasks', () => {
   const single = nodes(live)
   assert.equal(single.filter((n) => cls(n) === 'dshc-overall').length, 1)
