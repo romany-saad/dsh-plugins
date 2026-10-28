@@ -44,7 +44,13 @@ Type your comment and press **Enter**. **Shift+Enter** starts a new line, and **
 
 The thread opens next to the passage and shows **Thinking…** until the reply arrives, usually within a few seconds. The reply comes from the model and effort the session uses now. It starts from the passage, the message it is in and that turn's prompt, and reads more of the session when your question needs it.
 
-The replier only reads. It cannot run tools or change files, and the agent in the main chat does not see the thread. To have the agent act on it, use **Send to chat** (below).
+The replier only reads. When your question needs more than the conversation, it can:
+
+- **read the session**: other turns, tool calls and their results;
+- **read files** in the session's working directory: open a file, list a folder, find files by name, and search their contents. It sees the files as they are now, which may differ from what the agent saw then;
+- **search and fetch the web**, if you turn it on (see [Configure](#configure)).
+
+It cannot change files, run commands or act in the session, and the agent in the main chat does not see the thread. To have the agent act on it, use **Send to chat** (below).
 
 Each thread is its own small conversation: type a follow-up in the thread and press **Enter**. A thread holds five comments from you.
 
@@ -77,6 +83,7 @@ The defaults suit most uses. To change them, add an entry with the plugin's id t
   config:
     reply:
       maxRounds: 3
+      web: true
     maxComments: 8
 ```
 
@@ -86,11 +93,15 @@ The defaults suit most uses. To change them, add an entry with the plugin's id t
 | `reply.maxTokens` | `8192` | Output tokens per model call, reasoning included. |
 | `reply.maxRounds` | `5` | Model calls per reply. Every call but the last can read the session. |
 | `reply.timeoutMs` | `180000` | Time limit for one reply. |
+| `reply.files` | `true` | The replier can read files in the session's working directory. |
+| `reply.web` | `false` | The replier can search and fetch the web. |
 | `maxComments` | `5` | Comments from you per thread, the first one included. |
 
 ## Limits
 
 - **Running sessions only for new comments.** You can read the threads of any session. To comment, reply or delete, the session must be running: send a message in it first.
+- **File reading is not sandboxed by the session's permissions.** The replier reads through DSH's filesystem, like the agent's `read` tool, with no approval step. It can read any file the DSH process can, not only the working directory. Set `reply.files: false` to turn it off.
+- **The web is off by default.** A fetched page could carry instructions meant to make the replier fetch a URL that leaks what it read from your files. The replier is told to treat pages as data, but turn `reply.web` on only if you accept that risk.
 - **Replies cost tokens.** Each reply is one or more calls to the session's model, billed like any other request.
 - **Forks start without threads.** A forked session does not show its parent's threads.
 - **Exports include threads.** Threads are stored in the session log, so a session export contains them.

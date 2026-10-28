@@ -6,6 +6,8 @@ export const DEFAULT_CONFIG = {
     maxTokens: 8192, //   output tokens per model call, reasoning included
     maxRounds: 5, //      model calls per reply; tools are offered on all but the last
     timeoutMs: 180000, // for the whole reply
+    files: true, //       the replier can read the working directory's files
+    web: false, //        the replier can search and fetch the web
   },
   maxComments: 5, //      comments from you per thread, the first one included
 }
@@ -35,7 +37,7 @@ export function resolveConfig(config = {}) {
       reply[k] = v
     }
   }
-  if (typeof reply.enabled !== 'boolean') fail('reply.enabled', 'true or false', reply.enabled)
+  for (const k of ['enabled', 'files', 'web']) if (typeof reply[k] !== 'boolean') fail('reply.' + k, 'true or false', reply[k])
   positive(reply.maxTokens, 'reply.maxTokens')
   positive(reply.maxRounds, 'reply.maxRounds')
   positive(reply.timeoutMs, 'reply.timeoutMs')

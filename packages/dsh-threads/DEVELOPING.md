@@ -9,7 +9,8 @@ For maintainers. Users read [README.md](README.md).
 - `client.js`: the browser half, on dsh-core. A hand-written bundle with no build step, registered with `window.__ModuleLoader__.load`. Its pure helpers are exported as `_internals` for tests only.
 - `index.js`: the Node half. It builds the service and registers the routes.
 - `lib/threads.js`: the record format, anchor and comment checks, and the fold from session events to threads. No DSH imports.
-- `lib/session-text.js`: session events as text, and the replier's three tools. No DSH imports.
+- `lib/session-text.js`: session events as text, and the replier's three session tools. No DSH imports.
+- `lib/host-tools.js`: the replier's file and web tools, over DSH services passed in. No DSH imports.
 - `lib/reply.js`: the opening prompt and the reply loop.
 - `lib/service.js`: list, create, comment, retry and delete; background replies; one write at a time per session.
 - `lib/route.js`: the Fetch routes.
@@ -41,7 +42,13 @@ Writes need a live session (`sessions.get(id)`), and answer `inactive` (409) oth
 - **No subagent.** A `spawn` subagent would add a `subagent/catalog` entry to the session, save a child session, and need an agent preset to limit its tools.
 - **The route.** It is the session's current one, as DSH's `modelSelection` projection folds it: the user's pending pick, else the last request header's.
 - **One `prepareCall` per round**, because a prepared call streams only once.
-- **Tools.** Every round but the last offers three read-only tools over the events already read: `session_outline`, `find_in_session` (literal text, because full-text search is off in the web profile) and `read_event`. They read only this session.
+- **Tools.** Every round but the last offers read-only tools. Three read the events already read: `session_outline`, `find_in_session` (literal text, because full-text search is off in the web profile) and `read_event`. They read only this session.
+- **File and web tools** (`lib/host-tools.js`) are our own, not DSH's registered tools: those run through `ctx.tools` with an agent, and with no agent they would read the process's cwd, skip the session's permission state, and record observations. Ours call host services directly:
+  - `read_file`, `list_dir` on `ctx.fs`, resolved against the session's working directory: the last `working-directory/change` in the log, else the header's `cwd`.
+  - `glob`, `grep` run the ripgrep binary that `@deepseek-ai/dsh-tool-fs-search` ships (`resolveRgPath`) through `ctx.subprocess`, with `--no-config` (a `RIPGREP_CONFIG_PATH` could add `--pre`) and every model value as one argv element after `--`. Without the package or the service, the two tools are not offered.
+  - `web_search`, `web_fetch` call `ctx.web` and format with `@deepseek-ai/dsh-tool-web`'s `formatSearchOutput` and `formatFetchOutput`, which label the content as untrusted. Off unless `reply.web`.
+  - Both packages are optional peers, imported lazily. DSH's profile resolver routes them to the installation's copies, as it does `dsh-session`; if one fails to load, its tools are not offered.
+  - Each result is capped at 12 000 characters.
 - **Nothing is logged** to the session except the finished reply, as a thread record.
 
 Replies run in the background. The browser polls `threads` every 1.5 s while one is pending. Reply state (`replying`, `failure`) lives in memory, so a restart drops a pending reply and the thread waits for **Try again**.
@@ -122,6 +129,7 @@ pnpm --filter @rs-dsh/dsh-threads test
 
 - `client.test.js` loads the real `client.js` in a Node `vm` for the pure helpers.
 - `apply.test.js` runs it with the real dsh-core on a jsdom page with real React (dsh-core's `test/dom.mjs`) and a fake host route: the toolbar button, posting, polling, Markdown replies, Send to chat, badges, read-only sessions and cleanup.
+- `host-tools.test.js` runs the file tools over a temp directory with the real packaged ripgrep, and the web tools on a fake `ctx.web` with dsh-tool-web's real formatters.
 - `service.test.js` runs the service over a real `Session` (`appendPluginRecord` as DSH writes it) and the real `BlockAssembler`, with a scripted model that, like DSH, refuses a second stream of one prepared call.
 - A setup file makes `fetch` throw, so no test reaches the network.
 
