@@ -2,6 +2,7 @@
 
 ## 0.1.1
 
+- **Chinese wording** reviewed: messages follow DSH's own terms (指令 for commands) and end with 。.
 - **Triple-click selections** now get the Comment button. A triple-click on a message's last paragraph runs on to the start of the next message, so the selection belonged to no message; it is now trimmed to the text it covers.
 - **Cards focus their text field** when they open, so you can type a comment or a quote note right away.
 - **The selected passage stays highlighted** while its comment or quote card is open, though focusing the field clears the page selection.

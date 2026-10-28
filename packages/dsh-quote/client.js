@@ -208,7 +208,7 @@ window.__ModuleLoader__.load({
       save: '保存',
       remove: '移除',
       cancel: '取消',
-      command: '命令草稿中不能插入引用',
+      command: '输入指令时无法插入引用。',
       chipHint: '点击编辑备注',
       quoteCard: '引用',
     }

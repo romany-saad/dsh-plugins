@@ -42,6 +42,37 @@ Write in plain words and second person ("select text", "you see"). Name what the
 
 The pull request template asks whether the README and screenshots match the change. A pull request that changes what a user sees, and does not update the README and its screenshots, is not ready to merge.
 
+## Translations
+
+The plugins speak the language DSH is set to. DSH ships English and Chinese, so every plugin carries both: each `client.js` has an `en` and a `zh` dictionary, registered with `ctx.locale.register`.
+
+### Every string in every language
+
+- **English is the reference.** A new or changed string goes into `en` and into every other dictionary in the same pull request. A string missing from a language falls back to English, which looks broken in an otherwise translated UI.
+- **Keep the placeholders.** `{n}` and the like appear in every translation, exactly as in English.
+- **Checked by a test.** `packages/dsh-core/test/locale.test.js` fails when a language misses a key, has an extra one, or drops a placeholder. It checks any language a plugin registers, not just Chinese.
+
+### Chinese style
+
+Follow the words DSH's own Chinese UI uses, so a plugin reads as part of DSH:
+
+- **Terms.** A comment and its replies are **评论** (not 讨论). Slash commands are **指令**. The message box is **输入框**. A session is **会话**; the chat in it is **对话**. Code-block wrapping is **自动换行 / 取消自动换行**; plain **换行** is a line break (Shift+Enter).
+- **Buttons and labels** are short verbs or nouns with no final punctuation: 发布, 保存, 取消.
+- **Messages** that are full sentences end with **。** and ask politely: 输入框暂时无法编辑，请稍后再试。
+- **Keyboard hints** separate actions with **，**: `Enter 发布，Shift+Enter 换行，Esc 取消`.
+- **Punctuation and spacing.** Full-width punctuation in Chinese text （，。？）, and a space between Chinese and Latin words or numbers: `{n} 条未读`, `Enter 发送`.
+
+If you can't read Chinese, say so in the pull request: a reviewer who can will check the strings. A rough translation marked for review is better than a missing one.
+
+### Other languages welcome
+
+Translations into more languages are welcome, and you don't need to write code to help:
+
+- **Correct a translation.** Open a pull request that changes the string, or an issue that quotes it and the better wording.
+- **Add a language.** Add a dictionary with the same keys as `en` to each plugin's `client.js`, and register it next to the others: `ctx.locale.register(NS, { zh, en, ja })`. Use the locale id DSH uses for that language. The plugins show it whenever DSH runs in that language, for example through a DSH language pack. Name the language in the pull request title, and keep its terms consistent with DSH's own wording where DSH has it.
+
+`pnpm test` checks a new language for missing keys and placeholders. Native speakers review its wording.
+
 ## Develop
 
 ```sh

@@ -2,6 +2,7 @@
 
 ## 0.3.0
 
+- **Chinese wording** reviewed: a thread is 评论 throughout (not 讨论), the post button says 发布, and the code toolbar says 自动换行 as DSH does.
 - **Unread replies.** A thread's badge fills in and shows a dot when an AI reply arrives while the thread is closed, until you open it. Remembered per browser.
 - From dsh-core: a triple-click selection now gets **Comment**, the comment box takes focus when it opens, and the selected passage stays highlighted while you type.
 

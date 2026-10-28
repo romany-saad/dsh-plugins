@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- **Chinese wording** reviewed: keyboard hints and messages follow DSH's own terms and punctuation.
+- From dsh-core 0.1.1: the note box takes focus when it opens, and the selected passage stays highlighted while you type.
+
 ## 0.2.0
 
 - **Built on the rs-dsh core.** **Quote** now sits in the one selection toolbar it shares with the other rs-dsh plugins, such as **Comment** from dsh-threads. Installing dsh-quote also installs `@rs-dsh/dsh-core`.

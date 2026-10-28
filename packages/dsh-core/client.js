@@ -143,9 +143,9 @@ window.__ModuleLoader__.load({
     }
     const zh = {
       actions: '选中文本操作',
-      busy: '当前无法编辑输入框，稍后再试',
-      command: '命令草稿中不能插入',
-      noSession: '找不到该会话的输入框',
+      busy: '输入框暂时无法编辑，请稍后再试。',
+      command: '输入指令时无法插入内容。',
+      noSession: '找不到该会话的输入框。',
     }
 
     // The only stylesheet the core owns: positioning of its two floating hosts.

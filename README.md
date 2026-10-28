@@ -45,6 +45,8 @@ Each release is a tag `<package>@<version>`, for example `dsh-cockpit@0.1.0`. Pr
 
 Pull requests are welcome. Every pull request gets one code review before the maintainer merges it. See [CONTRIBUTING.md](CONTRIBUTING.md): among other rules, a change a user can see updates that package's README and retakes its screenshots.
 
+**Translations are welcome too.** The plugins come in English and Chinese, following DSH. Corrections to either and new languages are welcome, and a correction needs no coding; see [Translations](CONTRIBUTING.md#translations).
+
 ## License
 
 [MIT](LICENSE)
