@@ -194,6 +194,37 @@ test('a badge sits beside the highlight; clicking it reopens the thread', async 
   close(h)
 })
 
+test('a reply that arrives while the thread is closed marks its badge unread until it is opened', async () => {
+  const h = await harness()
+  await selectIn(h, 'a', 4, 9)
+  click(h.page, toolbarButtons(h.page)[0])
+  typeInto(h.page, popover(h.page).querySelector('textarea'), 'Hm')
+  press(h.page, popover(h.page).querySelector('textarea'), 'Enter')
+  await settle(h.page, 30)
+  press(h.page, h.page.document.body, 'Escape')
+  const region = h.page.document.querySelector('[data-conversation-region]')
+  region.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800 })
+  h.page.window.Range.prototype.getClientRects = function () { return [{ left: 120, top: 300, right: 180, bottom: 320, width: 60, height: 20 }] }
+  h.page.window.Range.prototype.getBoundingClientRect = function () { return { left: 120, top: 300, right: 180, bottom: 320, width: 60, height: 20 } }
+  const badge = () => h.page.document.querySelector('[data-rs-dsh="dsh-threads"] .th-badge')
+  h.page.act(() => { h.page.window.dispatchEvent(new h.page.window.Event('resize')) })
+  await settle(h.page, 30)
+  assert.equal(badge().hasAttribute('data-unread'), false, 'your own comment is not unread')
+  // The reply lands while the thread is closed (time well after the plugin started).
+  h.server.reply('t1', 'Ten minutes is the TTL.')
+  h.server.threads[0].messages.at(-1).time = Date.now() + 1000
+  h.page.act(() => { h.page.window.dispatchEvent(new h.page.window.Event('focus')) })
+  await settle(h.page, 30)
+  assert.equal(badge().hasAttribute('data-unread'), true, 'unread after the reply')
+  assert.ok(badge().querySelector('.th-unread'), 'dot shown')
+  assert.match(badge().title, /unread/)
+  click(h.page, badge())
+  await settle(h.page, 30)
+  assert.equal(badge().hasAttribute('data-unread'), false, 'read once opened')
+  assert.equal(JSON.parse(h.page.window.localStorage.getItem('dsh-threads:seen'))['s1 t1'], 2)
+  close(h)
+})
+
 test('a session that is not running shows threads read-only', async () => {
   const h = await harness({ canWrite: false })
   h.server.threads.push({ id: 'old', createdAt: 1, anchor: { kind: 'user', messageId: 'u1', text: 'ten minutes', prefix: 'Why', suffix: '?' }, messages: [{ id: 'm', role: 'user', text: 'note', time: 1 }], replying: false })
