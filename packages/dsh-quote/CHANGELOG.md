@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+- **Quoted passages stay highlighted.** After you add a quote, its passage in the conversation keeps a light highlight until you send the message, or until you delete or remove the quote's chip.
+
 ## 0.2.1
 
 - **Chinese wording** reviewed: keyboard hints and messages follow DSH's own terms and punctuation.
