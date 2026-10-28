@@ -25,8 +25,8 @@ export const FIELD_DOCS = {
   waitingOn: 'Who or what a waiting task waits on, free-form, e.g. owner, release, #887 or CI. "owner", in any case, means Needs you: the owner must act.',
   readyCommand: 'The exact command the owner runs to act on this task. Stored and shown, never run.',
   startWhen: 'The condition for starting this task, shown as "Start when".',
-  parent: 'Item of the parent task on this board.',
-  dependsOn: 'Items on this board that come first.',
+  parent: 'Item of the parent task, already on this board.',
+  dependsOn: 'Items already on this board that come first.',
   extra: 'Anything else to keep, as string values.',
 }
 
@@ -44,7 +44,7 @@ const fieldSpecs = (wrap) => {
   return out
 }
 
-export const ERROR_CODES = ['not_bound', 'item_exists', 'item_unknown', 'invalid_input', 'board_unreadable', 'write_failed']
+export const ERROR_CODES = ['not_bound', 'item_exists', 'item_unknown', 'unknown_reference', 'invalid_input', 'board_unreadable', 'write_failed']
 
 export const RESULT_SPEC = {
   oneOf: [
@@ -94,7 +94,7 @@ export const TOOL_SPECS = {
     },
   },
   board_add: {
-    description: `Add a task to the bound board. item defaults to the next integer; status defaults to next. Unknown parent or dependency items are stored and flagged, never refused. Returns the task, the revision and the board's flags. ${DATA_NOTE}\n${fieldLines(['item', ...TASK_PARAMS])}`,
+    description: `Add a task to the bound board. item defaults to the next integer; status defaults to next. parent and dependsOn must name tasks already on the board: an unknown one refuses the call (unknown_reference), so add that task first, then this one or board_update to link them. Returns the task, the revision and the board's flags. ${DATA_NOTE}\n${fieldLines(['item', ...TASK_PARAMS])}`,
     parameters: {
       item: str(FIELD_DOCS.item + ' Omit for the next integer.'),
       what: { type: 'string', required: true, description: FIELD_DOCS.what },
@@ -103,7 +103,7 @@ export const TOOL_SPECS = {
     },
   },
   board_update: {
-    description: `Change or remove tasks of the bound board, in one write. item is one item or a list; set applies to each of them, and null in set clears a field; or remove: true deletes them (not both). If any item is not on the board, nothing changes (item_unknown). Returns tasks (after the change; empty on a removal) and previous (each task as it was), so a removed task can be added back from previous with board_add. ${DATA_NOTE}\n${fieldLines(TASK_PARAMS)}`,
+    description: `Change or remove tasks of the bound board, in one write. item is one item or a list; set applies to each of them, and null in set clears a field; or remove: true deletes them (not both). If any item is not on the board, nothing changes (item_unknown); nor if set names a parent or dependsOn item that is not on it (unknown_reference): add that task first. Returns tasks (after the change; empty on a removal) and previous (each task as it was), so a removed task can be added back from previous with board_add. ${DATA_NOTE}\n${fieldLines(TASK_PARAMS)}`,
     parameters: {
       item: {
         oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
@@ -161,6 +161,22 @@ function checkExtra(extra) {
   for (const [k, v] of Object.entries(extra)) {
     if (typeof v !== 'string') throw new BoardError('invalid_input', `extra.${k} must be a string, got ${JSON.stringify(v)}.`)
   }
+}
+
+/**
+ * parent and dependsOn must name tasks already on the board: a reference is
+ * defined before it is used, so the board never holds a dangling one by the
+ * tools' hand (a hand-written file still can, and is flagged).
+ */
+function checkRefs(key, tasks, fields) {
+  const known = new Set(tasks.map((t) => t.item))
+  const missing = []
+  if (typeof fields.parent === 'string' && !known.has(fields.parent)) missing.push(['parent', fields.parent])
+  if (Array.isArray(fields.dependsOn)) for (const d of fields.dependsOn) if (!known.has(d)) missing.push(['dependsOn', d])
+  if (!missing.length) return
+  const names = [...new Set(missing.map(([, ref]) => ref))].map((ref) => JSON.stringify(ref)).join(', ')
+  const which = [...new Set(missing.map(([f]) => f))].join(' and ')
+  throw new BoardError('unknown_reference', `No task ${names} on board ${key} for ${which}; nothing was changed. Add ${missing.length > 1 ? 'those tasks' : 'that task'} first with board_add, then link them.`)
 }
 
 const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(error.code)
@@ -314,6 +330,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
         if (args.item !== undefined && current.tasks.some((t) => t.item === args.item)) {
           throw new BoardError('item_exists', `Task ${JSON.stringify(args.item)} is already on board ${key}; use board_update.`)
         }
+        checkRefs(key, current.tasks, args)
         const task = orderTask({ ...args, item: args.item ?? nextItem(current.tasks), status: args.status ?? 'next', updatedAt: store.now() })
         return { board: { ...current, tasks: [...current.tasks, task] }, write: true, task }
       }, { by: by(exec), signal: exec.signal })
@@ -334,6 +351,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
           throw new BoardError('item_unknown', `No task ${missing.map((i) => JSON.stringify(i)).join(', ')} on board ${key}; nothing was changed.`)
         }
         const previous = items.map((i) => byItem.get(i))
+        if (args.set) checkRefs(key, current.tasks, args.set)
         if (args.remove) {
           const gone = new Set(items)
           return { board: { ...current, tasks: current.tasks.filter((t) => !gone.has(t.item)) }, write: true, tasks: [], previous }

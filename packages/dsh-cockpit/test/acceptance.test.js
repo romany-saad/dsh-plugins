@@ -88,9 +88,15 @@ test('4. parents, dependencies, a loop and an unknown reference give the expecte
   await call('board_open', { key: 'acc-4' })
   await call('board_add', { item: '883', what: 'Live run', status: 'now', issue: '#883' })
   await call('board_add', { item: '888', what: 'Log reader', status: 'done', issue: '#888', parent: '883', pr: '#889' })
-  await call('board_add', { item: '885', what: 'Work reports', status: 'now', issue: '#885', parent: '886' })
+  // A reference must name a task already on the board, so the loop is built in two steps.
+  assert.equal((await call('board_add', { item: '885', what: 'Work reports', status: 'now', issue: '#885', parent: '886' })).code, 'unknown_reference')
+  await call('board_add', { item: '885', what: 'Work reports', status: 'now', issue: '#885' })
   await call('board_add', { item: '886', what: 'Checks', status: 'waiting', issue: '#886', parent: '885', waitingOn: 'CI', nextAction: 'CI on #886' })
+  await call('board_update', { item: '885', set: { parent: '886' } })
+  // A removed task leaves the references to it, flagged.
+  await call('board_add', { item: 'release notes', what: 'Release notes' })
   await call('board_add', { item: '887', what: 'Docs', status: 'next', issue: '#887', parent: '883', dependsOn: ['885', 'release notes'] })
+  await call('board_update', { item: 'release notes', remove: true })
   const r = await call('board_read', {})
   assert.deepEqual(r.flags.map((f) => [f.item, f.code, f.ref]), [
     ['885', 'parent_loop', '886'],

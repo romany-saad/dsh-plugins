@@ -36,8 +36,9 @@ test('every output validates against the declared schema; arguments are validate
   const calls = [
     ['board_read', {}],
     ['board_open', { key: 'k', parent: 'p' }],
-    ['board_add', { what: 'x', dependsOn: ['9'], readyCommand: 'echo', startWhen: 'later' }],
     ['board_add', { what: 'y', status: 'dropped' }],
+    ['board_add', { what: 'x', dependsOn: ['1'], readyCommand: 'echo', startWhen: 'later' }],
+    ['board_add', { what: 'z', dependsOn: ['9'] }],
     ['board_update', { item: '1', set: { pr: null, status: 'waiting', waitingOn: 'owner' } }],
     ['board_update', { item: ['1', '2'], set: { parent: 'root' } }],
     ['board_update', { item: ['1', 'nope'], set: { status: 'done' } }],

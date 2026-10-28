@@ -33,8 +33,9 @@ test('result titles name the board and the item it got', async () => {
   assert.equal(resultTitle('board_open', { key: 'sim-883' }, open), 'open sim-883 (new)')
   const read = await tools.board_read({ status: ['waiting'] }, exec())
   assert.equal(resultTitle('board_read', { status: ['waiting'] }, read), 'read sim-883 · waiting')
+  await tools.board_add({ item: '5', what: 'five' }, exec())
   const add = await tools.board_add({ what: 'x', dependsOn: ['5'] }, exec())
-  assert.equal(resultTitle('board_add', { what: 'x', dependsOn: ['5'] }, add), 'add 1 "x" · next · after 5')
+  assert.equal(resultTitle('board_add', { what: 'x', dependsOn: ['5'] }, add), 'add 6 "x" · next · after 5')
   assert.equal(resultTitle('board_read', {}, { ok: false, code: 'not_bound', message: 'm' }), undefined)
 })
 
