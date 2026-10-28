@@ -24,6 +24,13 @@ export function sessionTitle(events) {
   return title
 }
 
+/** The session's working directory: its last cd, else where it started. */
+export function workingDirectory({ session, events }) {
+  let cwd = typeof session?.cwd === 'string' ? session.cwd : undefined
+  for (const e of events) if (e.type === 'working-directory/change' && typeof e.data?.cwd === 'string') cwd = e.data.cwd
+  return cwd
+}
+
 /**
  * The model the session talks to now: the user's pick that no request has
  * used yet, else the one its last request used. Mirrors DSH's own

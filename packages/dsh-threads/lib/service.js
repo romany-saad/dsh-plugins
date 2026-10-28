@@ -3,7 +3,7 @@
 // the background. The routes (lib/route.js) are a thin layer over it.
 import { randomUUID } from 'node:crypto'
 import { runReply } from './reply.js'
-import { currentRoute } from './session-text.js'
+import { currentRoute, workingDirectory } from './session-text.js'
 import {
   CommentError, RECORD_DELETE, RECORD_THREAD, cleanAnchor, cleanComment, deleteRecord, foldThreads, threadRecord, userTurns,
 } from './threads.js'
@@ -16,10 +16,12 @@ import {
  * @param {() => object|undefined} o.llm            ctx.llm
  * @param {object} o.session           { appendPluginRecord } from @deepseek-ai/dsh-session
  * @param {object} o.llmLib            { BlockAssembler, createToolResultMessage, ReasoningEffortId } from @deepseek-ai/dsh-llm
+ * @param {(o: { cwd: string|undefined, signal: AbortSignal }) => Promise<object[]>} [o.extraTools]
+ *   the replier's tools beyond the session (files, web), for runReply
  * @param {(error: unknown) => void} [o.log]
  * @param {() => number} [o.now]
  */
-export function createCommentService({ config, sessions, sessionQuery, llm, session: sessionLib, llmLib, log = () => {}, now = Date.now }) {
+export function createCommentService({ config, sessions, sessionQuery, llm, session: sessionLib, llmLib, extraTools = async () => [], log = () => {}, now = Date.now }) {
   const tails = new Map() // sessionId → promise: writes to one session run one at a time
   const replying = new Map() // `${sessionId} ${threadId}` → AbortController
   const failures = new Map() // `${sessionId} ${threadId}` → message of the last failed reply
@@ -40,6 +42,10 @@ export function createCommentService({ config, sessions, sessionQuery, llm, sess
   }
 
   async function readEvents(sessionId) {
+    return (await readSnapshot(sessionId)).events
+  }
+
+  async function readSnapshot(sessionId) {
     const query = need(sessionQuery(), 'session query')
     let snapshot
     try {
@@ -48,7 +54,7 @@ export function createCommentService({ config, sessions, sessionQuery, llm, sess
       log(error)
       throw new CommentError('no_session', 'No such session', 404)
     }
-    return snapshot.events
+    return snapshot
   }
 
   function liveSession(sessionId) {
@@ -150,7 +156,8 @@ export function createCommentService({ config, sessions, sessionQuery, llm, sess
     const timer = setTimeout(() => controller.abort(new CommentError('timeout', 'The reply took too long', 504)), config.reply.timeoutMs)
     ;(async () => {
       try {
-        const events = await readEvents(sessionId)
+        const snapshot = await readSnapshot(sessionId)
+        const { events } = snapshot
         const thread = foldThreads(events, sessionId).get(threadId)
         if (thread === undefined) return
         const route = currentRoute(events)
@@ -164,6 +171,7 @@ export function createCommentService({ config, sessions, sessionQuery, llm, sess
           maxTokens: config.reply.maxTokens,
           maxRounds: config.reply.maxRounds,
           signal: controller.signal,
+          extraTools: await extraTools({ cwd: workingDirectory(snapshot), signal: controller.signal }),
         })
         await serial(sessionId, async () => {
           controller.signal.throwIfAborted()

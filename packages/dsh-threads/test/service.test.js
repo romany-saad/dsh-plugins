@@ -7,6 +7,7 @@ import { Session, appendPluginRecord } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from '../lib/config.js'
 import { createRouteHandlers, answer, ROUTES } from '../lib/route.js'
 import { createCommentService } from '../lib/service.js'
+import { workingDirectory } from '../lib/session-text.js'
 import { sessionLog } from './fixtures.mjs'
 
 /** A model that plays the given turns: each is { text } or { tools: [{ name, args }] }. */
@@ -49,7 +50,7 @@ function scriptedLlm(turns) {
 
 // The conversation comes from the fixture log; the plugin's own records go
 // into a real Session through appendPluginRecord, and a read returns both.
-function harness({ turns = [], config = {}, live = true } = {}) {
+function harness({ turns = [], config = {}, live = true, extraTools, header = { id: 's1', cwd: '/start' } } = {}) {
   const session = Session.create('s1')
   const conversation = sessionLog()
   const sessions = { get: (id) => (live && id === 's1' ? session : undefined), flush: async () => true }
@@ -57,7 +58,7 @@ function harness({ turns = [], config = {}, live = true } = {}) {
     readSession: async (id) => {
       if (id !== 's1') throw new Error('not found')
       const records = session.log.map((e, i) => ({ ...structuredClone(e), seq: conversation.length + i }))
-      return { events: [...conversation, ...records] }
+      return { session: header, events: [...conversation, ...records] }
     },
   }
   const llm = scriptedLlm(turns)
@@ -68,6 +69,7 @@ function harness({ turns = [], config = {}, live = true } = {}) {
     llm: () => llm,
     session: { appendPluginRecord },
     llmLib: { BlockAssembler, ReasoningEffortId, createToolResultMessage },
+    ...(extraTools ? { extraTools } : {}),
   })
   return { session, service, llm }
 }
@@ -125,6 +127,39 @@ test('the replier reads the session through its tools, and the last round has no
   assert.equal(results[2].isError, true)
   assert.match(results[2].content[0].text, /unknown tool write_file/)
   assert.equal((await service.list('s1')).threads[0].messages.at(-1).text, 'It wraps fetchJson.')
+})
+
+test('extra tools join the session tools, in the session\'s working directory', async () => {
+  const seen = []
+  const extraTools = async ({ cwd }) => {
+    seen.push(cwd)
+    return [{
+      schemas: [{ name: 'read_file', description: 'r', parameters: { type: 'object', properties: {} } }],
+      run: (name, args) => (name === 'read_file' ? Promise.resolve('1\tconst TTL = 600') : undefined),
+    }]
+  }
+  const { service, llm } = harness({
+    extraTools,
+    turns: [{ tools: [{ name: 'read_file', args: { path: 'cache.js' } }, { name: 'bash', args: {} }] }, { text: 'TTL is 600 s.' }],
+  })
+  await service.create('s1', anchor, 'What is the TTL in the code?')
+  await settled(service)
+  assert.deepEqual(seen, ['/start'])
+  const streams = llm.calls.filter((c) => c.options).map((c) => c.options)
+  assert.deepEqual(streams[0].tools.map((t) => t.name), ['session_outline', 'find_in_session', 'read_event', 'read_file'])
+  assert.match(streams[0].system, /read_file, list_dir, glob and grep read the files/)
+  assert.doesNotMatch(streams[0].system, /web_fetch/)
+  const results = streams[1].messages.filter((m) => m.role === 'tool')
+  assert.equal(results[0].content[0].text, '1\tconst TTL = 600')
+  assert.equal(results[1].isError, true)
+  assert.match(results[1].content[0].text, /unknown tool bash/)
+  assert.equal((await service.list('s1')).threads[0].messages.at(-1).text, 'TTL is 600 s.')
+})
+
+test('the working directory follows the session\'s last cd', () => {
+  assert.equal(workingDirectory({ session: { cwd: '/a' }, events: [{ type: 'working-directory/change', data: { cwd: '/b' } }] }), '/b')
+  assert.equal(workingDirectory({ session: { cwd: '/a' }, events: [] }), '/a')
+  assert.equal(workingDirectory({ session: {}, events: [] }), undefined)
 })
 
 test('a failed reply is shown, and can be retried', async () => {
