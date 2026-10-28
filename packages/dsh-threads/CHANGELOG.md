@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - **The replier reads files.** To answer, it can open files in the session's working directory, list folders, find files by name and search their contents. It still cannot change anything. Turn it off with `reply.files: false`.
 - **The replier can use the web**, if you set `reply.web: true`: web search and fetching a page, through the same providers as the agent's web tools. Off by default.

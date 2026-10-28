@@ -9,7 +9,7 @@ Comment on any passage of a DeepSeek Harness conversation. The passage stays hig
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.3.0
+dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.4.0
 ```
 
 Then reload the DSH web page.
@@ -17,7 +17,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.3.0&path:packages/dsh-threads'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.4.0&path:packages/dsh-threads'
 ```
 
 The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-threads` or `dsh-core` to the profile's own `cordis.patch.yml`.
