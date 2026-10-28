@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- **Chinese wording** reviewed: a thread is 评论 throughout (not 讨论), the post button says 发布, and the code toolbar says 自动换行 as DSH does.
+- **Unread replies.** A thread's badge fills in and shows a dot when an AI reply arrives while the thread is closed, until you open it. Remembered per browser.
+- From dsh-core: a triple-click selection now gets **Comment**, the comment box takes focus when it opens, and the selected passage stays highlighted while you type.
+
 ## 0.2.0
 
 - **One toolbar with Quote.** **Comment** now sits in the one selection toolbar it shares with the other rs-dsh plugins, such as **Quote** from dsh-quote, instead of a box of its own. It shows only where a comment can go: not on tool output or a collapsed reasoning block. Installing dsh-threads also installs `@rs-dsh/dsh-core`.

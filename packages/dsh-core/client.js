@@ -143,15 +143,17 @@ window.__ModuleLoader__.load({
     }
     const zh = {
       actions: '选中文本操作',
-      busy: '当前无法编辑输入框，稍后再试',
-      command: '命令草稿中不能插入',
-      noSession: '找不到该会话的输入框',
+      busy: '输入框暂时无法编辑，请稍后再试。',
+      command: '输入指令时无法插入内容。',
+      noSession: '找不到该会话的输入框。',
     }
 
     // The only stylesheet the core owns: positioning of its two floating hosts.
     // Everything visible inside them is DSH's own components and tokens. The
     // toolbar keeps the menu's translucent material; text-heavy cards take the
     // solid layer of DSH's preview cards, so the page never shows through.
+    // The passage a toolbar action was taken on, painted while its card is open.
+    const HELD = 'dsh-core-held'
     const STYLE = `
 [${ROOT}="dsh-core"][data-part]{position:fixed;z-index:1200;max-width:calc(100vw - 16px)}
 [${ROOT}="dsh-core"][data-part][hidden]{display:none}
@@ -162,6 +164,7 @@ window.__ModuleLoader__.load({
 [${ROOT}="dsh-core"][data-part="popover"] [data-part-card]{padding:10px;display:flex;flex-direction:column;max-height:min(70vh,560px);
   background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-elevation-panel)}
 [${ROOT}="dsh-core"][data-part="popover"] [data-part-card]>[aria-hidden="true"]:first-child{display:none}
+::highlight(${HELD}){background-color:Highlight;color:HighlightText}
 `
     // ------------------------------------------------------------ plugin body
 
@@ -248,10 +251,36 @@ window.__ModuleLoader__.load({
        * in, the chat row, the range and its rectangle, and the cleaned text.
        * Selections in the composer, in inputs or in rs-dsh's own UI are none.
        */
+      /**
+       * The range shrunk to the text it actually covers. A triple-click on
+       * the last paragraph of a message ends the range at offset 0 of the
+       * next message, so its common ancestor would be the whole chat and the
+       * selection would belong to no row.
+       */
+      function trimRange(range) {
+        const root = range.commonAncestorContainer
+        if (root.nodeType === 3 || typeof document.createTreeWalker !== 'function') return range
+        const walker = document.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */)
+        let first = null, last = null
+        for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
+          if (!range.intersectsNode(n)) continue
+          const start = n === range.startContainer ? range.startOffset : 0
+          const end = n === range.endContainer ? range.endOffset : n.data.length
+          if (start >= end || n.data.slice(start, end).trim() === '') continue
+          if (first === null) first = { n, start }
+          last = { n, end }
+        }
+        if (first === null) return range
+        const trimmed = range.cloneRange()
+        trimmed.setStart(first.n, first.start)
+        trimmed.setEnd(last.n, last.end)
+        return trimmed
+      }
+
       function selectionContext() {
         const sel = window.getSelection()
         if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return null
-        const range = sel.getRangeAt(0)
+        const range = trimRange(sel.getRangeAt(0))
         const node = range.commonAncestorContainer
         const el = node instanceof Element ? node : node.parentElement
         if (el === null) return null
@@ -283,6 +312,7 @@ window.__ModuleLoader__.load({
         const open = current
         if (open === null) return
         current = null
+        if (open.held) releaseSelection()
         // Close is often called from inside the card's own React event (Enter
         // in an editor, a button). Detach now; unmount once React has finished
         // that event, never during it.
@@ -321,6 +351,18 @@ window.__ModuleLoader__.load({
           host.style.left = at.left + 'px'
           host.style.top = at.top + 'px'
           host.style.visibility = ''
+          // The card mounts hidden until placed, so a field's autoFocus fires
+          // while it cannot take focus. Focus its first field once it shows.
+          if (!entry.focused) {
+            entry.focused = true
+            if (!host.contains(document.activeElement)) {
+              const field = host.querySelector('textarea,input:not([type="hidden"]),[contenteditable="true"]')
+              if (field !== null) {
+                field.focus({ preventScroll: true })
+                if (typeof field.setSelectionRange === 'function') field.setSelectionRange(field.value.length, field.value.length)
+              }
+            }
+          }
         }
         const draw = () => {
           root.render(jsx(ui.MenuSurface, { 'data-part-card': '', children: jsx(PopoverBody, { render, close, place }) }))
@@ -333,6 +375,24 @@ window.__ModuleLoader__.load({
       function PopoverBody({ render, close, place }) {
         React.useLayoutEffect(() => { place() })
         return render(close)
+      }
+
+      // -------------------------------------------------- held selection
+      //
+      // Focusing the card's field takes the page selection away. So when a
+      // toolbar action opens a card, the passage stays painted with a CSS
+      // highlight, in the selection's colours, until the card closes.
+
+      const canHold = typeof Highlight === 'function' && window.CSS !== undefined && window.CSS.highlights !== undefined
+
+      function holdSelection(range) {
+        if (!canHold || !range) return false
+        window.CSS.highlights.set(HELD, new Highlight(range))
+        return true
+      }
+
+      function releaseSelection() {
+        if (canHold) window.CSS.highlights.delete(HELD)
       }
 
       // -------------------------------------------------- selection toolbar
@@ -391,7 +451,10 @@ window.__ModuleLoader__.load({
             onMouseDown: (e) => e.preventDefault(),
             onClick: () => {
               hideToolbar()
+              const before = current
               try { b.onSelect(target) } catch (error) { console.error(error) }
+              // The action opened a card: keep its passage painted while it is open.
+              if (current !== null && current !== before) current.held = holdSelection(target.range)
             },
             children: typeof b.label === 'function' ? b.label() : b.label,
           }, b.plugin + '/' + b.id)),

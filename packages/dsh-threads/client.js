@@ -195,6 +195,7 @@ window.__ModuleLoader__.load({
       readOnly: 'Continue this session to reply or delete.',
       thread: 'Comment thread',
       messageCount: '{n} messages',
+      unread: '{n} unread',
       copy: 'Copy',
       copied: 'Copied',
       code: 'Code',
@@ -206,9 +207,9 @@ window.__ModuleLoader__.load({
       comment: '评论',
       commentLabel: '评论',
       replyLabel: '回复',
-      newHint: 'Enter 发布 · Shift+Enter 换行 · Esc 取消',
-      replyHint: 'Enter 发送 · Shift+Enter 换行',
-      post: '评论',
+      newHint: 'Enter 发布，Shift+Enter 换行，Esc 取消',
+      replyHint: 'Enter 发送，Shift+Enter 换行',
+      post: '发布',
       send: '发送',
       cancel: '取消',
       close: '关闭',
@@ -218,19 +219,20 @@ window.__ModuleLoader__.load({
       retry: '重试',
       toChat: '发送到对话',
       delete: '删除',
-      deleteConfirm: '删除这个讨论？',
+      deleteConfirm: '删除这条评论及其回复？',
       network: '请求失败',
-      full: '这个讨论已满。请新建一个，或发送到对话。',
+      full: '此评论的回复已达上限。请新建评论，或发送到对话。',
       reasoningCollapsed: '展开思考过程以查看高亮内容。',
-      detached: '该段落当前不在页面上。',
+      detached: '所评论的内容当前未显示在页面上。',
       readOnly: '继续这个会话后才能回复或删除。',
-      thread: '评论讨论',
+      thread: '评论',
       messageCount: '{n} 条消息',
+      unread: '{n} 条未读',
       copy: '复制',
       copied: '已复制',
       code: '代码',
-      wrap: '换行',
-      unwrap: '不换行',
+      wrap: '自动换行',
+      unwrap: '取消自动换行',
       footnotes: '脚注',
     }
 
@@ -261,6 +263,9 @@ ${scope} .th-badge{position:fixed;pointer-events:auto;cursor:pointer;display:inl
   color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 14%,var(--dsw-alias-bg-base))}
 ${scope} .th-badge:hover{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 24%,var(--dsw-alias-bg-base))}
 ${scope} .th-badge[data-replying]{animation:th-pulse 1.2s ease-in-out infinite}
+${scope} .th-badge[data-unread]{color:var(--dsw-alias-bg-base);background:var(--dsw-alias-state-warn-primary)}
+${scope} .th-badge[data-unread]:hover{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 85%,var(--dsw-alias-label-primary))}
+${scope} .th-unread{width:6px;height:6px;margin-left:1px;border-radius:50%;background:currentColor}
 ${scope} .th-badge[data-failed]{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 14%,var(--dsw-alias-bg-base))}
 @keyframes th-pulse{50%{opacity:.45}}
 ${scope}.th-card{display:block;margin:2px 0 6px;padding:3px 8px;border-left:2px solid var(--dsw-alias-state-warn-primary);
@@ -406,6 +411,48 @@ ${scope} .th-card-msg b{font-weight:600}
       }
 
       const threadOf = (sessionId, threadId) => store.get(sessionId)?.threads.find((x) => x.id === threadId)
+
+      // -------------------------------------------------- unread replies
+      //
+      // Per browser, in localStorage: how many messages of each thread were
+      // on screen when it was last open. AI replies past that are unread. A
+      // thread with no record counts replies after this browser first ran
+      // the plugin, so threads from before don't all light up at once.
+
+      const SEEN_KEY = 'dsh-threads:seen'
+      const SINCE_KEY = 'dsh-threads:seen-since'
+      function readStore(key, fallback) {
+        try { const v = JSON.parse(window.localStorage.getItem(key)); return v ?? fallback } catch (_) { return fallback }
+      }
+      function writeStore(key, value) {
+        try { window.localStorage.setItem(key, JSON.stringify(value)) } catch (_) { /* private mode, quota: unread stays in memory */ }
+      }
+      let seen = readStore(SEEN_KEY, {})
+      if (seen === null || typeof seen !== 'object' || Array.isArray(seen)) seen = {}
+      let since = readStore(SINCE_KEY, null)
+      if (!Number.isFinite(since)) { since = Date.now(); writeStore(SINCE_KEY, since) }
+
+      /** AI replies in a thread that were not on screen when it was last open. */
+      function unreadCount(sessionId, thread) {
+        const count = seen[sessionId + ' ' + thread.id]
+        return thread.messages.filter((m, i) => m.role === 'ai' && (Number.isFinite(count) ? i >= count : m.time > since)).length
+      }
+
+      function markSeen(sessionId, thread) {
+        const k = sessionId + ' ' + thread.id
+        if (seen[k] === thread.messages.length) return
+        seen = { ...seen, [k]: thread.messages.length }
+        writeStore(SEEN_KEY, seen)
+        placeBadges()
+      }
+
+      function forgetSeen(sessionId, threadId) {
+        const k = sessionId + ' ' + threadId
+        if (!(k in seen)) return
+        const { [k]: _, ...rest } = seen
+        seen = rest
+        writeStore(SEEN_KEY, seen)
+      }
 
       // Poll while a reply is on its way.
       let pollTimer = null
@@ -592,9 +639,19 @@ ${scope} .th-card-msg b{font-weight:600}
             badges.set(k, badge)
             layer.append(badge)
           }
-          badge.replaceChildren(bubbleSvg(12), document.createTextNode(String(thread.messages.length)))
-          badge.title = oneLine(thread.messages[0].text, 120)
-          badge.setAttribute('aria-label', t('thread') + ': ' + oneLine(thread.messages[0].text, 80))
+          const unread = unreadCount(sessionId, thread)
+          const parts = [bubbleSvg(12), document.createTextNode(String(thread.messages.length))]
+          if (unread > 0) {
+            const dot = document.createElement('span')
+            dot.className = 'th-unread'
+            dot.setAttribute('aria-hidden', 'true')
+            parts.push(dot)
+          }
+          badge.replaceChildren(...parts)
+          const unreadText = unread > 0 ? ' · ' + String(t('unread')).replace('{n}', String(unread)) : ''
+          badge.title = oneLine(thread.messages[0].text, 120) + unreadText
+          badge.setAttribute('aria-label', t('thread') + ': ' + oneLine(thread.messages[0].text, 80) + unreadText)
+          badge.toggleAttribute('data-unread', unread > 0)
           badge.toggleAttribute('data-replying', thread.replying === true)
           badge.toggleAttribute('data-failed', thread.failure !== undefined)
           const top = Math.round(rect.top + rect.height / 2 - 9)
@@ -695,6 +752,8 @@ ${scope} .th-card-msg b{font-weight:600}
         const [error, setError] = React.useState(null)
         const list = React.useRef(null)
         React.useEffect(() => { if (thread === undefined) close('gone') }, [thread === undefined])
+        // What is on screen while the thread is open counts as read, replies arriving included.
+        React.useEffect(() => { if (thread !== undefined) markSeen(sessionId, thread) }, [thread?.messages.length])
         React.useLayoutEffect(() => { if (list.current) list.current.scrollTop = list.current.scrollHeight }, [thread?.messages.length, thread?.replying, thread?.failure])
         if (thread === undefined) return null
         const submit = async () => {
@@ -719,6 +778,7 @@ ${scope} .th-card-msg b{font-weight:600}
             await call('delete', { sessionId, threadId })
             close('deleted')
             dropThread(sessionId, threadId)
+            forgetSeen(sessionId, threadId)
           } catch (e) {
             setError(e.message)
           }
