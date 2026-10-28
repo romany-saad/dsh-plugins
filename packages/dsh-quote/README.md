@@ -7,7 +7,7 @@ Quote passages from a DeepSeek Harness conversation into your next message, each
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.2.1
+dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.3.0
 ```
 
 Then reload the DSH web page.
@@ -15,7 +15,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.2.1&path:packages/dsh-quote'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.3.0&path:packages/dsh-quote'
 ```
 
 The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-quote` or `dsh-core` to the profile's own `cordis.patch.yml`.
@@ -40,6 +40,8 @@ A box opens for an optional note. Type your note and press **Enter**, or press *
 ### Your quotes in the message box
 
 Each quote appears in the message box as a chip. Quotes stack one per line above your question, in the order you added them. Add as many as you like, then type your question below them.
+
+Each quoted passage stays lightly highlighted in the conversation until you send the message, so you can see what you have already quoted. The highlight goes when you send the message, or when you delete or remove the quote's chip.
 
 ![Two quote chips stacked above a question in the message box](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-quote/docs/images/composer-chips.png)
 
@@ -71,6 +73,7 @@ The model receives each quote with its note, and can answer each one.
 - **Web GUI only.** Messages viewed in the terminal UI or in an export show the quotes as tagged text blocks, not cards.
 - **The chip shows an `@` sign.** DSH has its own icons for files, folders and sessions only, so quote chips use the generic `@` marker.
 - **Not while sending or in a command.** You cannot add a quote while a message is being sent, or while the message box holds a `/command`. A notice tells you why, and nothing changes.
+- **The highlight lasts while the page shows that message.** It is lost if you switch conversations or reload the page, or if the message is drawn again. The quote stays in the message box either way.
 - **Copying a chip gives plain text.** Copying a chip copies `> ` and the start of the passage. Pasting that back does not make a new chip.
 
 ## More

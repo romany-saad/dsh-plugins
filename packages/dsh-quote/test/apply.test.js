@@ -9,7 +9,7 @@ const CORE = new URL('../../dsh-core/client.js', import.meta.url)
 const QUOTE = new URL('../client.js', import.meta.url)
 const CHAT = '<div data-conversation-region="chat" data-conversation-session="s1"><div data-chat-node-key="14:assistant-step1:1"><p id="p">  the retry loop backs off</p></div></div>'
 
-function harness({ phase = 'plain', snapshot = { text: 'why?', references: [] }, occurrences = [] } = {}) {
+function harness({ phase = 'plain', snapshot = { text: 'why?', references: [] }, occurrences = [], highlights = false } = {}) {
   const probe = createPage({ bundles: [CORE] })
   const names = probe.modules[0].exports._internals.UI_EXPORTS
   probe.close()
@@ -17,8 +17,20 @@ function harness({ phase = 'plain', snapshot = { text: 'why?', references: [] },
   page.document.body.innerHTML = CHAT
   page.window.requestAnimationFrame = (fn) => setTimeout(fn, 0)
   const calls = { setDraft: [], notify: [], sources: [], rules: [], slots: [] }
+  if (highlights) {
+    // jsdom has no CSS Custom Highlight API: a registry that records ranges.
+    page.window.Highlight = class { constructor(...ranges) { this.ranges = ranges } }
+    page.window.CSS = { highlights: new Map() }
+  }
+  let state = { phase, occurrences }
+  const listeners = new Set()
   const input = {
-    state: { getSnapshot: () => ({ phase, occurrences }) },
+    state: {
+      getSnapshot: () => state,
+      subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn) },
+    },
+    publish: (next) => { state = { ...state, ...next }; for (const fn of listeners) fn() },
+    listeners,
     draftSnapshot: snapshot,
     setDraft: (draft) => { calls.setDraft.push(draft); input.draftSnapshot = draft },
     notify: (level, text) => calls.notify.push({ level, text }),
@@ -208,5 +220,33 @@ test('dispose removes the Quote button, hover card and stylesheet', async () => 
   h.page.dispose()
   assert.equal(h.page.document.querySelector('[data-rs-dsh]'), null)
   assert.equal(h.page.document.querySelector('style[data-rs-dsh-style]'), null)
+  h.page.close()
+})
+
+test('a quoted passage stays painted until its chip leaves the draft', async () => {
+  const h = harness({ highlights: true })
+  const painted = () => h.page.window.CSS.highlights.get('dsh-quote-pending')?.ranges.map((r) => r.toString()) ?? []
+  await quoteSelection(h, 'note')
+  assert.deepEqual(painted(), ['the retry loop'], 'painted right after the quote, before the chip is published')
+  const ref = h.calls.setDraft[0].references[0].ref
+  h.input.publish({ occurrences: [{ source: 'quote', ref, offset: 0 }] })
+  assert.deepEqual(painted(), ['the retry loop'], 'still painted while the chip is in the draft')
+  // Editing the note changes the ref but not the passage: still painted.
+  h.input.publish({ occurrences: [{ source: 'quote', ref: JSON.stringify({ v: 1, text: 'the retry loop', note: 'other' }), offset: 0 }] })
+  assert.deepEqual(painted(), ['the retry loop'])
+  // Sent (or deleted): the draft has no quote chips left.
+  h.input.publish({ occurrences: [] })
+  assert.deepEqual(painted(), [], 'cleared once the chip is gone')
+  assert.equal(h.input.listeners.size, 0, 'stops watching the draft')
+  h.page.dispose(); h.page.close()
+})
+
+test('dispose clears the pending paint and the draft watcher', async () => {
+  const h = harness({ highlights: true })
+  await quoteSelection(h, '')
+  assert.equal(h.page.window.CSS.highlights.has('dsh-quote-pending'), true)
+  h.page.dispose()
+  assert.equal(h.page.window.CSS.highlights.has('dsh-quote-pending'), false)
+  assert.equal(h.input.listeners.size, 0)
   h.page.close()
 })

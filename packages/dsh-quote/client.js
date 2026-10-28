@@ -27,6 +27,7 @@ window.__ModuleLoader__.load({
     const PLUGIN = 'dsh-quote'
     const MAX_QUOTE = 20000
     const MAX_NOTE = 4000
+    const PENDING = 'dsh-quote-pending' // CSS highlight: passages quoted in the unsent draft
 
     // ------------------------------------------------------------ pure logic
 
@@ -248,6 +249,7 @@ ${scope} .q-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-cl
 ${scope}.q-card[data-open] .q-text{display:block}
 ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primary)}
 [data-composer-chip="quote"]{cursor:pointer}
+::highlight(${PENDING}){background-color:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 16%,transparent)}
 `
 
     // ------------------------------------------------------------ plugin body
@@ -365,7 +367,82 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
         const failure = core.composer.insertChip(target.sessionId, makeInsert(quote))
         if (failure !== null) { core.composer.notify(target.sessionId, failure); return }
         window.getSelection()?.removeAllRanges()
+        markPending(target.sessionId, target.text, target.range)
       }
+
+      // -------------------------------------------------- pending passages
+      //
+      // A quoted passage stays lightly painted (CSS highlight PENDING) while
+      // its chip is in the draft. Each session's input state is watched; a
+      // passage whose chip is gone (sent, deleted or removed) is let go.
+      // Chips are matched by quote text, so editing the note keeps the paint.
+
+      const canPaint = typeof Highlight === 'function' && window.CSS !== undefined && window.CSS.highlights !== undefined
+      const pending = new Map() // sessionId → { marks: [{ text, range, seen, until }], stop }
+      const GRACE_MS = 2000
+
+      function paint() {
+        if (!canPaint) return
+        const ranges = []
+        for (const entry of pending.values()) for (const mark of entry.marks) ranges.push(mark.range)
+        if (ranges.length === 0) window.CSS.highlights.delete(PENDING)
+        else window.CSS.highlights.set(PENDING, new Highlight(...ranges))
+      }
+
+      function inputFor(sessionId) {
+        const actx = ctx.sessions.scope(sessionId)
+        return actx === undefined ? undefined : ctx.conversation.input.for(actx)
+      }
+
+      /** Keep only the marks whose quote still has a chip in the session's draft. */
+      function reconcile(sessionId) {
+        const entry = pending.get(sessionId)
+        if (entry === undefined) return
+        const input = inputFor(sessionId)
+        const occurrences = input === undefined ? [] : (input.state.getSnapshot().occurrences || [])
+        const left = new Map() // quote text → chips not yet matched
+        for (const o of occurrences) {
+          if (o.source !== SOURCE) continue
+          let text
+          try { text = decodeRef(o.ref).text } catch (_) { continue }
+          left.set(text, (left.get(text) || 0) + 1)
+        }
+        const now = Date.now()
+        entry.marks = entry.marks.filter((mark) => {
+          const n = left.get(mark.text) || 0
+          // The editor publishes a new chip a moment after the insert: until the
+          // chip has been seen once (or a grace period passes), keep the mark.
+          if (n === 0) return !mark.seen && now < mark.until
+          mark.seen = true
+          left.set(mark.text, n - 1)
+          return true
+        })
+        if (entry.marks.length === 0) { entry.stop(); pending.delete(sessionId) }
+        paint()
+      }
+
+      function markPending(sessionId, text, range) {
+        if (!canPaint || !range) return
+        let entry = pending.get(sessionId)
+        if (entry === undefined) {
+          const input = inputFor(sessionId)
+          const store = input?.state
+          if (store === undefined || typeof store.subscribe !== 'function') return
+          entry = { marks: [], stop: () => {} }
+          pending.set(sessionId, entry)
+          const unsubscribe = store.subscribe(() => reconcile(sessionId))
+          entry.stop = typeof unsubscribe === 'function' ? unsubscribe : () => {}
+        }
+        entry.marks.push({ text, range, seen: false, until: Date.now() + GRACE_MS })
+        reconcile(sessionId)
+        setTimeout(() => reconcile(sessionId), GRACE_MS + 10)
+      }
+
+      ctx.effect(() => () => {
+        for (const entry of pending.values()) entry.stop()
+        pending.clear()
+        if (canPaint) window.CSS.highlights.delete(PENDING)
+      }, 'dsh-quote: pending passages')
 
       /** Chip click (via openReference): open the box with the chip's note. */
       function openChipEditor(sessionId, ref) {
@@ -406,7 +483,7 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
         onSelect: (selection) => {
           const text = cleanSelection(selection.text)
           if (text === '') return
-          const target = { sessionId: selection.sessionId, text }
+          const target = { sessionId: selection.sessionId, text, range: selection.range }
           const rect = selection.rect
           openNoteBox(() => rect, { mode: 'add', text, note: '', onSubmit: (note) => commit(target, note) })
         },

@@ -22,6 +22,7 @@ The plugin uses DSH extension points only and never edits nodes the host renders
 | Insert, edit or remove a chip in the right session's draft | `core.composer.insertChip` and `core.composer.editable` (`sessions.scope` → `conversation.input.for`), then `setDraft` with the structured draft (`draftSnapshot`), so every other chip survives. |
 | Open the edit box when a chip is clicked | The source's `openReference`, which DSH calls on a chip click. |
 | Full quote in the hover card | `input.state.getSnapshot().occurrences`, indexed by the hovered chip's position among quote chips. |
+| Highlight quoted passages until send | A CSS custom highlight (`dsh-quote-pending`) over the selection's range, kept per session while `input.state.subscribe` shows a quote chip with the same passage in `occurrences`. See "Pending highlight" below. |
 | Quote cards in the sent message | A `uiConversation.userText` rule that finds `<quote>` blocks, and a `conversation.user.text.node` slot entry (key `quote`) that renders them. |
 
 ### The chip's ref
@@ -42,6 +43,10 @@ A literal `</quote>` or `</note>` inside the passage or note is written as `<\/q
 ### Stacking
 
 `stackQuote` puts a new chip after the quote chips already at the start of the draft, each followed by a newline, and shifts every later reference. Edits and removals locate the clicked chip by its position among quote chips, falling back to the first chip with the same ref when the draft changed in between, so two chips quoting the same passage stay independent.
+
+### Pending highlight
+
+When a quote goes into the draft, its range (from `selectionContext()`) is added to the `dsh-quote-pending` highlight. dsh-core's `dsh-core-held` paints the passage while the note box is open, then this one takes over. Each session with marks has one subscription to its input state. On each change, every mark is matched to a quote chip in `occurrences` by passage text, counting duplicates, so editing a note keeps the mark. A mark without a chip is dropped. The editor publishes a new chip a moment after `setDraft`, so a mark is kept for up to 2 s until its chip is first seen. When a session has no marks left, its subscription ends. The ranges are live DOM ranges, so they paint nothing once the message's nodes are replaced (a session switch or a re-render). Nothing is persisted.
 
 ## Test
 
