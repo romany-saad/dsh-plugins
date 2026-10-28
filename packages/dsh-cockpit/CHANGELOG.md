@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+The board tools refuse a reference to a step that is not on the board. The Board tab, the strip, config and the board format are unchanged.
+
+- **Tools:** `board_add` and `board_update` refuse a `parent` or `dependsOn` that names a task not on the board, with the new code `unknown_reference`, and change nothing. The message names the missing items and says to add them first, then link them. Before, such a reference was stored and only flagged, so a typo or a step the agent never added left the board with a dangling dependency. Clearing a reference (`null`) is never refused. A removed task, or a hand-written board file, can still leave a reference to a task that is gone; it is flagged as before.
+
 ## 0.2.1
 
 The Whole board bar and the strip order their segments as the Board tab orders its sections. Tools, config and the board format are unchanged.

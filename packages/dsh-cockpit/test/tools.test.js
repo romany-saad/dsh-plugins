@@ -56,6 +56,8 @@ test('defaults, next integer item, item_exists, item_unknown', async () => {
 test('every field round-trips through add, in file order; startWhen and dropped are stored', async () => {
   const { tools } = await setup()
   await tools.board_open({ key: 'k' }, exec())
+  await tools.board_add({ item: 'root', what: 'r' }, exec())
+  await tools.board_add({ item: '3', what: 'three' }, exec())
   const fields = {
     what: 'x', status: 'waiting', why: 'w', issue: '#1', pr: '#2', branch: 'b', worktree: '/w', provider: 'p', model: 'm', effort: 'high',
     nextAction: 'n', waitingOn: 'owner', readyCommand: 'gh pr merge 2', startWhen: 'after #3 merges', parent: 'root', dependsOn: ['3'], extra: { a: 'b' },
@@ -202,14 +204,37 @@ test('board_open writes the binding before the board: a failed binding leaves no
   assert.equal((await tools.board_add({ what: 'x' }, exec())).code, 'not_bound')
 })
 
-test('flags come back from add and update, never a refusal', async () => {
+test('an unknown parent or dependency is refused: define the task first, then link it', async () => {
+  const { tools, store } = await setup()
+  await tools.board_open({ key: 'k' }, exec())
+  const r = await tools.board_add({ what: 'x', parent: 'nope', dependsOn: ['9', 'nope'] }, exec())
+  assert.deepEqual([r.ok, r.code], [false, 'unknown_reference'])
+  assert.match(r.message, /"nope", "9"/)
+  assert.match(r.message, /parent and dependsOn/)
+  assert.match(r.message, /Add those tasks first with board_add/)
+  assert.deepEqual((await fileOf(store, 'k')).tasks, [], 'nothing was added')
+
+  await tools.board_add({ item: 'a', what: 'a' }, exec())
+  const u = await tools.board_update({ item: 'a', set: { dependsOn: ['b'] } }, exec())
+  assert.deepEqual([u.ok, u.code], [false, 'unknown_reference'])
+  assert.match(u.message, /No task "b" .* for dependsOn; .*Add that task first/)
+  assert.equal((await fileOf(store, 'k')).tasks[0].dependsOn, undefined, 'nothing was changed')
+
+  // Defined first, the relation is then built.
+  await tools.board_add({ item: 'b', what: 'b', parent: 'a' }, exec())
+  const linked = await tools.board_update({ item: 'a', set: { dependsOn: ['b'] } }, exec())
+  assert.deepEqual([linked.ok, linked.tasks[0].dependsOn, linked.flags], [true, ['b'], []])
+  // Clearing a reference is never refused.
+  assert.equal((await tools.board_update({ item: 'b', set: { parent: null } }, exec())).ok, true)
+})
+
+test('removing a task others name leaves their references, flagged', async () => {
   const { tools } = await setup()
   await tools.board_open({ key: 'k' }, exec())
-  const r = await tools.board_add({ what: 'x', parent: 'nope', dependsOn: ['9'] }, exec())
-  assert.equal(r.ok, true)
-  assert.deepEqual(r.flags.map((f) => f.code), ['unknown_parent', 'unknown_dependency'])
-  const u = await tools.board_update({ item: '1', set: { parent: null } }, exec())
-  assert.deepEqual(u.flags.map((f) => f.code), ['unknown_dependency'])
+  await tools.board_add({ item: 'a', what: 'a' }, exec())
+  await tools.board_add({ item: 'b', what: 'b', dependsOn: ['a'] }, exec())
+  const r = await tools.board_update({ item: 'a', remove: true }, exec())
+  assert.deepEqual(r.flags.map((f) => [f.item, f.code, f.ref]), [['b', 'unknown_dependency', 'a']])
 })
 
 test('read filters by status and by subtree; an unknown item is item_unknown', async () => {
