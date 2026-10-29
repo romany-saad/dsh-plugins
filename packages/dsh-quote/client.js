@@ -31,14 +31,6 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------------ pure logic
 
-    /** Collapse whitespace and cut to n code points with an ellipsis. */
-    function oneLine(s, n) {
-      // U+FFFC and U+E100–E11D are the editor's chip placeholders; never forge them.
-      const flat = String(s).replace(/[\uE100-\uE11D\uFFFC]/gu, '').replace(/\s+/g, ' ').trim()
-      const chars = Array.from(flat)
-      return chars.length <= n ? flat : chars.slice(0, n - 1).join('') + '…'
-    }
-
     /** Chip ref: the whole quote travels in the ref so a reloaded draft still serializes. */
     function encodeRef(quote) {
       const value = { v: 1, text: quote.text }
@@ -90,7 +82,8 @@ window.__ModuleLoader__.load({
       },
     }
 
-    function makeInsert(quote) {
+    /** The chip for a quote; `oneLine` is the core's text flattener. */
+    function makeInsert(quote, oneLine) {
       const note = quote.note ? ' · ' + oneLine(quote.note, 24) : ''
       return {
         source: SOURCE,
@@ -256,7 +249,7 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
 
     function apply(ctx) {
       const core = ctx.rsDshCore
-      const { React, jsx, jsxs, ui } = core
+      const { React, jsx, jsxs, ui, oneLine } = core
       const scope = core.scope(PLUGIN)
 
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-quote: dictionaries')
@@ -364,7 +357,7 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
         const quote = { text: target.text }
         const clean = normalizeNote(note)
         if (clean !== '') quote.note = clean
-        const failure = core.composer.insertChip(target.sessionId, makeInsert(quote))
+        const failure = core.composer.insertChip(target.sessionId, makeInsert(quote, oneLine))
         if (failure !== null) { core.composer.notify(target.sessionId, failure); return }
         window.getSelection()?.removeAllRanges()
         markPending(target.sessionId, target.text, target.range)
@@ -467,7 +460,7 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
             const clean = normalizeNote(value)
             if (clean !== '') next.note = clean
             if (clean === quote.note) return
-            run((snapshot, index) => replaceQuote(snapshot, index, makeInsert(next)))
+            run((snapshot, index) => replaceQuote(snapshot, index, makeInsert(next, oneLine)))
           },
           onRemove: () => run((snapshot, index) => removeQuote(snapshot, index)),
         })
@@ -631,7 +624,7 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
     module.exports.apply = apply
     // Pure helpers, exported for tests only.
     module.exports._internals = {
-      oneLine, encodeRef, decodeRef, serializeQuote, quoteRule, makeInsert, stackQuote, cleanSelection,
+      encodeRef, decodeRef, serializeQuote, quoteRule, makeInsert, stackQuote, cleanSelection,
       quoteChipIndex, replaceQuote, removeQuote, normalizeNote,
     }
     return module.exports

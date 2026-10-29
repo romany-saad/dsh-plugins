@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-threads",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Comment on any passage of a DSH Web conversation and get a brief reply from the session's own model in a small thread next to it, without touching the main chat.",
   "license": "MIT",
   "type": "module",

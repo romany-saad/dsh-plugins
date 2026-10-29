@@ -41,6 +41,7 @@ function liveStyles(list) {
     slots: { inject: (_n, make) => make(), register: () => () => {} },
     sessions: { scope: () => undefined },
     conversation: { input: { for: () => null } },
+    uiWorkspace: { openSession: () => {} },
   })
   const sheets = new Map()
   for (const el of page.document.querySelectorAll('style[data-rs-dsh-style]')) sheets.set(el.getAttribute('data-rs-dsh-style'), el.textContent)
@@ -95,7 +96,7 @@ test('every core-based plugin scopes its rules under its own [data-rs-dsh] root'
 
 // Inside its root a plugin styles only its own classes: one short prefix per
 // plugin, so even a scoped rule never names a class another plugin owns.
-const OWN_PREFIX = { 'dsh-core': null, 'dsh-quote': 'q-', 'dsh-threads': 'th-' }
+const OWN_PREFIX = { 'dsh-core': null, 'dsh-drafts': 'dr-', 'dsh-quote': 'q-', 'dsh-threads': 'th-' }
 
 test('a core-based plugin styles only classes with its own prefix', () => {
   const list = plugins().filter((p) => p.onCore).sort((a, b) => (a.dir === 'dsh-core' ? -1 : b.dir === 'dsh-core' ? 1 : 0))

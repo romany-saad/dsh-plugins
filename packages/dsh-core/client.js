@@ -24,13 +24,16 @@ window.__ModuleLoader__.load({
     const ROOT = 'data-rs-dsh'
     const PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'
 
-    // The components and icons the rs-dsh plugins use. A test checks every
+    // The components, icons and helpers the rs-dsh plugins use. A test checks every
     // name against the real library at the pinned DSH version.
     const UI_EXPORTS = [
       'Button', 'MenuSurface', 'InlineEditor', 'TextShimmer', 'MarkdownText', 'Tooltip', 'Toast',
       'IconTrashOutlineRegular', 'IconSendOutlineRegular', 'IconCopyOutlineRegular', 'IconCloseOutlineRegular',
       'IconNewChatOutlineRegular', 'IconEditOutlineRegular', 'IconCheckOutlineRegular', 'IconRefreshOutlineRegular',
       'IconWarningOutlineRegular', 'IconChevronDownOutlineRegular', 'IconChevronUpOutlineRegular',
+      // Not a component: DSH's relative-time bucketing ({ unit, n }), so a
+      // plugin dates a Session the way the sidebar does.
+      'relativeTime',
     ]
 
     // ------------------------------------------------------------ pure logic

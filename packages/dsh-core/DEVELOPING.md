@@ -29,7 +29,7 @@ The core is not a bundle you install on its own. It does have its own `dsh.bundl
 
 | Member | What it does |
 |---|---|
-| `ui` | The DSH components and icons in `UI_EXPORTS`: `Button`, `MenuSurface`, `InlineEditor`, `TextShimmer`, `MarkdownText`, `Tooltip`, `Toast`, and the `Icon…Regular` set. |
+| `ui` | The DSH components, icons and helpers in `UI_EXPORTS`: `Button`, `MenuSurface`, `InlineEditor`, `TextShimmer`, `MarkdownText`, `Tooltip`, `Toast`, the `Icon…Regular` set, and `relativeTime(at, now)`, DSH's `{ unit, n }` bucketing that the sidebar dates Sessions with (the words stay in each plugin's dictionary). |
 | `React`, `jsx`, `jsxs` | The page's React, for plugins without a build step. |
 | `selection.register({ plugin, id, label, onSelect, when?, icon?, order? })` | A button in the one selection toolbar. `when(selection)` hides it where it doesn't apply. `onSelect` gets `selectionContext()`'s value. If it opens a card, the core paints the selected passage (CSS highlight `dsh-core-held`, in selection colours) until the card closes. Returns a disposer. Lower `order` comes first: quote is 10, threads is 20. |
 | `selectionContext()` | `{ sessionId, region, element, row, range, rect, text }` for a selection in a conversation, else null. It is null in the composer, in inputs, and in any `[data-rs-dsh]` element. |
@@ -39,7 +39,7 @@ The core is not a bundle you install on its own. It does have its own `dsh.bundl
 | `composer.insertChip(sessionId, insert)` | Stack a chip at the top of a session's draft, after the rs-dsh chips already there, in the order added. Returns null, or why it couldn't. |
 | `composer.claimChipSource(source)` | Mark a chip source as rs-dsh's, so other rs-dsh chips stack after it. |
 | `composer.editable(sessionId)`, `composer.notify(sessionId, text)` | The composer if it can take a chip, else `{ error }`; and a notice under it. |
-| `oneLine`, `stackChip` | The shared text helpers. |
+| `oneLine`, `stackChip` | The shared text helpers. Every rs-dsh plugin flattens previews and chip labels with `oneLine`; none keeps its own copy. |
 
 ## DSH's UI library
 

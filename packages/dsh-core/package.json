@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared UI layer for the rs-dsh DSH plugins: one selection toolbar, anchored cards and DSH's own components, so the plugins look like DSH and stay small.",
   "license": "MIT",
   "type": "module",

@@ -48,6 +48,7 @@ function registered() {
     slots: { inject: (_n, make) => make(), register: () => () => {} },
     sessions: { scope: () => undefined },
     conversation: { input: { for: () => null } },
+    uiWorkspace: { openSession: () => {} },
   })
   page.dispose()
   page.close()

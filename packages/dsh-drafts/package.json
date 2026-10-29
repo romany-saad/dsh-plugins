@@ -1,0 +1,66 @@
+{
+  "name": "@rs-dsh/dsh-drafts",
+  "version": "0.1.0",
+  "description": "Get back what you typed into a new DSH Web conversation and left before sending: unsent drafts are listed above the composer of a new conversation, with Open and Discard.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/romany-saad/dsh-plugins.git",
+    "directory": "packages/dsh-drafts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "draft"
+  ],
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --check client.js && node --import ./test/no-network.mjs --test test/*.test.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@rs-dsh/dsh-core"
+      ]
+    }
+  },
+  "dependencies": {
+    "@rs-dsh/dsh-core": "workspace:^"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.2"
+  }
+}

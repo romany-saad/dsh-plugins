@@ -17,6 +17,15 @@ const plain = (value) => JSON.parse(JSON.stringify(value))
 const bundle = loadBundle()
 const c = bundle._internals
 
+// The core's oneLine, from the real dsh-core bundle, as apply() passes it.
+function coreOneLine() {
+  const source = readFileSync(new URL('../../dsh-core/client.js', import.meta.url), 'utf8')
+  let registered
+  vm.runInNewContext(source, { window: { __ModuleLoader__: { load: (entry) => { registered = entry } } } })
+  return registered.factory(() => { throw new Error('no requires at load time') })._internals.oneLine
+}
+const oneLine = coreOneLine()
+
 test('bundle id, name and inject match package.json', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(bundle.name, pkg.name)
@@ -53,7 +62,7 @@ test('a thread serializes for the model and the sent bubble parses it back', () 
 
 test('the chip ref carries the thread, so a restored draft still serializes', () => {
   const thread = { anchor: { text: 'the passage' }, messages: [{ id: '1', role: 'user', text: 'q', time: 1 }, { id: '2', role: 'ai', text: 'a', time: 2, model: 'm' }] }
-  const insert = c.makeInsert(thread)
+  const insert = c.makeInsert(thread, oneLine)
   assert.deepEqual(plain(c.decodeRef(insert.ref)), { passage: 'the passage', messages: [{ role: 'user', text: 'q' }, { role: 'ai', text: 'a' }] })
   assert.equal(insert.clipboardText, '> the passage')
   assert.throws(() => c.decodeRef('{}'))
