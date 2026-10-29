@@ -9,6 +9,7 @@ Public plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 | [`@rs-dsh/dsh-cockpit`](packages/dsh-cockpit) | A durable task board for a hub session that coordinates builders: a tree of steps with free-form link fields (issue, PR, branch, worktree, model, effort), kept as one local JSON file per board that other processes can read | 0.3.2 |
 | [`@rs-dsh/dsh-quote`](packages/dsh-quote) | Quote passages from a Web conversation into your next message as composer chips, each with an optional note you can edit; hover shows the full quote, and sent quotes render as cards | 0.3.2 |
 | [`@rs-dsh/dsh-drafts`](packages/dsh-drafts) | Get back what you typed into a new Web conversation and left before sending: unsent drafts are listed above the message box of a new conversation, with Open and Discard | 0.1.1 |
+| [`@rs-dsh/dsh-automations`](packages/dsh-automations) | Keep automation tasks in YAML, JSON or JS files: the Schedule is synced to match them, with each task's schedule, prompt, model, permission and working folder | 0.1.0 |
 
 ## Install
 

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Automations from files",
+    "description": "Keeps automation tasks in task files: their schedule, prompt, model, permission and agent preset are synced to the Schedule at startup, when a file changes, and on /automations."
+  }
+}

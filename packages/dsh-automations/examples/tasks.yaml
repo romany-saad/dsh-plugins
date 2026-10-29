@@ -1,0 +1,26 @@
+# Copy into $DSH_HOME/automations/ (the default source) and edit.
+# Every *.yaml, *.yml, *.json, *.js and *.mjs file in the folder adds tasks;
+# names starting with "_" or "." are skipped. Removing a task here deletes it
+# from the Schedule.
+defaults:
+  cwd: /path/to/your/repo        # a relative path resolves against this file's folder
+  timeZone: Europe/Berlin
+  permission: read-only          # a permission preset: read-only | workspace-write | danger-full-access
+  # model: claude/claude-opus-5-5   # or { provider, model, reasoningEffort }
+  # agentPreset: standard
+  # session: persistent          # persistent (one conversation) | fresh (a new Session per run)
+
+tasks:
+  - id: repo-digest              # stable identity: letters, digits, . _ -; never reuse
+    title: Daily repo digest
+    schedule:
+      cron: "30 8 * * 1-5"       # or daily: "09:00", weekly: { time, weekdays }, every: 15m, at: ISO date-time
+    prompt: |
+      Summarize what changed in this repository since yesterday and list open TODOs and risky diffs.
+
+  - id: nightly-audit
+    title: Nightly audit
+    session: fresh
+    schedule: { daily: "02:00" }
+    prompt: Audit the repository for leaked secrets and report what you find.
+    enabled: false

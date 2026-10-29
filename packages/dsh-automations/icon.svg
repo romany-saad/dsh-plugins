@@ -1,0 +1,27 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- The task file, in blue, with a folded corner. -->
+  <path d="M10 6H19.5L26 12.5V27C26 28.66 24.66 30 23 30H10C8.34 30 7 28.66 7 27V9C7 7.34 8.34 6 10 6Z" fill="url(#automations-page)" />
+  <clipPath id="automations-page-clip"><path d="M10 6H19.5L26 12.5V27C26 28.66 24.66 30 23 30H10C8.34 30 7 28.66 7 27V9C7 7.34 8.34 6 10 6Z" /></clipPath>
+  <path d="M10 6H19.5L26 12.5V27C26 28.66 24.66 30 23 30H10C8.34 30 7 28.66 7 27V9C7 7.34 8.34 6 10 6Z" stroke="url(#automations-page-rim)" stroke-width="2" clip-path="url(#automations-page-clip)" />
+  <path d="M19.5 6V10.5C19.5 11.6 20.4 12.5 21.5 12.5H26Z" fill="#B9D7FB" />
+  <!-- Its lines: the tasks. -->
+  <path d="M10.5 12H16M10.5 16.5H19.5M10.5 21H15" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" />
+  <!-- The focus: the schedule, an amber clock over the corner. -->
+  <circle cx="23.5" cy="23.5" r="6.5" fill="url(#automations-clock)" />
+  <circle cx="23.5" cy="23.5" r="6.1" stroke="url(#automations-clock-rim)" stroke-width="0.8" />
+  <path d="M23.5 20.25V23.5L25.75 25" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+  <defs>
+    <linearGradient id="automations-page" x1="9" y1="6" x2="24" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" />
+    </linearGradient>
+    <linearGradient id="automations-page-rim" x1="7" y1="6" x2="17" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.6" /><stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="automations-clock" x1="17" y1="17" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD59A" /><stop offset="0.55" stop-color="#F2AF63" /><stop offset="1" stop-color="#E08A2E" />
+    </linearGradient>
+    <linearGradient id="automations-clock-rim" x1="17.4" y1="17.4" x2="27" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+</svg>
