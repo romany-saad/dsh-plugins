@@ -7,6 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "pnpm -r --if-present test"
+    "check": "node scripts/check-repo.mjs",
+    "test": "node scripts/check-repo.mjs && pnpm -r --if-present test",
+    "prepare": "git config core.hooksPath .githooks || true"
   }
 }

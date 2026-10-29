@@ -1,0 +1,11 @@
+#!/bin/sh
+# Installed by `pnpm install` (package.json "prepare" sets core.hooksPath).
+# Blocks a push that breaks the repository rules, and a release tag whose
+# dsh-core is not on npm yet. Skip once with: git push --no-verify
+set -e
+node scripts/check-repo.mjs
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/tags/dsh-*@*) node scripts/check-repo.mjs --tag "${remote_ref#refs/tags/}" ;;
+  esac
+done
