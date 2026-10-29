@@ -27,7 +27,12 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --if-present test
+      - run: pnpm test
+      # A plugin's workspace:^ dependency on dsh-core is published as ^<core version>:
+      # that core must already be on npm, or the release installs nowhere.
+      - run: node scripts/check-repo.mjs --tag "$TAG"
+        env:
+          TAG: ${{ github.ref_name }}
       - name: Resolve the package and check the tag's version against package.json
         id: version
         env:

@@ -25,5 +25,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: pnpm install --frozen-lockfile
+      # The repository rules (scripts/check-repo.mjs), then every package's tests.
       # Each package's test script loads a setup file that makes fetch throw.
       - run: pnpm test

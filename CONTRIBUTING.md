@@ -81,3 +81,17 @@ pnpm test
 ```
 
 To try a package from a checkout, install it by path into a scratch profile: `dsh plugin --profile scratch add ./packages/<package>`.
+
+### Repository rules
+
+`pnpm test` first runs `scripts/check-repo.mjs` (also available as `pnpm check`). It fails when:
+
+- a package is missing a required file;
+- the newest CHANGELOG entry doesn't match the version;
+- an install line or the root README table names an old version;
+- a screenshot is missing, unused or linked by a relative path;
+- a core-based plugin has no class prefix in the shared guard test, or keeps its own copy of a dsh-core helper.
+
+CI runs it on every pull request. `pnpm install` turns on a `pre-push` hook that runs it before each push. Before a release tag is pushed, the hook and the publish workflow also run `node scripts/check-repo.mjs --tag <package>@<version>`. That check refuses the tag while the dsh-core version the package needs is not yet on npm.
+
+The steps behind these rules, from finding a DSH extension point to verifying in a scratch profile and releasing in order, are in [.agents/skills/dsh-plugin-dev/SKILL.md](.agents/skills/dsh-plugin-dev/SKILL.md).
