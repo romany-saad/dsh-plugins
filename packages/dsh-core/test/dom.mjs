@@ -42,6 +42,17 @@ export function fakePrimitives(names) {
     MarkdownText: ({ text }) => h('div', { 'data-markdown': '' }, text),
     Tooltip: ({ children }) => children,
     Toast: ({ text }) => h('div', { role: 'status' }, text),
+    // The library's bucketing, as DSH 0.2.1-rc.2 ships it.
+    relativeTime: (at, now) => {
+      const diff = Math.max(0, now - at)
+      if (diff < 60e3) return { unit: 'now', n: 0 }
+      if (diff < 36e5) return { unit: 'minutes', n: Math.floor(diff / 60e3) }
+      if (diff < 864e5) return { unit: 'hours', n: Math.floor(diff / 36e5) }
+      const days = Math.floor(diff / 864e5)
+      if (days < 30) return { unit: 'days', n: days }
+      if (days < 365) return { unit: 'months', n: Math.floor(days / 30) }
+      return { unit: 'years', n: Math.floor(days / 365) }
+    },
   }
   const out = {}
   for (const name of names) out[name] = named[name] ?? ((props) => h('svg', { 'data-icon': name, width: props?.size ?? 16 }))

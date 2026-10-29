@@ -38,13 +38,6 @@ window.__ModuleLoader__.load({
 
 
 
-    /** One line, cut to n code points; never forges editor placeholders. Same as the core's. */
-    function oneLine(s, n) {
-      const flat = String(s).replace(/[\uE100-\uE11D\uFFFC]/gu, '').replace(/\s+/g, ' ').trim()
-      const chars = Array.from(flat)
-      return chars.length <= n ? flat : chars.slice(0, n - 1).join('') + '\u2026'
-    }
-
     const stripSpace = (s) => String(s).replace(/\s+/g, '')
 
     /**
@@ -143,7 +136,8 @@ window.__ModuleLoader__.load({
       },
     }
 
-    function makeInsert(thread) {
+    /** The chip for a thread; `oneLine` is the core's text flattener. */
+    function makeInsert(thread, oneLine) {
       return {
         source: SOURCE,
         ref: encodeRef(thread),
@@ -282,7 +276,7 @@ ${scope} .th-card-msg b{font-weight:600}
 
     function apply(ctx) {
       const core = ctx.rsDshCore
-      const { React, jsx, jsxs, ui } = core
+      const { React, jsx, jsxs, ui, oneLine } = core
       const scope = core.scope(PLUGIN)
 
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-threads: dictionaries')
@@ -348,7 +342,7 @@ ${scope} .th-card-msg b{font-weight:600}
       }, ThreadCard))
 
       function sendToChat(sessionId, thread) {
-        return core.composer.insertChip(sessionId, makeInsert(thread))
+        return core.composer.insertChip(sessionId, makeInsert(thread, oneLine))
       }
 
       // -------------------------------------------------- server

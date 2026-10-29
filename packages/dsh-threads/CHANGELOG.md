@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Chip labels and previews use the shared rs-dsh core's text helper. No change you can see.
+
 ## 0.4.0
 
 - **The replier reads files.** To answer, it can open files in the session's working directory, list folders, find files by name and search their contents. It still cannot change anything. Turn it off with `reply.files: false`.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Chip labels and previews use the shared rs-dsh core's text helper. No change you can see.
+
 ## 0.3.0
 
 - **Quoted passages stay highlighted.** After you add a quote, its passage in the conversation keeps a light highlight until you send the message, or until you delete or remove the quote's chip.

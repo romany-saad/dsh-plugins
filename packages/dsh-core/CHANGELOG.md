@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- **`ui.relativeTime`**: DSH's own relative-time bucketing, so a plugin dates a session the way the sidebar does. dsh-drafts uses it.
+- dsh-quote, dsh-threads and dsh-drafts now all use the core's `oneLine` for previews and chip labels, instead of each keeping a copy.
+
 ## 0.1.1
 
 - **Chinese wording** reviewed: messages follow DSH's own terms (指令 for commands) and end with 。.

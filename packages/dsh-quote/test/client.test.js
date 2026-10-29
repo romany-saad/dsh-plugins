@@ -18,7 +18,17 @@ function loadBundle() {
 const plain = (value) => JSON.parse(JSON.stringify(value))
 
 const bundle = loadBundle()
-const q = bundle._internals
+const q0 = bundle._internals
+
+// The core's oneLine, from the real dsh-core bundle, as apply() passes it.
+function coreOneLine() {
+  const source = readFileSync(new URL('../../dsh-core/client.js', import.meta.url), 'utf8')
+  let registered
+  vm.runInNewContext(source, { window: { __ModuleLoader__: { load: (entry) => { registered = entry } } } })
+  return registered.factory(() => { throw new Error('no requires at load time') })._internals.oneLine
+}
+const oneLine = coreOneLine()
+const q = { ...q0, makeInsert: (quote) => q0.makeInsert(quote, oneLine) }
 
 test('bundle id, name and inject match package.json', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
