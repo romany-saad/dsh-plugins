@@ -8,16 +8,24 @@ whenToUse: Adding a package under packages/, changing what a plugin shows or doe
 
 CONTRIBUTING.md is the rulebook; this skill is how to work so you follow it. `pnpm test` runs `scripts/check-repo.mjs` first, and CI, the pre-push hook and the publish workflow run it too: it fails on stale versions, a missing CHANGELOG entry, unused or relative screenshots, a missing class prefix, a core helper copied into a plugin, or a release tag pushed before its dsh-core is on npm. Fix what it names; never bypass it.
 
-## 1. Find the extension point in the installed DSH, not from memory
+## 1. Check what DSH already offers, and where the fix belongs
 
-The DSH in use is the global install: `$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/`. Read, in this order:
+Before designing, check whether DSH already has an extension point for it. If the right fix belongs in DSH or in another plugin, say so and propose that instead of working around it. For a small change to an existing plugin, look up only what that change touches.
+
+Look in the installed DSH, not from memory. It is the global install: `$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/`. The places, in order:
 
 1. The owning package's `README.md` (`dsh-client-ui-conversation`, `-workspace`, `-sidebar`, …): behaviour and its decisions.
 2. The slot catalogue in `dsh-cordis-client-runner/lib/client.js`: search `key: "<slot name>"` for kind, scope, standard props, owner props and current occupants.
 3. The `.d.ts` contracts under `lib/types/` (for example `dsh-api-session-controller/lib/types/client/contract/`).
 4. Only then the bundled `lib/client.js`, to confirm a detail.
 
-Prefer a slot or service over patching another plugin's methods or DOM. Wrapping a service method is the last resort, and the answer must say so. Before proposing a design, say which DSH behaviour it changes; one that leaves DSH's documented behaviour alone wins.
+Then choose, and say why in the proposal:
+
+- **An extension point fits** (a slot, a service, a hook): use it. Don't patch another plugin's methods or DOM to get the same result.
+- **The behaviour itself is wrong** in DSH or another plugin: the fix belongs there. Propose the upstream change (an issue or a patch). A plugin that hides the problem is a stopgap, and the proposal says that, if it is offered at all.
+- **The behaviour is right but a plugin can add to it**: build the plugin.
+
+In every case, name which DSH behaviour the design changes. Example: drafts were lost because New Session always creates a fresh blank Session, and DSH documents that as intended. Patching New Session would have worked around documented behaviour. The drafts card adds to it without changing it.
 
 Useful facts, true for DSH 0.2.1-rc.2:
 

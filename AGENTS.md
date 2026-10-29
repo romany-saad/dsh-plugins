@@ -6,7 +6,7 @@ In particular, when a change touches anything a user of a package sees, update t
 
 Before building, changing, verifying or releasing a plugin, load the `dsh-plugin-dev` skill ([.agents/skills/dsh-plugin-dev/SKILL.md](.agents/skills/dsh-plugin-dev/SKILL.md)). Its hard rules:
 
-- Read the installed DSH (its READMEs, slot catalogue and contracts) before proposing a design, and prefer a slot or service over patching another plugin.
+- Before designing, check whether DSH already has an extension point for it. If the right fix belongs in DSH or in another plugin, say so and propose that instead of working around it.
 - Use DSH's components and dsh-core's helpers; never copy a core helper into a plugin.
 - Show a change working in a scratch profile under a separate `DSH_HOME`, with real screenshots, before you call it done. Never touch the user's own profiles or GUI server.
 - Publish only when asked, dsh-core first, and confirm the install from npm.
