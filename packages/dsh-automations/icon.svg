@@ -9,16 +9,16 @@
   <!-- The focus: the schedule, an amber clock with a gear biting into its rim. -->
   <mask id="automations-dent" maskUnits="userSpaceOnUse" x="0" y="0" width="36" height="36">
     <rect width="36" height="36" fill="#FFFFFF" />
-    <path d="M19.67 24.26L20.43 23.73L20.94 24.33L20.29 24.99A2.45 2.45 0 0 1 20.58 25.9L21.49 26.07L21.42 26.85L20.49 26.85A2.45 2.45 0 0 1 20.05 27.7L20.58 28.46L19.98 28.97L19.32 28.32A2.45 2.45 0 0 1 18.41 28.61L18.24 29.52L17.46 29.45L17.46 28.52A2.45 2.45 0 0 1 16.61 28.08L15.85 28.61L15.34 28.01L15.99 27.35A2.45 2.45 0 0 1 15.7 26.44L14.79 26.27L14.86 25.49L15.79 25.49A2.45 2.45 0 0 1 16.23 24.64L15.7 23.88L16.3 23.37L16.96 24.02A2.45 2.45 0 0 1 17.87 23.73L18.04 22.82L18.82 22.89L18.82 23.82A2.45 2.45 0 0 1 19.67 24.26 Z" fill="#000000" stroke="#000000" stroke-width="0.9" stroke-linejoin="round" />
+    <path d="M20.2 24.12L20.91 23.53L21.47 24.09L20.88 24.8A2.45 2.45 0 0 1 21.24 25.68L22.17 25.77L22.17 26.55L21.24 26.64A2.45 2.45 0 0 1 20.88 27.52L21.47 28.23L20.91 28.79L20.2 28.2A2.45 2.45 0 0 1 19.32 28.56L19.23 29.49L18.45 29.49L18.36 28.56A2.45 2.45 0 0 1 17.48 28.2L16.77 28.79L16.21 28.23L16.8 27.52A2.45 2.45 0 0 1 16.44 26.64L15.51 26.55L15.51 25.77L16.44 25.68A2.45 2.45 0 0 1 16.8 24.8L16.21 24.09L16.77 23.53L17.48 24.12A2.45 2.45 0 0 1 18.36 23.76L18.45 22.83L19.23 22.83L19.32 23.76A2.45 2.45 0 0 1 20.2 24.12 Z" fill="#000000" stroke="#000000" stroke-width="0.9" stroke-linejoin="round" />
   </mask>
   <g mask="url(#automations-dent)">
-    <circle cx="24" cy="21.25" r="5.75" fill="url(#automations-clock)" />
-    <circle cx="24" cy="21.25" r="5.35" stroke="url(#automations-clock-rim)" stroke-width="0.8" />
-    <path d="M24 18.26V21.25L26.09 22.66" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="24.25" cy="20.75" r="5.75" fill="url(#automations-clock)" />
+    <circle cx="24.25" cy="20.75" r="5.35" stroke="url(#automations-clock-rim)" stroke-width="0.8" />
+    <path d="M24.25 17.76V20.75L26.34 22.16" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
   </g>
-  <path d="M19.67 24.26L20.43 23.73L20.94 24.33L20.29 24.99A2.45 2.45 0 0 1 20.58 25.9L21.49 26.07L21.42 26.85L20.49 26.85A2.45 2.45 0 0 1 20.05 27.7L20.58 28.46L19.98 28.97L19.32 28.32A2.45 2.45 0 0 1 18.41 28.61L18.24 29.52L17.46 29.45L17.46 28.52A2.45 2.45 0 0 1 16.61 28.08L15.85 28.61L15.34 28.01L15.99 27.35A2.45 2.45 0 0 1 15.7 26.44L14.79 26.27L14.86 25.49L15.79 25.49A2.45 2.45 0 0 1 16.23 24.64L15.7 23.88L16.3 23.37L16.96 24.02A2.45 2.45 0 0 1 17.87 23.73L18.04 22.82L18.82 22.89L18.82 23.82A2.45 2.45 0 0 1 19.67 24.26 ZM17.14 26.17a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" fill-rule="evenodd" fill="url(#automations-gear)" />
-  <clipPath id="automations-gear-clip"><path d="M19.67 24.26L20.43 23.73L20.94 24.33L20.29 24.99A2.45 2.45 0 0 1 20.58 25.9L21.49 26.07L21.42 26.85L20.49 26.85A2.45 2.45 0 0 1 20.05 27.7L20.58 28.46L19.98 28.97L19.32 28.32A2.45 2.45 0 0 1 18.41 28.61L18.24 29.52L17.46 29.45L17.46 28.52A2.45 2.45 0 0 1 16.61 28.08L15.85 28.61L15.34 28.01L15.99 27.35A2.45 2.45 0 0 1 15.7 26.44L14.79 26.27L14.86 25.49L15.79 25.49A2.45 2.45 0 0 1 16.23 24.64L15.7 23.88L16.3 23.37L16.96 24.02A2.45 2.45 0 0 1 17.87 23.73L18.04 22.82L18.82 22.89L18.82 23.82A2.45 2.45 0 0 1 19.67 24.26 ZM17.14 26.17a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" clip-rule="evenodd" /></clipPath>
-  <path d="M19.67 24.26L20.43 23.73L20.94 24.33L20.29 24.99A2.45 2.45 0 0 1 20.58 25.9L21.49 26.07L21.42 26.85L20.49 26.85A2.45 2.45 0 0 1 20.05 27.7L20.58 28.46L19.98 28.97L19.32 28.32A2.45 2.45 0 0 1 18.41 28.61L18.24 29.52L17.46 29.45L17.46 28.52A2.45 2.45 0 0 1 16.61 28.08L15.85 28.61L15.34 28.01L15.99 27.35A2.45 2.45 0 0 1 15.7 26.44L14.79 26.27L14.86 25.49L15.79 25.49A2.45 2.45 0 0 1 16.23 24.64L15.7 23.88L16.3 23.37L16.96 24.02A2.45 2.45 0 0 1 17.87 23.73L18.04 22.82L18.82 22.89L18.82 23.82A2.45 2.45 0 0 1 19.67 24.26 ZM17.14 26.17a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" stroke="url(#automations-gear-rim)" stroke-width="1.6" stroke-linejoin="round" clip-path="url(#automations-gear-clip)" />
+  <path d="M20.2 24.12L20.91 23.53L21.47 24.09L20.88 24.8A2.45 2.45 0 0 1 21.24 25.68L22.17 25.77L22.17 26.55L21.24 26.64A2.45 2.45 0 0 1 20.88 27.52L21.47 28.23L20.91 28.79L20.2 28.2A2.45 2.45 0 0 1 19.32 28.56L19.23 29.49L18.45 29.49L18.36 28.56A2.45 2.45 0 0 1 17.48 28.2L16.77 28.79L16.21 28.23L16.8 27.52A2.45 2.45 0 0 1 16.44 26.64L15.51 26.55L15.51 25.77L16.44 25.68A2.45 2.45 0 0 1 16.8 24.8L16.21 24.09L16.77 23.53L17.48 24.12A2.45 2.45 0 0 1 18.36 23.76L18.45 22.83L19.23 22.83L19.32 23.76A2.45 2.45 0 0 1 20.2 24.12 ZM17.84 26.16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" fill-rule="evenodd" fill="url(#automations-gear)" />
+  <clipPath id="automations-gear-clip"><path d="M20.2 24.12L20.91 23.53L21.47 24.09L20.88 24.8A2.45 2.45 0 0 1 21.24 25.68L22.17 25.77L22.17 26.55L21.24 26.64A2.45 2.45 0 0 1 20.88 27.52L21.47 28.23L20.91 28.79L20.2 28.2A2.45 2.45 0 0 1 19.32 28.56L19.23 29.49L18.45 29.49L18.36 28.56A2.45 2.45 0 0 1 17.48 28.2L16.77 28.79L16.21 28.23L16.8 27.52A2.45 2.45 0 0 1 16.44 26.64L15.51 26.55L15.51 25.77L16.44 25.68A2.45 2.45 0 0 1 16.8 24.8L16.21 24.09L16.77 23.53L17.48 24.12A2.45 2.45 0 0 1 18.36 23.76L18.45 22.83L19.23 22.83L19.32 23.76A2.45 2.45 0 0 1 20.2 24.12 ZM17.84 26.16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" clip-rule="evenodd" /></clipPath>
+  <path d="M20.2 24.12L20.91 23.53L21.47 24.09L20.88 24.8A2.45 2.45 0 0 1 21.24 25.68L22.17 25.77L22.17 26.55L21.24 26.64A2.45 2.45 0 0 1 20.88 27.52L21.47 28.23L20.91 28.79L20.2 28.2A2.45 2.45 0 0 1 19.32 28.56L19.23 29.49L18.45 29.49L18.36 28.56A2.45 2.45 0 0 1 17.48 28.2L16.77 28.79L16.21 28.23L16.8 27.52A2.45 2.45 0 0 1 16.44 26.64L15.51 26.55L15.51 25.77L16.44 25.68A2.45 2.45 0 0 1 16.8 24.8L16.21 24.09L16.77 23.53L17.48 24.12A2.45 2.45 0 0 1 18.36 23.76L18.45 22.83L19.23 22.83L19.32 23.76A2.45 2.45 0 0 1 20.2 24.12 ZM17.84 26.16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" stroke="url(#automations-gear-rim)" stroke-width="1.6" stroke-linejoin="round" clip-path="url(#automations-gear-clip)" />
   <defs>
     <linearGradient id="automations-page" x1="9" y1="6" x2="24" y2="30" gradientUnits="userSpaceOnUse">
       <stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" />
@@ -26,16 +26,16 @@
     <linearGradient id="automations-page-rim" x1="7" y1="6" x2="17" y2="20" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFFFFF" stop-opacity="0.6" /><stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0" />
     </linearGradient>
-    <linearGradient id="automations-clock" x1="18.25" y1="15.5" x2="29.75" y2="27" gradientUnits="userSpaceOnUse">
+    <linearGradient id="automations-clock" x1="18.5" y1="15" x2="30" y2="26.5" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFD59A" /><stop offset="0.55" stop-color="#F2AF63" /><stop offset="1" stop-color="#E08A2E" />
     </linearGradient>
-    <linearGradient id="automations-clock-rim" x1="18.25" y1="15.5" x2="26.3" y2="23.55" gradientUnits="userSpaceOnUse">
+    <linearGradient id="automations-clock-rim" x1="18.5" y1="15" x2="26.55" y2="23.05" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" />
     </linearGradient>
-    <linearGradient id="automations-gear" x1="14.79" y1="22.82" x2="21.49" y2="29.52" gradientUnits="userSpaceOnUse">
+    <linearGradient id="automations-gear" x1="15.49" y1="22.81" x2="22.19" y2="29.51" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFD59A" /><stop offset="0.5" stop-color="#F2AF63" /><stop offset="1" stop-color="#D47A20" />
     </linearGradient>
-    <linearGradient id="automations-gear-rim" x1="14.79" y1="22.82" x2="19.31" y2="27.34" gradientUnits="userSpaceOnUse">
+    <linearGradient id="automations-gear-rim" x1="15.49" y1="22.81" x2="20.01" y2="27.33" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFFFFF" stop-opacity="1" /><stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0" />
     </linearGradient>
   </defs>
