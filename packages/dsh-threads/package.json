@@ -20,6 +20,7 @@
     "comment",
     "annotation"
   ],
+  "icon": "./icon.svg",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
@@ -31,6 +32,7 @@
     "client.js",
     "lib",
     "cordis.patch.yml",
+    "icon.svg",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

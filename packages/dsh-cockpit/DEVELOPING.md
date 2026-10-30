@@ -100,7 +100,7 @@ dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@<ver
 | `strip-whole-board.png` | Whole-board progress with a completed parent and a standalone step waiting on CI |
 | `tool-cards.png` | Two board tool calls as cards under Called tools |
 
-`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `docs/icon.png` is the storefront tile, rendered from `docs/icon.svg` (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
+`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `icon.svg` is the icon DSH's Plugins page shows, and `docs/icon.png` the storefront tile rendered from it (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
 
 ## Releases
 

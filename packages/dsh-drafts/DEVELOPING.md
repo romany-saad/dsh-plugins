@@ -55,7 +55,7 @@ The flow was also checked end to end with Playwright against a running DSH 0.2.1
 | `opened-draft.png` | An opened draft back in the message box, the other still listed |
 | `discard-undo.png` | A discarded row with Undo |
 
-`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `docs/icon.png` is the storefront tile, rendered from `docs/icon.svg` (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
+`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `icon.svg` is the icon DSH's Plugins page shows, and `docs/icon.png` the storefront tile rendered from it (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
 
 ## Release
 

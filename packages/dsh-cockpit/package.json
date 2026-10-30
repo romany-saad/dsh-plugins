@@ -21,6 +21,7 @@
     "dsh-plugin",
     "deepseek-harness"
   ],
+  "icon": "./icon.svg",
   "exports": {
     ".": "./index.js",
     "./reader": "./reader.js",
@@ -36,6 +37,7 @@
     "examples",
     "board.schema.json",
     "cordis.patch.yml",
+    "icon.svg",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

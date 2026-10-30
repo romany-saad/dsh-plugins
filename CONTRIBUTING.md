@@ -102,7 +102,8 @@ DSH's Discover tab, dshmarket and most other plugin finders read the [awesome-ds
 
 The catalog finds the npm package from the package's `repository` field, so a new version needs no catalog change. Change the entry when the one-line description no longer matches the plugin; the catalog checks it against the code. A new plugin gets its own entry, at most three per pull request there.
 
-Each listed package keeps two files for the storefronts:
+Each listed package keeps these files for DSH and the storefronts:
 
 - `screenshots.json`: the README's screenshots, as paths relative to the package, first one first, at most 8. Keep it in step with the README.
-- `docs/icon.png`: the storefront tile, 512 × 512, rendered from `docs/icon.svg`. The icons share one tile: DSH's light surface (`#F7F7F8`), a near-black line glyph (`#0F1115`, 24 px stroke on 512), the blue DSH uses for in-progress (`#4176E6`) for the one detail that matters, and a small blue dot bottom right as the rs-dsh mark. To render one: `google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 --window-size=512,512 --screenshot=docs/icon.png docs/icon.svg`, run in the package folder.
+- `icon.svg`: the plugin's icon, which DSH shows on its Plugins page (`"icon": "./icon.svg"` in `package.json`, and in `files`). It follows DSH's own plugin icons, such as `dsh-experimental-tool-worktree/icon.svg`: a 36 × 36 view box with no background, flat shapes in DSH's blue gradient (`#6DB9FB` to `#3650DE`), light blue (`#7FB7FC`) and cyan (`#51CFDB`) for secondary shapes, and white for detail. One warm amber (`#F2AF63`), the colour of DSH's Agent Teams icon, marks the part the plugin is about; it is the rs-dsh touch.
+- `docs/icon.png`: the storefront tile, 512 × 512, rendered from `icon.svg` on DSH's plugin-card tile by `node scripts/render-icons.mjs` (needs `google-chrome`). Re-run it after changing an `icon.svg`.
