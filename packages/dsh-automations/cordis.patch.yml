@@ -1,0 +1,14 @@
+# Mounts the dsh-automations host plugin. A profile patch with the same id
+# replaces the whole config, so restate the fields you keep.
+- insert:
+    - id: dsh-automations
+      name: '@rs-dsh/dsh-automations'
+      config:
+        # Task files or folders. A relative path resolves against baseDir.
+        # The default folder, $DSH_HOME/automations, may be missing: no tasks.
+        sources:
+          - automations
+        # Empty: $DSH_HOME.
+        baseDir: ''
+        # Merged under each file's own defaults, e.g. cwd, timeZone, permission, model.
+        defaults: {}

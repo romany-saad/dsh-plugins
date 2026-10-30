@@ -1,0 +1,62 @@
+{
+  "name": "@rs-dsh/dsh-automations",
+  "version": "0.1.0",
+  "description": "Keep DSH automation tasks in task files: the plugin reconciles the Schedule with them, creating, updating, disabling and deleting tasks to match.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/romany-saad/dsh-plugins.git",
+    "directory": "packages/dsh-automations"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "automation",
+    "schedule"
+  ],
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "examples",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --import ./test/no-network.mjs --test test/*.test.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-home-paths": "^0.2.1-rc.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2"
+  }
+}
