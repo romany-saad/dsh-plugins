@@ -15,7 +15,7 @@ To try a checkout, install it by path into a scratch profile: `dsh plugin --prof
 
 ## Files
 
-- `index.js`: the host plugin. Registers `board_open`, `board_read`, `board_add` and `board_update` inside `ctx.inject(['tools'], …)`, with `defineTool` from `@deepseek-ai/dsh-tools`. Every agent in a profile that loads the plugin sees them; `tools.enabled: false` registers none.
+- `index.js`: the host plugin. Registers `board_open`, `board_read`, `board_add` and `board_update` inside `ctx.inject(['tools'], …)`, with `defineTool` from `@deepseek-ai/dsh-tools`. When the system-prompt service is present it also contributes board-maintenance guidance, scoped to sessions already using a board. This is advisory, not automatic reconciliation; a complete custom prompt can suppress the section. Every agent in a profile that loads the plugin sees the tools; `tools.enabled: false` registers neither tools nor guidance.
 - `lib/tools.js`: the tool bodies. Results are `{ ok: true, … }` or `{ ok: false, code, message }`, with the codes `not_bound`, `item_exists`, `item_unknown`, `unknown_reference`, `invalid_input`, `board_unreadable` and `write_failed`.
   - `board_open({ key, parent? })` creates or opens a board and binds the session to it, in memory and in `sessions/<sessionId>.json`, so a resumed session finds its board without reopening it.
   - `board_read({ item?, status?, checkDrift? })`: the tasks, the tree text, the flags, the last drift result, and the file's path and format version. The filters narrow the result only. `checkDrift: true` first runs the drift command (see Drift runner), and `driftCheck` says `ran`, `failed` or `not_configured`.

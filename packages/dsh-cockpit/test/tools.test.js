@@ -264,6 +264,41 @@ test('the session binding: each session has its own board; a resumed session fin
   assert.equal((await second.tools.board_read({}, exec('other'))).code, 'not_bound')
 })
 
+test('session binding changes are observed across instances, including removal', async () => {
+  const first = await setup()
+  const second = await setup({ home: first.home })
+  await first.tools.board_open({ key: 'one' }, exec('s'))
+  assert.equal((await first.tools.board_read({}, exec('s'))).board.key, 'one')
+  await second.tools.board_open({ key: 'two' }, exec('s'))
+  assert.equal((await first.tools.board_add({ what: 'in two' }, exec('s'))).ok, true)
+  assert.deepEqual((await second.tools.board_read({}, exec('s'))).tasks.map((t) => t.what), ['in two'])
+  await rm(join(first.dataDir, 'sessions', 's.json'))
+  assert.equal((await first.tools.board_read({}, exec('s'))).code, 'not_bound')
+})
+
+test('failed board change leaves all instances seeing the published binding', async () => {
+  const first = await setup()
+  const second = await setup({ home: first.home })
+  await first.tools.board_open({ key: 'one' }, exec('s'))
+  await writeFile(first.store.file('broken'), '{broken')
+  assert.equal((await first.tools.board_open({ key: 'broken' }, exec('s'))).code, 'board_unreadable')
+  for (const tools of [first.tools, second.tools]) {
+    assert.equal((await tools.board_read({}, exec('s'))).code, 'board_unreadable')
+    assert.equal((await tools.board_add({ what: 'x' }, exec('s'))).code, 'board_unreadable')
+  }
+  assert.deepEqual((await fileOf(first.store, 'one')).tasks, [])
+})
+
+test('calls without a session retain an instance-local binding after a failed open', async () => {
+  const first = await setup()
+  const second = await setup({ home: first.home })
+  await first.tools.board_open({ key: 'one' })
+  await writeFile(first.store.file('broken'), '{broken')
+  assert.equal((await first.tools.board_open({ key: 'broken' })).code, 'board_unreadable')
+  assert.equal((await first.tools.board_read()).board.key, 'one')
+  assert.equal((await second.tools.board_read()).code, 'not_bound')
+})
+
 test('a board file removed under a bound session is board_unreadable, not a new board', async () => {
   const { tools, store } = await setup()
   await tools.board_open({ key: 'k' }, exec())

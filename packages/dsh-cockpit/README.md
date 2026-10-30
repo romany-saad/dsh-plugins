@@ -17,10 +17,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.3.0
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.3.1
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.3.0&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.3.1&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -48,7 +48,7 @@ Drift is a step whose status no longer matches its work, such as a merged PR on 
 
 ## Use
 
-Ask the hub to keep a board for the effort, or let it use the tools on its own:
+Ask the hub to keep a board for the effort, or let it use the tools on its own. Once a session is using a board, Cockpit asks the agent to keep its steps and next actions current and to check its work before marking a step done. This is guidance, not automatic tracking: check the board and correct it when needed. Child sessions have separate bindings.
 
 - **Open a board** with a key, such as `bosla-883`, and optionally the parent ticket. The session stays bound to it, also after a resume.
 - **Add steps**, each with what it is and its issue or PR. `parent` puts a step under another; `dependsOn` lists steps that come first, so a step shows as blocked until they are done or dropped. Both must name steps already on the board: the agent adds a step first, then links others to it.
