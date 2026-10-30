@@ -1,0 +1,29 @@
+<!-- Template for a DSH plugin icon in the rs-dsh style. Replace every "my-" id
+     prefix with the plugin's short name: icons share one page in DSH's Plugins
+     list, and two icons with the same gradient id paint each other's shapes. -->
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 1. Main shape: DSH blue gradient, top-left light to bottom-right deep. -->
+  <path d="M10 7H26C28.2 7 30 8.8 30 11V25C30 27.2 28.2 29 26 29H10C7.8 29 6 27.2 6 25V11C6 8.8 7.8 7 10 7Z" fill="url(#my-main)" />
+  <!-- 2. Soft rim on the main shape: the same path, stroked inside its own clip. -->
+  <clipPath id="my-main-clip"><path d="M10 7H26C28.2 7 30 8.8 30 11V25C30 27.2 28.2 29 26 29H10C7.8 29 6 27.2 6 25V11C6 8.8 7.8 7 10 7Z" /></clipPath>
+  <path d="M10 7H26C28.2 7 30 8.8 30 11V25C30 27.2 28.2 29 26 29H10C7.8 29 6 27.2 6 25V11C6 8.8 7.8 7 10 7Z" stroke="url(#my-main-rim)" stroke-width="2" clip-path="url(#my-main-clip)" />
+  <!-- 3. Detail: white, 1.5 stroke, round caps. -->
+  <path d="M10.5 13H22M10.5 18H17" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" />
+  <!-- 4. Focus: the one amber part, glossy, at least 3 units wide. -->
+  <rect x="20" y="16" width="3" height="7" rx="1.5" fill="url(#my-focus)" />
+  <rect x="20.4" y="16.4" width="2.2" height="6.2" rx="1.1" stroke="url(#my-focus-rim)" stroke-width="0.8" />
+  <defs>
+    <linearGradient id="my-main" x1="8" y1="7" x2="24" y2="29" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" />
+    </linearGradient>
+    <linearGradient id="my-main-rim" x1="6" y1="7" x2="16" y2="21" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.6" /><stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="my-focus" x1="20" y1="16" x2="23" y2="23" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD59A" /><stop offset="0.55" stop-color="#F2AF63" /><stop offset="1" stop-color="#E08A2E" />
+    </linearGradient>
+    <linearGradient id="my-focus-rim" x1="20" y1="16" x2="22.5" y2="21" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+</svg>
