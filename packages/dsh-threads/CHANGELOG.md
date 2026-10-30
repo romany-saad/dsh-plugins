@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+- **An icon.** DSH's Plugins page now shows the plugin's own icon instead of the default artwork, in the light and dark themes. Nothing else changes.
+
 ## 0.4.1
 
 - Chip labels and previews use the shared rs-dsh core's text helper. No change you can see.

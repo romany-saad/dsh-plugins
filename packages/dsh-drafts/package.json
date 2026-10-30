@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-drafts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Get back what you typed into a new DSH Web conversation and left before sending: unsent drafts are listed above the composer of a new conversation, with Open and Discard.",
   "license": "MIT",
   "type": "module",
