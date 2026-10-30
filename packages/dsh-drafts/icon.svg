@@ -1,9 +1,15 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path d="M11 6.5H21.5L28 13V27.5C28 28.6 27.1 29.5 26 29.5H11C9.9 29.5 9 28.6 9 27.5V8.5C9 7.4 9.9 6.5 11 6.5Z" fill="url(#drafts-page)" />
+  <clipPath id="drafts-page-clip"><path d="M11 6.5H21.5L28 13V27.5C28 28.6 27.1 29.5 26 29.5H11C9.9 29.5 9 28.6 9 27.5V8.5C9 7.4 9.9 6.5 11 6.5Z" /></clipPath>
+  <path d="M11 6.5H21.5L28 13V27.5C28 28.6 27.1 29.5 26 29.5H11C9.9 29.5 9 28.6 9 27.5V8.5C9 7.4 9.9 6.5 11 6.5Z" stroke="url(#drafts-page-rim)" stroke-width="2" clip-path="url(#drafts-page-clip)" />
   <path d="M21.5 6.5L28 13H23.5C22.4 13 21.5 12.1 21.5 11V6.5Z" fill="#B9D7FB" />
-  <path d="M12.5 17H23.5M12.5 21.5H18.5" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" />
-  <rect x="20" y="19" width="2" height="5" rx="1" fill="#F2AF63" />
+  <path d="M12.5 17H23.5M12.5 21.5H17.5" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" />
+  <rect x="19.25" y="18.25" width="3" height="6.5" rx="1.5" fill="url(#drafts-caret)" />
+  <rect x="19.65" y="18.65" width="2.2" height="5.7" rx="1.1" stroke="url(#drafts-caret-rim)" stroke-width="0.8" />
   <defs>
     <linearGradient id="drafts-page" x1="10" y1="6.5" x2="26" y2="29.5" gradientUnits="userSpaceOnUse"><stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" /></linearGradient>
+    <linearGradient id="drafts-page-rim" x1="9" y1="6.5" x2="20" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.6" /><stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0" /></linearGradient>
+    <linearGradient id="drafts-caret" x1="19.25" y1="18.25" x2="22.25" y2="24.75" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD59A" /><stop offset="0.55" stop-color="#F2AF63" /><stop offset="1" stop-color="#E08A2E" /></linearGradient>
+    <linearGradient id="drafts-caret-rim" x1="19.25" y1="18.25" x2="21.5" y2="22.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" /></linearGradient>
   </defs>
 </svg>
