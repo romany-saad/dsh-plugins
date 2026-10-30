@@ -607,15 +607,20 @@ export function apply(ctx, config) {
     return finish(report, started, report.errors.length === 0)
   }
 
-  function finish(report, started, ok, note) {
+  // Status writes run one after another, so an older report never overwrites a newer one.
+  let statusWrite = Promise.resolve()
+  async function finish(report, started, ok, note) {
     const parts = []
     if (note) parts.push(note)
     parts.push(`${report.changed.length} changed, ${report.removed.length} removed, ${report.unchanged} unchanged, ${report.errors.length} errors (${Date.now() - started} ms)`)
     lastReport = { at: new Date().toISOString(), ok, summary: parts.join('; '), ...report }
     if (statusFile) {
-      mkdir(dirname(statusFile), { recursive: true })
-        .then(() => writeFile(statusFile, `${JSON.stringify(lastReport, null, 2)}\n`))
+      const text = `${JSON.stringify(lastReport, null, 2)}\n`
+      statusWrite = statusWrite
+        .then(() => mkdir(dirname(statusFile), { recursive: true }))
+        .then(() => writeFile(statusFile, text))
         .catch((error) => log.warn?.(`dsh-automations: cannot write ${statusFile}: ${error.message}`))
+      await statusWrite
     }
     const level = ok ? 'info' : 'warn'
     if (report.changed.length || report.removed.length || report.errors.length) {

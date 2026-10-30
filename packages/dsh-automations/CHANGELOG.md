@@ -15,6 +15,7 @@ Changes from `dsh-plugin-automation-sync`:
 - **YAML always works:** the package ships its YAML parser. Before, it borrowed one from the DSH install and failed when none was found.
 - **A relative `cwd`** is read from the task file's folder. Before, it was read from the folder DSH was started in.
 - **A renamed task renames its conversation.** Before, the conversation kept the first title.
+- **The status file is written before `/automations` answers**, and writes never overlap, so an older result can't overwrite a newer one.
 - **Status file:** `$DSH_HOME/data/dsh-automations/status.json` (was `data/automation-sync/status.json`).
 
 To switch a profile from `dsh-plugin-automation-sync`, remove it from the profile first, so the two never run at the same time, then add this package. Move your `sources`, `baseDir` and `defaults` into a `dsh-automations` row in the profile's `cordis.patch.yml`. The applied state and the task conversations carry over: this package keeps the old storage names and conversation ids, so your tasks are adopted, not created again.
