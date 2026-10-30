@@ -11,4 +11,6 @@ Before building, changing, verifying or releasing a plugin, load the `dsh-plugin
 - Show a change working in a scratch profile under a separate `DSH_HOME`, with real screenshots, before you call it done. Never touch the user's own profiles or GUI server.
 - Publish only when asked, dsh-core first, and confirm the install from npm.
 
+For a plugin icon, load the `dsh-plugin-icons` skill ([.agents/skills/dsh-plugin-icons/SKILL.md](.agents/skills/dsh-plugin-icons/SKILL.md)).
+
 `pnpm test` starts with `scripts/check-repo.mjs`, the repository rules. CI, the `pre-push` hook and the publish workflow run it too. Fix what it reports; do not skip it with `--no-verify`.

@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-cockpit",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A durable task board for a DSH hub session: a tree of steps with free-form link fields, kept as a local JSON file that other processes can read.",
   "license": "MIT",
   "type": "module",
@@ -21,6 +21,7 @@
     "dsh-plugin",
     "deepseek-harness"
   ],
+  "icon": "./icon.svg",
   "exports": {
     ".": "./index.js",
     "./reader": "./reader.js",
@@ -36,6 +37,7 @@
     "examples",
     "board.schema.json",
     "cordis.patch.yml",
+    "icon.svg",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

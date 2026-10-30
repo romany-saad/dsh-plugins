@@ -148,6 +148,8 @@ The browser half was also checked end to end with Playwright against a running D
 | `composer-chip.png` | A thread chip in the message box |
 | `sent-card.png` | The sent message with the thread card expanded |
 
+`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `icon.svg` is the icon DSH's Plugins page shows, and `docs/icon.png` the storefront tile rendered from it (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
+
 ## Release
 
 Bump `version` in `package.json`, add a `CHANGELOG.md` entry, update the version in the README's install lines, merge, then push the tag `dsh-threads@<version>`. `.github/workflows/publish.yml` publishes it. A version with `-`, such as `0.1.0-rc.1`, goes to npm's `next` tag.

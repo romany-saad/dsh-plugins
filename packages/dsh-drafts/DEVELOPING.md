@@ -55,6 +55,8 @@ The flow was also checked end to end with Playwright against a running DSH 0.2.1
 | `opened-draft.png` | An opened draft back in the message box, the other still listed |
 | `discard-undo.png` | A discarded row with Undo |
 
+`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `icon.svg` is the icon DSH's Plugins page shows, and `docs/icon.png` the storefront tile rendered from it (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
+
 ## Release
 
 Bump `version` in `package.json`, add a `CHANGELOG.md` entry, update the version in the README's install lines, merge, then push the tag `dsh-drafts@<version>`. `.github/workflows/publish.yml` publishes it.

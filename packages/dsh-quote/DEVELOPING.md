@@ -69,6 +69,8 @@ pnpm --filter @rs-dsh/dsh-quote test
 | `edit-note.png` | The edit box with Remove, Cancel and Save |
 | `sent-cards.png` | The sent message with two cards, and the reply |
 
+`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `icon.svg` is the icon DSH's Plugins page shows, and `docs/icon.png` the storefront tile rendered from it (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
+
 ## Release
 
 Bump `version` in `package.json`, add a `CHANGELOG.md` entry, update the version in the README's install lines, merge, then push the tag `dsh-quote@<version>`. `.github/workflows/publish.yml` publishes it.

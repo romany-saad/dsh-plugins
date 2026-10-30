@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- **An icon.** DSH's Plugins page now shows the plugin's own icon instead of the default artwork, in the light and dark themes. Nothing else changes.
+
 ## 0.3.1
 
 Cockpit asks agents using a board to keep it current and avoid unverified completion. This is guidance rather than automatic tracking; the visible board and screenshots are unchanged.

@@ -7,7 +7,7 @@ Quote passages from a DeepSeek Harness conversation into your next message, each
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.3.1
+dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.3.2
 ```
 
 Then reload the DSH web page.
@@ -15,7 +15,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.3.1&path:packages/dsh-quote'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.3.2&path:packages/dsh-quote'
 ```
 
 The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-quote` or `dsh-core` to the profile's own `cordis.patch.yml`.

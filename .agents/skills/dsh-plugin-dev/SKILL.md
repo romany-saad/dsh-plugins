@@ -50,6 +50,8 @@ Styles go through `core.style(plugin, css)` under `[data-rs-dsh="<plugin>"]`, wi
 
 Copy the layout of the closest sibling (dsh-quote for a core-based client plugin): `package.json` (`exports`, `files`, `dsh.client.inject` listing every DSH package whose services you inject, `dependencies: { "@rs-dsh/dsh-core": "workspace:^" }`), `index.js`, `cordis.patch.yml` inserting the `dsh-core` row and then yours, `LICENSE`, `CHANGELOG.md`, `README.md`, `DEVELOPING.md`, `test/no-network.mjs`. Add the package to the root README table. The shared guard tests in `packages/dsh-core/test/` start every core-based plugin with a fake context: give it any new service your `inject` names.
 
+Icon: an `icon.svg` in DSH's style, wired into `package.json`, and its storefront tile; follow the [dsh-plugin-icons skill](../dsh-plugin-icons/SKILL.md).
+
 Tests: pure helpers in a `vm` (`client.test.js`), and the rendered UI on dsh-core's `test/dom.mjs` page with real React (`apply.test.js`). Objects from the bundle's realm compare by value: `JSON.parse(JSON.stringify(x))`.
 
 ## 4. Verify in a real DSH before saying it works

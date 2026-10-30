@@ -1,0 +1,20 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g fill="url(#quote-marks)">
+    <path transform="translate(8.5 11.5)" d="M0 4.2a4 4 0 1 0 4-4c.3-1.9 1.4-3.3 3.3-4.2l-.7-1.5C2.4-3.9 0-0.6 0 4.2z" />
+    <path transform="translate(18 11.5)" d="M0 4.2a4 4 0 1 0 4-4c.3-1.9 1.4-3.3 3.3-4.2l-.7-1.5C2.4-3.9 0-0.6 0 4.2z" />
+  </g>
+  <g stroke="url(#quote-marks-rim)" stroke-width="0.8">
+    <path transform="translate(8.5 11.5)" d="M0 4.2a4 4 0 1 0 4-4c.3-1.9 1.4-3.3 3.3-4.2l-.7-1.5C2.4-3.9 0-0.6 0 4.2z" />
+    <path transform="translate(18 11.5)" d="M0 4.2a4 4 0 1 0 4-4c.3-1.9 1.4-3.3 3.3-4.2l-.7-1.5C2.4-3.9 0-0.6 0 4.2z" />
+  </g>
+  <rect x="7.5" y="22.5" width="3.5" height="8" rx="1.75" fill="url(#quote-bar)" />
+  <rect x="7.9" y="22.9" width="2.7" height="7.2" rx="1.35" stroke="url(#quote-bar-rim)" stroke-width="0.8" />
+  <rect x="13.5" y="23" width="14.5" height="2.5" rx="1.25" fill="#7FB7FC" fill-opacity="0.8" />
+  <rect x="13.5" y="27.5" width="10" height="2.5" rx="1.25" fill="#7FB7FC" fill-opacity="0.8" />
+  <defs>
+    <linearGradient id="quote-marks" x1="0" y1="-5.5" x2="7" y2="8.5" gradientUnits="userSpaceOnUse"><stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" /></linearGradient>
+    <linearGradient id="quote-marks-rim" x1="0" y1="-5.5" x2="5" y2="5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.6" /><stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0" /></linearGradient>
+    <linearGradient id="quote-bar" x1="7.5" y1="22.5" x2="11" y2="30.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD59A" /><stop offset="0.55" stop-color="#F2AF63" /><stop offset="1" stop-color="#E08A2E" /></linearGradient>
+    <linearGradient id="quote-bar-rim" x1="7.5" y1="22.5" x2="10" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" /></linearGradient>
+  </defs>
+</svg>
