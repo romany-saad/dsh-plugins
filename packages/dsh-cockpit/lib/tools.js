@@ -193,15 +193,13 @@ const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(e
  * @param {string} [options.dshHome] DSH_HOME for the drift command
  */
 export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome }) {
-  const bound = new Map() // sessionId ('' without an agent) -> key
+  let unscopedKey // Calls without a session keep their binding in memory only.
   const sessionOf = (exec) => exec?.agent?.session?.id ?? ''
 
   async function keyOf(exec) {
     const sid = sessionOf(exec)
-    if (bound.has(sid)) return bound.get(sid)
-    const key = sid ? await store.readBinding(sid) : undefined
-    if (key !== undefined) bound.set(sid, key)
-    return key
+    // Other instances can rebind the session; the persisted binding is authoritative.
+    return sid ? store.readBinding(sid) : unscopedKey
   }
 
   // Expected misses are result values: a thrown error reaches the model only
@@ -294,7 +292,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
         if (args.parent !== undefined && args.parent !== current.parent) return { board: { ...current, parent: args.parent }, write: true, created: false }
         return { board: current, write: false, created: false }
       }, { by: sid || undefined, signal: exec.signal })
-      bound.set(sid, args.key)
+      if (!sid) unscopedKey = args.key
       return ok({ created, ...view(board, store.file(args.key)) })
     }),
 

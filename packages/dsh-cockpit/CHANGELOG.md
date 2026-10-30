@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+Cockpit asks agents using a board to keep it current and avoid unverified completion. This is guidance rather than automatic tracking; the visible board and screenshots are unchanged.
+
+- **Agent guidance:** reconcile existing board tasks at meaningful transitions and before handoff, use verified facts, and keep blockers and next actions current. Sessions do not create boards solely because of this guidance.
+- **Session binding:** board tools reread the persisted session binding so a rebind from another instance or a failed open cannot leave tools using a stale cached board while the GUI shows another.
+
 ## 0.3.0
 
 The board tools refuse a reference to a step that is not on the board. The Board tab, the strip, config and the board format are unchanged.

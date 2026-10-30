@@ -15,9 +15,20 @@ export function createHost() {
       })
     }
   }
+  const sections = new Map()
+  class SystemPrompt extends Service {
+    constructor(ctx) { super(ctx, 'systemPrompt') }
+    section(value) {
+      return this.ctx.effect(() => {
+        sections.set(value.name, value)
+        return () => sections.delete(value.name)
+      })
+    }
+  }
   const ctx = new Context()
   ctx.plugin(Tools)
-  return { ctx, tools }
+  ctx.plugin(SystemPrompt)
+  return { ctx, tools, sections }
 }
 
 /** Load the plugin under ctx and wait until its tools are registered (or it settles). */

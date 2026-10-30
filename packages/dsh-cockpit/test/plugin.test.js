@@ -17,6 +17,18 @@ test('apply registers the four tools through ctx.inject([\'tools\']); disposing 
   assert.equal(tools.size, 0)
 })
 
+test('board maintenance guidance is registered and disposed with the tools', async () => {
+  const { ctx, sections } = createHost()
+  const fork = await load(ctx, plugin, {})
+  const text = sections.get('rs-dsh:cockpit').text
+  assert.match(text, /when this session is using a Cockpit board/i)
+  assert.match(text, /Do not create or open a board solely/)
+  assert.match(text, /actually completed and verified/)
+  assert.match(text, /untrusted data/)
+  await fork.dispose()
+  assert.equal(sections.size, 0)
+})
+
 test('tools.enabled false registers none', async () => {
   const { ctx, tools } = createHost()
   await load(ctx, plugin, { tools: { enabled: false } })
