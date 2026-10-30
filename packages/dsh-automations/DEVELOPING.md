@@ -23,7 +23,7 @@ To try a checkout, install it by path into a scratch profile: `dsh plugin --prof
 
 State per task lives in the `automation_sync` domain, table `tasks`. A sync reads the sources, then the Schedule catalog once, then for each task:
 
-1. **Session.** Its id is derived from the task id and a hash of `{ cwd, agentPreset }` (`derivedSessionId`), so a crash after create re-adopts it. A new key creates a new Session and deletes the old one's schedule.
+1. **Session.** A changed title renames it. Its id is derived from the task id and a hash of `{ cwd, agentPreset }` (`derivedSessionId`), so a crash after create re-adopts it. A new key creates a new Session and deletes the old one's schedule.
 2. **Model and permission**, only when the declared value changed. The model goes through `sessionController.agents.selectForNextRequest`, not the public `selectModel`, because that also rewrites the profile's default model. This is an internal seam: if it goes, `applyModel` throws and the task reports an error.
 3. **Schedule.** Create, or compare-and-set `schedule.update` with the stored record as `expected` (3 tries on `schedule_conflict`), else delete and create. An active orphan in the task's Session with the same title and no owner is adopted. A finished one-shot stays finished until its declaration changes. A Host input error (`INPUT_ERROR_CODES`) is cached against the declaration hash, so it is not retried until the task changes.
 
@@ -44,3 +44,11 @@ The storage domains (`automation_sync`, `automation_sync_runs`) and the Session 
 ## Triggers
 
 Startup (500 ms after apply), a directory watch re-armed after each scan (editors replace files, which detaches per-file watchers), a stat-only fingerprint poll (`pollMs`), `schedule/changed` (our own writes cause a no-op follow-up), and `/automations`.
+
+## Screenshots
+
+Taken from a scratch `DSH_HOME` with `@deepseek-ai/dsh-web-app` and `@deepseek-ai/dsh-experimental-schedule-bundle`, three demo tasks in `$DSH_HOME/automations/tasks.yaml`, 1400 × 900 at 2×, light theme:
+
+- `docs/images/automation-tasks.png`: the Automation tasks page with the tasks and one open.
+- `docs/images/command-menu.png`: `/automations` in the message box's command menu.
+- `docs/images/command-result.png`: its result row in a conversation. A command runs only in a conversation that already exists; on a blank new Session, DSH's composer does not submit it.

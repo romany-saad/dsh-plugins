@@ -2,7 +2,7 @@
 
 Keep your [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) automation tasks in files. Write each task (its schedule, prompt, model, permission and working folder) in a YAML, JSON or JS file, and the plugin makes the Schedule match: it creates, updates, disables and deletes tasks so that they are exactly what the files say.
 
-<!-- Screenshot to add before release: docs/images/automation-tasks.png, the Automation tasks page with tasks synced from a file. -->
+![Three tasks from a task file on DSH's Automation tasks page, one open with its weekday schedule](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-automations/docs/images/automation-tasks.png)
 
 ## Install
 
@@ -74,11 +74,17 @@ Add `timeZone:` inside `schedule` to give one schedule its own time zone.
 
 ### What happens when you save
 
-Saving a file syncs within a second or so. You can also type `/automations` in the message box to sync now, or `/automations status` to see the result of the last sync without syncing.
+Saving a file syncs within a second or so. You can also type `/automations` in the message box of a conversation to sync now, or `/automations status` to see the result of the last sync without syncing.
+
+![The /automations command in the message box's command menu](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-automations/docs/images/command-menu.png)
+
+The result shows in the conversation as a command line, not as a message to the model:
+
+![The /automations result in a conversation: sync ok, 0 changed, 0 removed, 3 unchanged, 0 errors](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-automations/docs/images/command-result.png)
 
 | You change | What happens |
 |---|---|
-| title, prompt or schedule | The task is updated in place and keeps its history. |
+| title, prompt or schedule | The task is updated in place and keeps its history. A new title also renames its conversation. |
 | model | Used in that task's conversation only. Your default model does not change. |
 | permission | Set on that task's conversation. |
 | `cwd` or `agentPreset` | The task moves to a new conversation. |

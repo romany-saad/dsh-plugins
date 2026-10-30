@@ -62,6 +62,16 @@ test('a changed schedule is updated in place, keeping its id', async () => {
   await h.fork.dispose()
 })
 
+test('a renamed task retitles its Session', async () => {
+  const h = await setup([digest])
+  await h.run()
+  await h.write([{ ...digest, title: 'Morning digest' }])
+  assert.match((await h.run()).text, /digest: session retitled, schedule updated/)
+  const [entry] = await h.schedule.catalog()
+  assert.equal(h.sessionController.sessions.get(entry.sessionId).title, '⏱ Morning digest')
+  await h.fork.dispose()
+})
+
 test('an edit made in the Schedule page is reverted to the file', async () => {
   const h = await setup([digest])
   await h.run()

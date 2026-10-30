@@ -427,7 +427,17 @@ export function apply(ctx, config) {
       session: task.session, model: task.model, permission: task.permission, agentPreset: task.agentPreset,
     }
     declared.set(sessionId, snapshot)
+    // A renamed task retitles its Session; a new Session was titled on creation.
+    const previousTitle = state.declared?.title
     if (hash(state.declared ?? null) !== hash(snapshot)) await save({ declared: snapshot })
+    if (previousTitle !== undefined && previousTitle !== task.title && cfg.sessionTitlePrefix !== false) {
+      try {
+        await ctx.sessionController.rename({ sessionId, title: `${cfg.sessionTitlePrefix}${task.title}` })
+        actions.push('session retitled')
+      } catch (error) {
+        log.warn?.(`dsh-automations: could not retitle the session of ${task.id}: ${errorText(error)}`)
+      }
+    }
 
     // 2. Model and permission (applied only when the declared value changed).
     //    A fresh-session task applies them to each run Session instead.
