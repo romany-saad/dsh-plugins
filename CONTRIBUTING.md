@@ -95,3 +95,14 @@ To try a package from a checkout, install it by path into a scratch profile: `ds
 CI runs it on every pull request. `pnpm install` turns on a `pre-push` hook that runs it before each push. Before a release tag is pushed, the hook and the publish workflow also run `node scripts/check-repo.mjs --tag <package>@<version>`. That check refuses the tag while the dsh-core version the package needs is not yet on npm.
 
 The steps behind these rules, from finding a DSH extension point to verifying in a scratch profile and releasing in order, are in [.agents/skills/dsh-plugin-dev/SKILL.md](.agents/skills/dsh-plugin-dev/SKILL.md).
+
+## Plugin catalog
+
+DSH's Discover tab, dshmarket and most other plugin finders read the [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) catalog. Each listed plugin has one entry file there, `data/plugins/romany-saad__dsh-plugins--packages-<name>.yml`, with the plugin's one-line description, its category and its icon. dsh-core is not listed: the plugins bring it with them.
+
+The catalog finds the npm package from the package's `repository` field, so a new version needs no catalog change. Change the entry when the one-line description no longer matches the plugin; the catalog checks it against the code. A new plugin gets its own entry, at most three per pull request there.
+
+Each listed package keeps two files for the storefronts:
+
+- `screenshots.json`: the README's screenshots, as paths relative to the package, first one first, at most 8. Keep it in step with the README.
+- `docs/icon.png`: the storefront tile, 512 × 512, rendered from `docs/icon.svg`. The icons share one tile: DSH's light surface (`#F7F7F8`), a near-black line glyph (`#0F1115`, 24 px stroke on 512), the blue DSH uses for in-progress (`#4176E6`) for the one detail that matters, and a small blue dot bottom right as the rs-dsh mark. To render one: `google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 --window-size=512,512 --screenshot=docs/icon.png docs/icon.svg`, run in the package folder.

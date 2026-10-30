@@ -100,6 +100,8 @@ dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@<ver
 | `strip-whole-board.png` | Whole-board progress with a completed parent and a standalone step waiting on CI |
 | `tool-cards.png` | Two board tool calls as cards under Called tools |
 
+`screenshots.json` lists these images, in this order, for plugin storefronts that read the awesome-dsh-plugin catalog; keep it in step when you add, rename or drop one. `docs/icon.png` is the storefront tile, rendered from `docs/icon.svg` (see [CONTRIBUTING.md](../../CONTRIBUTING.md#plugin-catalog)).
+
 ## Releases
 
 A release bumps `version` in `package.json`, adds a CHANGELOG entry and is tagged `dsh-cockpit@<version>` after the merge; pushing the tag publishes it to npm. npm shows the README of the last published version, so a README change reaches npmjs.com only with a release.
