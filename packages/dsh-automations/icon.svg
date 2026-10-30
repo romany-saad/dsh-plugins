@@ -6,11 +6,22 @@
   <path d="M19.5 6V10.5C19.5 11.6 20.4 12.5 21.5 12.5H26Z" fill="#B9D7FB" />
   <!-- Its lines: the tasks. -->
   <path d="M12.75 10.5L10.5 13L12.75 15.5M17 10.5L19.25 13L17 15.5M15.6 10L14.15 16" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><path d="M10.5 20H15.5M10.5 23.5H13.5" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="1.5" stroke-linecap="round" />
-  <!-- The focus: the schedule, an amber clock with a small gear meshing into its rim. -->
-  <path d="M25.44 20.54L24.78 21.19L24.18 20.69L24.71 19.92A2.45 2.45 0 0 1 24.27 19.08L23.34 19.07L23.27 18.29L24.18 18.12A2.45 2.45 0 0 1 24.47 17.21L23.82 16.55L24.32 15.95L25.08 16.48A2.45 2.45 0 0 1 25.93 16.04L25.94 15.11L26.72 15.04L26.88 15.95A2.45 2.45 0 0 1 27.8 16.24L28.45 15.59L29.06 16.09L28.53 16.86A2.45 2.45 0 0 1 28.97 17.7L29.9 17.71L29.97 18.49L29.05 18.66A2.45 2.45 0 0 1 28.77 19.57L29.42 20.23L28.91 20.83L28.15 20.3A2.45 2.45 0 0 1 27.3 20.74L27.3 21.67L26.52 21.74L26.35 20.83A2.45 2.45 0 0 1 25.44 20.54ZM25.62 18.39a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" fill-rule="evenodd" fill="url(#automations-gear)" />
-  <circle cx="21.7" cy="24.25" r="5.75" fill="url(#automations-clock)" />
-  <circle cx="21.7" cy="24.25" r="5.35" stroke="url(#automations-clock-rim)" stroke-width="0.8" />
+  <!-- The focus: the schedule, an amber clock with a small gear biting into its rim. -->
+  <mask id="automations-dent" maskUnits="userSpaceOnUse" x="0" y="0" width="36" height="36">
+    <rect width="36" height="36" fill="#FFFFFF" />
+    <path d="M25.44 20.54L24.78 21.19L24.18 20.69L24.71 19.92A2.45 2.45 0 0 1 24.27 19.08L23.34 19.07L23.27 18.29L24.18 18.12A2.45 2.45 0 0 1 24.47 17.21L23.82 16.55L24.32 15.95L25.08 16.48A2.45 2.45 0 0 1 25.93 16.04L25.94 15.11L26.72 15.04L26.88 15.95A2.45 2.45 0 0 1 27.8 16.24L28.45 15.59L29.06 16.09L28.53 16.86A2.45 2.45 0 0 1 28.97 17.7L29.9 17.71L29.97 18.49L29.05 18.66A2.45 2.45 0 0 1 28.77 19.57L29.42 20.23L28.91 20.83L28.15 20.3A2.45 2.45 0 0 1 27.3 20.74L27.3 21.67L26.52 21.74L26.35 20.83A2.45 2.45 0 0 1 25.44 20.54Z" fill="#000000" stroke="#000000" stroke-width="0.9" stroke-linejoin="round" />
+  </mask>
+  <clipPath id="automations-clock-clip"><circle cx="21.7" cy="24.25" r="5.75" /></clipPath>
+  <g mask="url(#automations-dent)">
+    <circle cx="21.7" cy="24.25" r="5.75" fill="url(#automations-clock)" />
+    <circle cx="21.7" cy="24.25" r="5.35" stroke="url(#automations-clock-rim)" stroke-width="0.8" />
+    <!-- The lit lip of the dent. -->
+    <path d="M25.44 20.54L24.78 21.19L24.18 20.69L24.71 19.92A2.45 2.45 0 0 1 24.27 19.08L23.34 19.07L23.27 18.29L24.18 18.12A2.45 2.45 0 0 1 24.47 17.21L23.82 16.55L24.32 15.95L25.08 16.48A2.45 2.45 0 0 1 25.93 16.04L25.94 15.11L26.72 15.04L26.88 15.95A2.45 2.45 0 0 1 27.8 16.24L28.45 15.59L29.06 16.09L28.53 16.86A2.45 2.45 0 0 1 28.97 17.7L29.9 17.71L29.97 18.49L29.05 18.66A2.45 2.45 0 0 1 28.77 19.57L29.42 20.23L28.91 20.83L28.15 20.3A2.45 2.45 0 0 1 27.3 20.74L27.3 21.67L26.52 21.74L26.35 20.83A2.45 2.45 0 0 1 25.44 20.54Z" stroke="url(#automations-dent-lip)" stroke-width="2.0" stroke-linejoin="round" clip-path="url(#automations-clock-clip)" />
+  </g>
   <path d="M21.7 21.25V24.25L23.80 25.65" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M25.44 20.54L24.78 21.19L24.18 20.69L24.71 19.92A2.45 2.45 0 0 1 24.27 19.08L23.34 19.07L23.27 18.29L24.18 18.12A2.45 2.45 0 0 1 24.47 17.21L23.82 16.55L24.32 15.95L25.08 16.48A2.45 2.45 0 0 1 25.93 16.04L25.94 15.11L26.72 15.04L26.88 15.95A2.45 2.45 0 0 1 27.8 16.24L28.45 15.59L29.06 16.09L28.53 16.86A2.45 2.45 0 0 1 28.97 17.7L29.9 17.71L29.97 18.49L29.05 18.66A2.45 2.45 0 0 1 28.77 19.57L29.42 20.23L28.91 20.83L28.15 20.3A2.45 2.45 0 0 1 27.3 20.74L27.3 21.67L26.52 21.74L26.35 20.83A2.45 2.45 0 0 1 25.44 20.54ZM25.62 18.39a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" fill-rule="evenodd" fill="url(#automations-gear)" />
+  <clipPath id="automations-gear-clip"><path d="M25.44 20.54L24.78 21.19L24.18 20.69L24.71 19.92A2.45 2.45 0 0 1 24.27 19.08L23.34 19.07L23.27 18.29L24.18 18.12A2.45 2.45 0 0 1 24.47 17.21L23.82 16.55L24.32 15.95L25.08 16.48A2.45 2.45 0 0 1 25.93 16.04L25.94 15.11L26.72 15.04L26.88 15.95A2.45 2.45 0 0 1 27.8 16.24L28.45 15.59L29.06 16.09L28.53 16.86A2.45 2.45 0 0 1 28.97 17.7L29.9 17.71L29.97 18.49L29.05 18.66A2.45 2.45 0 0 1 28.77 19.57L29.42 20.23L28.91 20.83L28.15 20.3A2.45 2.45 0 0 1 27.3 20.74L27.3 21.67L26.52 21.74L26.35 20.83A2.45 2.45 0 0 1 25.44 20.54ZM25.62 18.39a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" clip-rule="evenodd" /></clipPath>
+  <path d="M25.44 20.54L24.78 21.19L24.18 20.69L24.71 19.92A2.45 2.45 0 0 1 24.27 19.08L23.34 19.07L23.27 18.29L24.18 18.12A2.45 2.45 0 0 1 24.47 17.21L23.82 16.55L24.32 15.95L25.08 16.48A2.45 2.45 0 0 1 25.93 16.04L25.94 15.11L26.72 15.04L26.88 15.95A2.45 2.45 0 0 1 27.8 16.24L28.45 15.59L29.06 16.09L28.53 16.86A2.45 2.45 0 0 1 28.97 17.7L29.9 17.71L29.97 18.49L29.05 18.66A2.45 2.45 0 0 1 28.77 19.57L29.42 20.23L28.91 20.83L28.15 20.3A2.45 2.45 0 0 1 27.3 20.74L27.3 21.67L26.52 21.74L26.35 20.83A2.45 2.45 0 0 1 25.44 20.54ZM25.62 18.39a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z" stroke="url(#automations-gear-rim)" stroke-width="1.4" stroke-linejoin="round" clip-path="url(#automations-gear-clip)" />
   <defs>
     <linearGradient id="automations-page" x1="9" y1="6" x2="24" y2="30" gradientUnits="userSpaceOnUse">
       <stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" />
@@ -26,6 +37,12 @@
     </linearGradient>
     <linearGradient id="automations-gear" x1="23.27" y1="15.04" x2="29.97" y2="21.74" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFD59A" /><stop offset="0.5" stop-color="#F2AF63" /><stop offset="1" stop-color="#D47A20" />
+    </linearGradient>
+    <linearGradient id="automations-gear-rim" x1="23.27" y1="15.04" x2="26.62" y2="18.39" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  <linearGradient id="automations-dent-lip" x1="17" y1="19" x2="27" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.35" />
     </linearGradient>
   </defs>
 </svg>
