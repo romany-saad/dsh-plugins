@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- **Declares the DSH versions it supports.** `engines.dsh` is `>=0.2.1-rc.2 <0.3.0-0`, the DSH 0.2 line it is tested with. DSH checks it before installing, and plugin markets show it as the version's compatibility. Nothing else changes.
+
 ## 0.1.0
 
 The first release. It is the private `dsh-plugin-automation-sync` plugin, made into a published rs-dsh package.

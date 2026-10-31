@@ -7,7 +7,7 @@ Get back what you typed into a new DeepSeek Harness conversation and left before
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-drafts@0.1.1
+dsh plugin --profile <name> add @rs-dsh/dsh-drafts@0.1.2
 ```
 
 Then reload the DSH web page.
@@ -15,7 +15,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-drafts@0.1.1&path:packages/dsh-drafts'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-drafts@0.1.2&path:packages/dsh-drafts'
 ```
 
 The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-drafts` or `dsh-core` to the profile's own `cordis.patch.yml`.

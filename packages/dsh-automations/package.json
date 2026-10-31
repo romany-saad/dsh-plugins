@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-automations",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Keep DSH automation tasks in task files: the plugin reconciles the Schedule with them, creating, updating, disabling and deleting tasks to match.",
   "license": "MIT",
   "type": "module",
@@ -14,7 +14,8 @@
     "provenance": true
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "keywords": [
     "dsh",

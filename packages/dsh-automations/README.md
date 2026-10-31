@@ -7,13 +7,13 @@ Keep your [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) au
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.1.0
+dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.1.1
 ```
 
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.1.0&path:packages/dsh-automations'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.1.1&path:packages/dsh-automations'
 ```
 
 Restart DSH after installing.

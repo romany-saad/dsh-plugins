@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-drafts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Get back what you typed into a new DSH Web conversation and left before sending: unsent drafts are listed above the composer of a new conversation, with Open and Discard.",
   "license": "MIT",
   "type": "module",
@@ -60,7 +60,8 @@
     "@rs-dsh/dsh-core": "workspace:^"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.2"

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3
+
+- **Declares the DSH versions it supports.** `engines.dsh` is `>=0.2.1-rc.2 <0.3.0-0`, the DSH 0.2 line it is tested with. DSH checks it before installing, and plugin markets show it as the version's compatibility. Nothing else changes.
+
 ## 0.4.2
 
 - **An icon.** DSH's Plugins page now shows the plugin's own icon instead of the default artwork, in the light and dark themes. Nothing else changes.
