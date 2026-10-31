@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-threads",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Comment on any passage of a DSH Web conversation and get a brief reply from the session's own model in a small thread next to it, without touching the main chat.",
   "license": "MIT",
   "type": "module",
@@ -74,7 +74,8 @@
     "@deepseek-ai/dsh-tool-web": "0.2.1-rc.2"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-tool-fs-search": {

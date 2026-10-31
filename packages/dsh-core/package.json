@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Shared UI layer for the rs-dsh DSH plugins: one selection toolbar, anchored cards and DSH's own components, so the plugins look like DSH and stay small.",
   "license": "MIT",
   "type": "module",
@@ -56,6 +56,7 @@
     "react-dom": "19.2.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   }
 }

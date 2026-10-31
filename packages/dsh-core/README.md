@@ -9,7 +9,7 @@ The shared base of the rs-dsh plugins for DeepSeek Harness. It gives them one se
 Install the plugins you want. Each one brings this package and adds it to the profile:
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.4.2 @rs-dsh/dsh-quote@0.3.2 @rs-dsh/dsh-drafts@0.1.1
+dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.4.3 @rs-dsh/dsh-quote@0.3.3 @rs-dsh/dsh-drafts@0.1.2
 ```
 
 Then reload the DSH web page. However many rs-dsh plugins you install, the core runs once.
