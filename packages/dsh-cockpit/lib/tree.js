@@ -1,15 +1,19 @@
 // Draw a board's tasks as a tree (design section 3). No DSH imports. The row
 // text, the flags and the problems come from lib/rows.js.
+import { inboxOf, inboxText } from './inbox.js'
 import { blockedText, boardFlags, boardRows, flagText, problems, progressText, reportedText } from './rows.js'
 
 export { boardFlags, flagText, problems }
 
 /**
  * @param {{tasks: object[], parent?: string}} board
- * @param {{only?: Set<string>}} [options] draw only these items (filters); a
- *   task whose parent is not drawn becomes a root, without a flag.
+ * @param {{only?: Set<string>, inbox?: 'shown'|'all'|'none'}} [options] only: draw only
+ *   these items (filters); a task whose parent is not drawn becomes a root,
+ *   without a flag. inbox: which inbox items the Inbox block lists (shown:
+ *   those not cleared, the default; none with only).
  * @returns {{tree: string, flags: object[], problems: {item: string, items: string[], text: string}[]}}
- *   tree: a "Problems:" block first when there are any, then the rows.
+ *   tree: a "Problems:" block first when there are any, then the rows, then
+ *   the Inbox block when it has items.
  */
 export function boardTree(board, options = {}) {
   const tasks = Array.isArray(board?.tasks) ? board.tasks : []
@@ -42,5 +46,8 @@ export function boardTree(board, options = {}) {
   const all = problems(tasks, flags)
   const shown = only ? all.filter((p) => p.items.some((i) => only.has(i))) : all
   const top = shown.length ? 'Problems:\n' + shown.map((p) => '  ' + p.text).join('\n') + '\n\n' : ''
-  return { tree: top + body, flags: only ? flags.filter((f) => only.has(f.item)) : flags, problems: shown }
+  const which = options.inbox ?? (only ? 'none' : 'shown')
+  const inbox = which === 'none' ? '' : inboxText(inboxOf(board), { all: which === 'all' })
+  const tree = [top + body, inbox].filter(Boolean).join(body ? '\n\n' : '')
+  return { tree, flags: only ? flags.filter((f) => only.has(f.item)) : flags, problems: shown }
 }

@@ -205,7 +205,7 @@ test('refusals: route.enabled false registers no routes, and the tools still reg
   await fork.dispose()
   const { ctx: toolsCtx, tools } = createHost()
   await start(toolsCtx, { route: { enabled: false } })
-  assert.equal(tools.size, 4)
+  assert.equal(tools.size, 5)
 })
 
 test('tools.enabled false keeps the routes; a bad config registers neither', async () => {

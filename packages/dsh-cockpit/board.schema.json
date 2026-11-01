@@ -50,6 +50,18 @@
     },
     "drift": {
       "$ref": "#/$defs/drift"
+    },
+    "inbox": {
+      "type": "array",
+      "description": "The Inbox: rough items noted for later, outside the task tree until they are refined into tasks. Not counted in progress; a task cannot name one as parent or dependency.",
+      "items": {
+        "$ref": "#/$defs/inboxItem"
+      }
+    },
+    "inboxSeq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The number of the last Inbox id given, so a deleted id is never given again."
     }
   },
   "$defs": {
@@ -184,6 +196,65 @@
         },
         "error": {
           "type": "string"
+        }
+      }
+    },
+    "inboxItem": {
+      "type": "object",
+      "required": [
+        "id",
+        "text",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^i[0-9]+$",
+          "description": "i1, i2, …, unique on the board and never reused."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The item as the user said it."
+        },
+        "state": {
+          "enum": [
+            "open",
+            "refined",
+            "dropped"
+          ],
+          "description": "open: not refined yet; refined: turned into tasks (refinedInto); dropped: will not be done."
+        },
+        "source": {
+          "enum": [
+            "chat",
+            "panel"
+          ],
+          "description": "Where the text came from."
+        },
+        "note": {
+          "type": "string"
+        },
+        "refinedInto": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Items of the tasks it became."
+        },
+        "refinedWith": {
+          "type": "string",
+          "description": "The skill the analysis came from."
+        },
+        "addedAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "clearedAt": {
+          "type": "string",
+          "description": "Set when the item was cleared from view; it stays in the file."
         }
       }
     }

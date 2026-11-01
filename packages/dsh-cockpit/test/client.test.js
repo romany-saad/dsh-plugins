@@ -99,7 +99,7 @@ function register(exports) {
   return calls
 }
 
-test('the bundle registers the Board tab, the four tool cards and the strip; materializing it requires only react', () => {
+test('the bundle registers the Board tab, the five tool cards and the strip; materializing it requires only react', () => {
   const { row, exports } = load()
   assert.equal(row.id, '@rs-dsh/dsh-cockpit')
   assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight'])
@@ -109,11 +109,11 @@ test('the bundle registers the Board tab, the four tool cards and the strip; mat
   assert.equal(calls.tabs[0].title(), 'Board', 'still "Board" in 0.1')
   assert.deepEqual(calls.slots.map((s) => [s.entry.name, s.entry.key ?? s.entry.id]), [
     ['sidebar.right.pane.tab', '@rs-dsh/dsh-cockpit'],
-    ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'],
+    ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'], ['tool.call.toolview', 'board_inbox'],
     ['conversation.input.dock', 'dsh-cockpit-progress'],
   ])
   assert.equal(JSON.stringify(calls.slots[0].entry.inject('s1')), '{"sessionId":"s1"}')
-  const dock = calls.slots[5].entry
+  const dock = calls.slots[6].entry
   assert.equal(dock.order, 30, 'after the Todo, Goal and Queue docks')
   const props = dock.inject('s1')
   assert.equal(props.sessionId, 's1')
@@ -689,4 +689,99 @@ test('the card renders folded and opens to the result, through the host\'s Discl
   assert.ok('data-dsh-cockpit-card' in withRow.props)
   assert.ok(textOf(withRow).includes('TREE'))
   assert.deepEqual([seen[0].title, seen[0].expandable, seen[0].open, seen[0].expandOnRowClick], ['Board', true, true, true])
+})
+
+
+// ---- The Inbox (#51) ----
+
+const withInbox = (view, inbox) => ({ ...view, board: { ...view.board, inbox } })
+const INBOX = [
+  { id: 'i1', text: 'Dark mode for the strip', state: 'open', source: 'chat' },
+  { id: 'i2', text: 'Export the board as Markdown', state: 'refined', refinedInto: ['5', '6b'], refinedWith: 'grill-me' },
+  { id: 'i3', text: 'Old idea', state: 'dropped', note: 'covered by #884' },
+  { id: 'i4', text: 'Gone', state: 'dropped', clearedAt: '2026-10-25T07:00:00Z' },
+]
+/** A fill that records what it put in the message box, and answers result. */
+const filler = (result = 'filled') => { const calls = []; const fill = (text) => { calls.push(text); return result }; fill.calls = calls; return fill }
+const inboxOfView = (view, fill) => {
+  const { exports } = load()
+  return expand(exports.BoardView({ view, now: Date.UTC(2026, 9, 25, 8), fill }))
+}
+
+test('the Inbox: items not cleared, with what they became; refined and dropped are told apart', () => {
+  const out = render(withInbox(live, INBOX))
+  assert.ok(out.includes('Inbox 1 open'))
+  assert.ok(out.includes('Dark mode for the strip'))
+  assert.ok(out.includes('refined → 5, 6b · with grill-me'))
+  assert.ok(out.includes('dropped') && out.includes('covered by #884'))
+  assert.ok(!out.includes('Gone'), 'a cleared item is not shown')
+  assert.ok(out.indexOf('Inbox') < out.indexOf('effort'), 'above the tree')
+  const all = nodes(withInbox(live, INBOX))
+  assert.deepEqual(all.filter((n) => n.props['data-inbox-item']).map((n) => [n.props['data-inbox-item'], n.props['data-state']]), [['i1', 'open'], ['i2', 'refined'], ['i3', 'dropped']])
+  assert.ok(!render(live).includes('Inbox'), 'no section without items or a message box')
+})
+
+test('the Inbox buttons fill the message box and write nothing: Refine, Refine all, Clear, Add', () => {
+  const two = withInbox(live, [...INBOX, { id: 'i5', text: 'Second', state: 'open' }])
+  const fill = filler()
+  const all = inboxOfView(two, fill)
+  const button = (label, within) => all.find((n) => n.type === 'button' && textOf(n) === label && (!within || n.props.title.includes(within)))
+  button('Refine', 'i1').props.onClick()
+  button('Refine all').props.onClick()
+  button('Clear', 'i2').props.onClick()
+  assert.deepEqual(fill.calls, ['/cockpit-refine i1', '/cockpit-refine', 'Clear inbox item i2.'])
+  assert.equal(all.filter((n) => n.type === 'button' && textOf(n) === 'Refine').length, 2, 'one per open item')
+  assert.equal(all.filter((n) => n.type === 'button' && textOf(n) === 'Clear').length, 2, 'one per refined or dropped item')
+  assert.ok(!inboxOfView(withInbox(live, INBOX), fill).some((n) => n.type === 'button' && textOf(n) === 'Refine all'), 'Refine all only with two open items')
+  // Without a message box (no inputActions), no buttons at all.
+  assert.ok(!nodes(two).some((n) => n.type === 'button' && /^(Refine|Clear|Add)/.test(textOf(n))))
+})
+
+test('Add item: the empty board and a board with no items offer it; Enter fills "Add to the inbox: …"', () => {
+  const fill = filler()
+  const empty = inboxOfView({ key: null, boards: [] }, fill)
+  assert.ok(empty.some((n) => n.props['data-inbox-add'] !== undefined), 'with no board too: the first item opens one')
+  const form = inboxOfView(live, fill).find((n) => n.props['data-inbox-add'] !== undefined)
+  assert.ok(form, 'a board without items still offers Add item')
+  assert.equal(form.children.find((c) => c.type === 'input').props.placeholder, 'Add item…')
+})
+
+test('useFill: fills an empty message box; a draft or a busy box is left as it is', () => {
+  const { exports } = load()
+  const set = []
+  const actions = { setDraft: (t) => set.push(t) }
+  // useInput is a selector hook, as the slot passes it: it must be called with a selector.
+  const hook = (state) => (selector, equal) => {
+    assert.equal(typeof selector, 'function', 'useInput takes a selector')
+    assert.equal(typeof equal, 'function')
+    return selector(state)
+  }
+  assert.equal(exports.useFill(hook({ draft: '', phase: 'plain', attachmentIds: [] }), actions)('x'), 'filled')
+  assert.equal(exports.useFill(hook({ draft: 'my draft', phase: 'plain' }), actions)('y'), 'draft')
+  assert.equal(exports.useFill(hook({ draft: '', phase: 'submitting' }), actions)('z'), 'unavailable')
+  assert.deepEqual(set, ['x'])
+  assert.equal(exports.useFill(() => ({}), undefined), undefined, 'no box: no buttons')
+})
+
+test('the strip counts open Inbox items apart from the tasks, and shows with items only', () => {
+  const calm = withTasks(live, (ts) => ts.map((t) => (t.item === '1' ? { ...t, status: 'done', waitingOn: undefined } : t)))
+  const { m, tree } = strip(withInbox(calm, INBOX))
+  assert.equal(m.inbox, '1 in inbox')
+  assert.equal(m.line, "sim-883 · 2 of 5 done · 1 dropped · 1 in inbox · dsh-plugins#1 blocked by 'release notes' (not on the board) · Board ›")
+  assert.ok(m.tooltip.includes(' · 1 in inbox · '))
+  assert.ok(textOf(tree).includes('1 dropped·1 in inbox·'), textOf(tree))
+  const needs = strip(withInbox(live, INBOX)).m
+  assert.ok(needs.line.endsWith('Copy command · 1 in inbox · Board ›'), needs.line)
+  assert.equal(m.bar.total, 5, 'items are not segments')
+  const onlyInbox = strip({ key: 'session-1', board: { key: 'session-1', tasks: [], inbox: [INBOX[0]] } })
+  assert.equal(onlyInbox.m.line, 'session-1 · 1 in inbox · Board ›', 'no "0 of 0 done" and no bar')
+  assert.equal(textOf(onlyInbox.tree), 'session-1·1 in inboxBoard ›', 'one separator, none left dangling')
+  assert.ok(!expand(onlyInbox.tree).some((n) => n.props['data-segment'] || n.props.className === 'dshc-fill'))
+})
+
+test('a board_inbox card: its title from lib/present.js, the new id and an opened board from the result', () => {
+  const args = { action: 'add', text: 'dark mode for the strip' }
+  assert.equal(card({ phase: 'start', toolName: 'board_inbox', block: { argsRaw: argsOf(args) } }).summary, 'inbox: add "dark mode for the strip"')
+  assert.equal(card({ phase: 'start', toolName: 'board_inbox', block: { argsRaw: argsOf({ action: 'clear', id: ['i1', 'i2'] }) } }).summary, 'inbox: clear i1, i2')
+  assert.equal(card({ phase: 'start', toolName: 'board_add', block: { argsRaw: argsOf({ what: 'x', refines: ['i3'] }) } }).summary, 'add next "x" · next · from i3')
 })

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+An Inbox for ideas noted for later, and a skill that refines them into steps ([#51](https://github.com/romany-saad/dsh-plugins/issues/51), part of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)). The board format stays version 1. A board without an Inbox reads and draws as before.
+
+- **Inbox.** "item for later", "todo next" and the like in the chat add the text to the board's Inbox, as said, and the agent goes on with the current work. The first item opens a board when the session has none. Items stay outside the step tree: not counted in progress and never a parent or a dependency.
+- **`board_inbox` tool.** Its actions are `add`, `update`, `drop`, `reopen`, `clear` (hide a refined or dropped item, kept in the file) and `delete` (for mistakes; returns the item). `board_read` and `board_open` return the inbox, and the tree text ends with it. `board_read({ inbox: 'all' })` includes cleared items.
+- **`refines` on `board_add` and `board_update`.** Links Inbox items to the steps they became, in the same write, with `refinedWith` naming the skill that did the analysis. An unknown or dropped item refuses the call.
+- **`cockpit-refine` skill.** Bundled with the plugin, for the agent and as `/cockpit-refine`. It relates the items to the board, closes the gaps with you, proposes the steps, and writes them after your yes. It can hand the analysis to another skill: name one in the run (`using grill-me`) or in the new config `inbox.refineSkill`. It runs in the session by default, or in a subagent for an item that needs research.
+- **Board tab.** An Inbox section above the steps, with what each item became. **Add item…**, **Refine**, **Refine all** and **Clear** put the request in the message box for you to send, so the tab still writes nothing; a draft already there is left alone. Add item… also shows with no board yet. The strip says "N in inbox".
+- **Revision.** A change to the Inbox counts as a change to the board, so it bumps `revision`.
+
 ## 0.4.0
 
 Agents plan multi-step work on a board instead of DSH's todo list (first part of [#29](https://github.com/romany-saad/dsh-plugins/issues/29)). The Board tab, the strip, the tools' behaviour and the board format are unchanged.

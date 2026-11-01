@@ -630,6 +630,92 @@ const EMPTY_STATE = {
 
 return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, firstByItem, boardParent, boardGroups, sectionOrder, boardSegments, driftState, driftWords, stripModel, stripText, stripTitle, EMPTY_STATE }
 })(),
+"../../lib/inbox.js": (() => {
+// The Inbox (#51): rough items noted for later, on the board but outside its
+// task tree. No imports: client/build.mjs inlines this file, so the Board tab,
+// the tools and the tree text share these rules.
+
+/** open: not refined yet; refined: turned into board tasks; dropped: will not be done. */
+const INBOX_STATES = ['open', 'refined', 'dropped']
+
+/** Every inbox item field, in the order the file stores them. */
+const INBOX_FIELDS = ['id', 'text', 'state', 'source', 'note', 'refinedInto', 'refinedWith', 'addedAt', 'updatedAt', 'clearedAt']
+
+/** The board's inbox; a board without one, or a hand-written one that is not a list, has none. */
+const inboxOf = (board) => (Array.isArray(board?.inbox) ? board.inbox.filter((i) => i && typeof i === 'object' && typeof i.id === 'string') : [])
+
+/** The items the tab and the tree text show: every item not cleared. */
+const shownInbox = (inbox) => inbox.filter((i) => typeof i.clearedAt !== 'string')
+
+/** The open items, which wait to be refined. */
+const openInbox = (inbox) => inbox.filter((i) => i.state === 'open')
+
+/**
+ * The next id: i plus one more than the largest number used or recorded in
+ * seq (the board's inboxSeq, the last id given), else i1. So an id is never
+ * given twice, not even after its item was deleted.
+ */
+function nextInboxId(inbox, seq = 0) {
+  let max = Number.isInteger(seq) && seq > 0 ? seq : 0
+  for (const i of inbox) {
+    const m = /^i(\d+)$/.exec(i.id)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return 'i' + (max + 1)
+}
+
+/** Copy an item with its fields in file order, dropping undefined ones and keeping unknown ones after. */
+function orderInboxItem(item) {
+  const out = {}
+  for (const f of INBOX_FIELDS) if (item[f] !== undefined) out[f] = item[f]
+  for (const [k, v] of Object.entries(item)) if (!(k in out) && v !== undefined) out[k] = v
+  return out
+}
+
+/**
+ * The key of the board the first inbox item opens when the session has none:
+ * "session-" and the first 8 characters of the session id after its own
+ * "session-" prefix; "inbox" without a session.
+ */
+function defaultBoardKey(sessionId) {
+  const id = String(sessionId ?? '').replace(/^session-/, '')
+  return id ? 'session-' + id.slice(0, 8) : 'inbox'
+}
+
+/** "3 in inbox": the open items; empty when there are none. */
+const inboxCount = (inbox) => {
+  const n = openInbox(inbox).length
+  return n ? n + ' in inbox' : ''
+}
+
+/** One line of the tree text: "i3  open     text", then what it became. */
+function inboxLine(item, idWidth = 4) {
+  const state = String(item.state ?? 'open')
+  let line = String(item.id).padEnd(idWidth) + state.padEnd(9) + String(item.text ?? '')
+  if (Array.isArray(item.refinedInto) && item.refinedInto.length) line += '   → ' + item.refinedInto.join(', ')
+  if (typeof item.refinedWith === 'string' && item.refinedWith) line += ' (with ' + item.refinedWith + ')'
+  if (typeof item.note === 'string' && item.note) line += '   note: ' + item.note
+  return line
+}
+
+/** The tree text's Inbox block, or '' with nothing shown. all: cleared items too. */
+function inboxText(inbox, { all = false } = {}) {
+  const items = all ? inbox : shownInbox(inbox)
+  if (!items.length) return ''
+  const width = Math.max(4, ...items.map((i) => String(i.id).length + 2))
+  const open = openInbox(items).length
+  return 'Inbox (' + open + ' open):\n' + items.map((i) => '  ' + inboxLine(i, width) + (typeof i.clearedAt === 'string' ? '   (cleared)' : '')).join('\n')
+}
+
+/** The composer text each Inbox button fills; the agent acts on it when the user sends it. */
+const inboxPrompts = {
+  add: (text) => 'Add to the inbox: ' + text,
+  refine: (ids) => '/cockpit-refine' + (ids && ids.length ? ' ' + ids.join(' ') : ''),
+  clear: (ids) => 'Clear inbox item' + (ids.length > 1 ? 's ' : ' ') + ids.join(', ') + '.',
+}
+
+return { INBOX_STATES, INBOX_FIELDS, inboxOf, shownInbox, openInbox, nextInboxId, orderInboxItem, defaultBoardKey, inboxCount, inboxLine, inboxText, inboxPrompts }
+})(),
 "../../lib/present.js": (() => {
 // Tool-card titles: one short line per call saying what it did. Pure, with
 // no imports: they depend only on the call's args and, for the result, on the
@@ -642,7 +728,7 @@ const MAX = 48
 const clip = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > MAX ? t.slice(0, MAX - 1) + '…' : t }
 const quote = (s) => '"' + clip(s) + '"'
 // board_open may create a board, set its parent and write the session binding.
-const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit' }
+const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit', board_inbox: 'edit' }
 
 const itemsText = (item) => (Array.isArray(item) ? item.join(', ') : String(item))
 
@@ -658,7 +744,16 @@ function addTitle(item, args) {
   const parts = ['add ' + (item ?? 'next') + ' ' + quote(args.what ?? '')]
   parts.push(args.status ?? 'next')
   if (Array.isArray(args.dependsOn) && args.dependsOn.length) parts.push('after ' + args.dependsOn.join(', '))
+  if (Array.isArray(args.refines) && args.refines.length) parts.push('from ' + args.refines.join(', '))
   return parts.join(' · ')
+}
+
+/** "inbox: add "dark mode…"", "inbox: drop i2", "inbox: clear i1, i2". */
+function inboxTitle(args, id) {
+  if (args.action === 'add') return 'inbox: add ' + (id ? id + ' ' : '') + quote(args.text ?? '')
+  const which = args.id === undefined ? '' : ' ' + itemsText(args.id)
+  if (args.action === 'update') return 'inbox: update' + which + (typeof args.text === 'string' ? ' ' + quote(args.text) : args.note === null ? ': clear note' : ': note')
+  return 'inbox: ' + String(args.action ?? '') + which
 }
 
 function updateTitle(args) {
@@ -685,7 +780,8 @@ function callTitle(name, args = {}) {
     case 'board_open': return 'open ' + args.key + (args.parent !== undefined ? ' · parent ' + clip(args.parent) : '')
     case 'board_read': return ['read board', ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(args.item, args)
-    case 'board_update': return updateTitle(args)
+    case 'board_update': return updateTitle(args) + (Array.isArray(args.refines) && args.refines.length ? ' · from ' + args.refines.join(', ') : '')
+    case 'board_inbox': return inboxTitle(args)
     default: return name
   }
 }
@@ -697,6 +793,7 @@ function resultTitle(name, args = {}, value) {
     case 'board_open': return 'open ' + value.board.key + (value.created ? ' (new)' : '') + (args.parent !== undefined ? ' · parent ' + clip(args.parent) : '')
     case 'board_read': return ['read ' + value.board.key, ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(value.task.item, { ...args, status: value.task.status })
+    case 'board_inbox': return inboxTitle(args, args.action === 'add' ? value.items?.[0]?.id : undefined) + (value.opened ? ' · opened ' + value.opened.key : '')
     default: return undefined
   }
 }
@@ -874,6 +971,7 @@ var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? _
 const React = require('react')
 const { EMPTY_STATE, boardFlags, boardGroups, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
+const { inboxCount, inboxOf, inboxPrompts, openInbox, shownInbox } = require('../../lib/inbox.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, wholePx } = require('./segments.js')
 const h = React.createElement
@@ -903,7 +1001,7 @@ const IDLE_MS = 10000
 // Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
 const VIEW = 'api/dsh-cockpit/view'
 // The board tools whose chat cards this bundle draws (tool.call.toolview keys).
-const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update']
+const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update', 'board_inbox']
 
 // ---- Style: host tokens only (dsh-client-ui-theme), one stylesheet in the head ----
 // The panel's own colour names, set per theme on its root. Where a host token
@@ -936,7 +1034,8 @@ const CSS = [
   '.dshc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
   '.dshc-hd{padding:10px 12px;border-bottom:1px solid var(--dshc-border)}',
   '.dshc-hd1{display:flex;align-items:baseline;justify-content:space-between;gap:12px}',
-  '.dshc-hdl{display:flex;align-items:baseline;gap:8px;min-width:0}',
+  // The left side takes the room the meta leaves, so a key with no parent is not cut short.
+  '.dshc-hdl{display:flex;align-items:baseline;gap:8px;min-width:0;flex:1 1 auto}',
   '.dshc-key{font-size:13px;font-weight:500;flex:none;max-width:60%}',
   '.dshc-parent{font-size:12px;color:var(--dshc-t)}',
   '.dshc-meta{font-size:12px;color:var(--dshc-t);white-space:nowrap;flex:none}',
@@ -1040,6 +1139,24 @@ const CSS = [
   '.dshc-seg[data-segment=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat}',
   // The continuous bar: the same height and round ends.
   '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;corner-shape:round;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
+  // The Inbox: rough items for later, outside the tree. Its buttons fill the message box; they write nothing.
+  '.dshc-inbox .dshc-sech{justify-content:space-between}',
+  '.dshc-inbox-n{color:var(--dshc-t);font-weight:400}',
+  '.dshc-ib{list-style:none;margin:0;padding:0}',
+  '.dshc-ibi{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:start;padding:5px 0;border-top:1px solid var(--dshc-border)}',
+  '.dshc-ibi:first-child{border-top:0}',
+  '.dshc-ibt{grid-column:1;grid-row:1;font-size:13px;line-height:20px;overflow-wrap:anywhere;min-width:0}',
+  '.dshc-ibm{grid-column:1/2;display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-ibi[data-state=dropped] .dshc-ibt{text-decoration:line-through;color:var(--dshc-s)}',
+  '.dshc-ibi[data-state=refined] .dshc-ibt{color:var(--dshc-s)}',
+  '.dshc-ibi>.dshc-btn,.dshc-ibi>.dshc-ibsp{grid-column:2;grid-row:1}',
+  '.dshc-ibadd{display:flex;gap:6px;margin-top:6px}',
+  '.dshc-ibadd input{flex:1 1 auto;min-width:0;height:24px;padding:0 8px;border-radius:var(--dsw-radius-sm,6px);border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));background:var(--dshc-l0);color:var(--dshc-p);font:inherit;font-size:12px}',
+  '.dshc-ibadd input::placeholder{color:var(--dshc-t)}',
+  '.dshc-ibnote{margin-top:6px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-ibnote[data-kind=busy]{color:var(--dshc-err)}',
+  '.dshc-empty .dshc-ibadd{width:100%;max-width:300px;margin-top:8px}',
+  '.dshc-strip .dshc-inb{flex:none;color:var(--dshc-s)}',
   '.dshc-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;gap:6px}',
   '.dshc-empty p{margin:0}.dshc-empty-t{font-weight:500}.dshc-empty-s{font-size:12px;line-height:16px;color:var(--dshc-s);max-width:280px}',
   '.dshc-msg{padding:12px;color:var(--dshc-s);overflow-wrap:anywhere}',
@@ -1412,13 +1529,109 @@ function TaskRow({ boardKey, parent, row, task, flags, bar }) {
       isOpen ? h(Detail, { c, title: row.title }) : null))
 }
 
-function Empty() {
-  return h('div', { className: 'dshc-empty', 'data-empty': '' }, h('p', { className: 'dshc-empty-t' }, EMPTY_STATE.title), h('p', { className: 'dshc-empty-s' }, EMPTY_STATE.line))
+function Empty({ fill }) {
+  return h('div', { className: 'dshc-empty', 'data-empty': '' }, h('p', { className: 'dshc-empty-t' }, EMPTY_STATE.title), h('p', { className: 'dshc-empty-s' }, EMPTY_STATE.line),
+    fill ? h(InboxAdd, { fill }) : null)
+}
+
+// ---- The Inbox: rough items for later (#51) ----
+// Its buttons write nothing: they put a request in this session's message
+// box, and the agent acts on it when the user sends it (the agent stays the
+// board's only writer). A draft already there is never replaced.
+
+/**
+ * fill(text) for this session's message box, from the tab's standard props:
+ * 'filled', 'draft' when the box holds a draft, or 'unavailable'.
+ */
+function useFill(useInput, inputActions) {
+  // A selector hook (SnapshotSelectorHook): it takes the selector; this one reads two fields.
+  const draft = typeof useInput === 'function' ? useInput(inputDraft, sameDraft) : undefined
+  const input = draft
+  if (!inputActions || typeof inputActions.setDraft !== 'function') return undefined
+  return (text) => {
+    if (input && input.phase !== undefined && input.phase !== 'plain') return 'unavailable'
+    if (input && typeof input.draft === 'string' && input.draft.trim()) return 'draft'
+    inputActions.setDraft(text)
+    return 'filled'
+  }
+}
+
+const inputDraft = (s) => ({ draft: s ? s.draft : undefined, phase: s ? s.phase : undefined })
+const sameDraft = (a, b) => a.draft === b.draft && a.phase === b.phase
+
+const FILL_NOTE = {
+  filled: 'In the message box: send it to ask the agent.',
+  draft: 'The message box has a draft: send or clear it first.',
+  unavailable: 'The message box is busy: try again in a moment.',
+}
+
+/** The line under the Inbox that says what a button did, until the next one. */
+function FillNote({ result }) {
+  if (!result) return null
+  return h('p', { className: 'dshc-ibnote', role: 'status', 'data-kind': result === 'filled' ? 'ok' : 'busy' }, FILL_NOTE[result])
+}
+
+/** "Add item…": a one-line field; Enter or Add fills "Add to the inbox: <text>". */
+function InboxAdd({ fill, onResult }) {
+  const [text, setText] = React.useState('')
+  const [result, setResult] = React.useState(undefined)
+  const submit = (e) => {
+    if (e && e.preventDefault) e.preventDefault()
+    const t = text.trim()
+    if (!t) return
+    const r = fill(inboxPrompts.add(t))
+    if (onResult) onResult(r)
+    else setResult(r)
+    if (r === 'filled') setText('')
+  }
+  return h('form', { className: 'dshc-ibadd', onSubmit: submit, 'data-inbox-add': '' },
+    h('input', { type: 'text', value: text, placeholder: 'Add item…', 'aria-label': 'Add an item to the Inbox', onChange: (e) => setText(e.target.value) }),
+    h('button', { type: 'submit', className: 'dshc-btn', disabled: !text.trim() }, 'Add'),
+    onResult ? null : h(FillNote, { result }))
+}
+
+/** "refined → 12, 13 · with grill-me", "dropped", and the note. */
+function inboxMeta(item) {
+  const parts = []
+  if (item.state === 'refined') {
+    const into = Array.isArray(item.refinedInto) && item.refinedInto.length ? ' → ' + item.refinedInto.join(', ') : ''
+    parts.push('refined' + into + (item.refinedWith ? ' · with ' + item.refinedWith : ''))
+  } else if (item.state === 'dropped') parts.push('dropped')
+  if (typeof item.note === 'string' && item.note.trim()) parts.push(item.note.trim())
+  return parts
+}
+
+/** The Inbox section; nothing when the board has no items to show. */
+function Inbox({ board, fill }) {
+  const items = shownInbox(inboxOf(board))
+  const [result, setResult] = React.useState(undefined)
+  if (!items.length && !fill) return null
+  const open = openInbox(items)
+  const act = (text) => setResult(fill(text))
+  return h('section', { className: 'dshc-sec dshc-inbox', 'data-inbox': '', 'aria-label': 'Inbox' },
+    h('div', { className: 'dshc-sech' },
+      h('span', null, 'Inbox ', h('span', { className: 'dshc-inbox-n' }, open.length ? open.length + ' open' : '')),
+      fill && open.length > 1 ? h('button', { type: 'button', className: 'dshc-btn', onClick: () => act(inboxPrompts.refine([])), title: 'Ask the agent to refine every open item' }, 'Refine all') : null),
+    items.length
+      ? h('ul', { className: 'dshc-ib', role: 'list' }, items.map((item) => {
+        const meta = inboxMeta(item)
+        const button = !fill ? null
+          : item.state === 'open'
+            ? h('button', { type: 'button', className: 'dshc-btn', onClick: () => act(inboxPrompts.refine([item.id])), title: 'Ask the agent to refine ' + item.id + ' into board tasks' }, 'Refine')
+            : h('button', { type: 'button', className: 'dshc-btn', onClick: () => act(inboxPrompts.clear([item.id])), title: 'Ask the agent to clear ' + item.id + ' from the list (it stays in the file)' }, 'Clear')
+        return h('li', { key: item.id, className: 'dshc-ibi', 'data-inbox-item': item.id, 'data-state': item.state },
+          h('span', { className: 'dshc-ibt', title: item.id }, String(item.text ?? '')),
+          button || h('span', { className: 'dshc-ibsp' }),
+          meta.length ? h('span', { className: 'dshc-ibm' }, meta.map((m, i) => h('span', { key: i }, m))) : null)
+      }))
+      : null,
+    fill ? h(InboxAdd, { fill, onResult: setResult }) : null,
+    h(FillNote, { result }))
 }
 
 /** The tab's body for one view answer (pure render; exported for tests). */
-function BoardView({ view, now }) {
-  if (!view.key) return h(Empty)
+function BoardView({ view, now, fill }) {
+  if (!view.key) return h(Empty, { fill })
   if (!view.board) return h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error)
   const { board } = view
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
@@ -1437,6 +1650,7 @@ function BoardView({ view, now }) {
     h(Header, { board, view, rows, now, overall }),
     h(NeedsYou, { board, rows, byItem }),
     h(Problems, { list }),
+    h(Inbox, { board, fill }),
     rows.length
       ? h('div', { className: 'dshc-groups' }, groups.map((g) => h('section', {
         key: (g.standalone ? 'standalone' : 'parent:') + g.item,
@@ -1447,7 +1661,7 @@ function BoardView({ view, now }) {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: row.depth === 0 && row.progress ? boardSegments(board, rows, row.item) : undefined,
       }))))))
-      : h('p', { className: 'dshc-msg' }, 'No tasks yet.'))
+      : h('p', { className: 'dshc-msg' }, inboxOf(board).length ? 'No tasks yet: refine Inbox items to add them.' : 'No tasks yet.'))
 }
 
 // Tab id -> the navigation revision already shown, so a remounted body does not jump back to an old click.
@@ -1469,8 +1683,9 @@ function useShowRow(useTabInfo, ready, root) {
   }, [ready, item, revision])
 }
 
-function BoardBody({ sessionId, useTabInfo }) {
+function BoardBody({ sessionId, useTabInfo, useInput, inputActions }) {
   useStyle()
+  const fill = useFill(useInput, inputActions)
   const { loading, view, error } = useView(sessionId)
   const now = useMinute()
   const root = React.useRef(null)
@@ -1479,7 +1694,7 @@ function BoardBody({ sessionId, useTabInfo }) {
   if (loading) return wrap(h('p', { className: 'dshc-msg' }, 'Loading board…'))
   // A failed poll keeps the last view; only with none is the error shown.
   if (!view) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, 'Board unavailable: ' + error))
-  return wrap(h(BoardView, { view, now }))
+  return wrap(h(BoardView, { view, now, fill }))
 }
 
 // ---- The progress strip above the chat input (conversation.input.dock) ----
@@ -1490,8 +1705,15 @@ function dockModel(view) {
   const board = { ...view.board, key: view.board.key || view.key }
   const m = stripModel(board, boardRows(board, { links: view.links }))
   // The count, and what a narrow strip may leave out of it (" · 1 dropped").
-  const count = m.bar.done + ' of ' + m.bar.total + ' done'
-  return { ...m, count, more: m.done.slice(count.length) || undefined, line: stripText(m), tooltip: stripTitle(m) }
+  const count = m.bar.total ? m.bar.done + ' of ' + m.bar.total + ' done' : ''
+  // Open Inbox items (#51), after the count: they are not tasks, so not in it.
+  const inbox = inboxCount(inboxOf(board))
+  const base = m.bar.total ? m : { ...m, done: '' }
+  // "<key> · N of M done · 2 in inbox · <focus> · Board ›"; a needs-you strip ends with it.
+  const withInbox = base.kind === 'needs you' || !inbox ? base : { ...base, done: [base.done, inbox].filter(Boolean).join(' · ') }
+  const line = stripText(withInbox) .replace(/ · Board ›$/, base.kind === 'needs you' && inbox ? ' · ' + inbox + ' · Board ›' : ' · Board ›')
+  const tooltip = stripTitle(withInbox) + (base.kind === 'needs you' && inbox ? ' · ' + inbox : '')
+  return { ...base, count, more: m.bar.total ? m.done.slice(count.length) || undefined : undefined, inbox: inbox || undefined, line, tooltip }
 }
 
 /** The bar's width in the strip at its widest: its segments at 10 px with 1 px gaps, between 48 and 120 px; squeezed below that, it is the continuous fill. */
@@ -1554,8 +1776,11 @@ function StripView({ m, openBoard }) {
     ]
     : [
       m.key ? h('span', { key: 'k', className: 'dshc-mono dshc-key dshc-trunc', title: m.key }, m.key) : null,
-      m.key ? sep('s1') : null,
-      h('span', { key: 'd', className: 'dshc-done' }, m.count, m.more ? h('span', { className: 'dshc-more' }, m.more) : null),
+      m.key && (m.count || m.inbox) ? sep('s1') : null,
+      m.count ? h('span', { key: 'd', className: 'dshc-done' }, m.count, m.more ? h('span', { className: 'dshc-more' }, m.more) : null) : null,
+      m.count && m.inbox ? sep('s3') : null,
+      // Open Inbox items, next to the count: they are not in it.
+      m.inbox ? h('span', { key: 'i', className: 'dshc-inb' }, m.inbox) : null,
       m.focus ? sep('s2') : null,
       h('span', { key: 'f', className: 'dshc-focus dshc-trunc' }, m.focus || ''),
       go,
@@ -1568,9 +1793,9 @@ function StripView({ m, openBoard }) {
       className: 'dshc-strip', role: 'button', tabIndex: 0, 'aria-label': m.line, title: m.tooltip, 'data-kind': m.kind, onClick: open(m.item),
       onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(m.item)() } },
     },
-      h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: m.bar.continuous ? 72 : stripBarWidth(m.bar), hasAlt: !m.bar.continuous }),
+      m.bar.total ? h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: m.bar.continuous ? 72 : stripBarWidth(m.bar), hasAlt: !m.bar.continuous }) : null,
       // The narrow strip's bar, shown by the container query instead of the segments.
-      m.bar.continuous ? null : h(Bar, { bar: m.bar, fill: true, className: 'dshc-alt' }),
+      m.bar.total && !m.bar.continuous ? h(Bar, { bar: m.bar, fill: true, className: 'dshc-alt' }) : null,
       parts))
 }
 
@@ -1584,7 +1809,7 @@ function BoardDock({ sessionId, openBoard }) {
 // ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
 
 const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } }
-const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift']
+const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift', 'action', 'id', 'text', 'note', 'refines']
 /**
  * A settled call's arguments: its call head's argsRaw, else (the call has
  * left the loaded window) the node's own lazy argument view, else {}.
@@ -1684,7 +1909,7 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, BoardView, StripView, Bar, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, BoardView, StripView, useFill, Bar, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
 
 return module.exports;
 } });
