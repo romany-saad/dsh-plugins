@@ -2,11 +2,12 @@
 
 ## 0.6.0-rc.1
 
-Per-project process maps and flow stages on the board ([#52](https://github.com/romany-saad/dsh-plugins/issues/52), part of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)).
+Per-project process maps, flow stages, and process updates ([#52](https://github.com/romany-saad/dsh-plugins/issues/52), [#53](https://github.com/romany-saad/dsh-plugins/issues/53), parts 2 & 3 of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)).
 
 - **Process map.** `.dsh/cockpit/process.yml` records ordered workflow stages, exit checks, who acts, skills in order, command templates, kind filters, and when/skipIf hints.
-- **`board_process` tool.** Actions `read`, `propose`, and `save`. `propose` validates draft maps; `save` requires explicit user confirmation and writes the YAML file atomically, bumping the revision.
+- **`board_process` tool.** Actions `read`, `propose`, `save`, and `adopt`. `propose` validates draft maps and returns a structured diff; `save` requires explicit user confirmation, saves the YAML file atomically, bumps the revision, and logs the change summary; `adopt` applies the new process revision to open items without modifying completed stages.
 - **`cockpit-process` skill.** Bundled skill to discover and draft the project workflow from CONTRIBUTING, AGENTS.md, CI workflows, and skills.
+- **Source drift detection.** Changes to recorded source files (such as CONTRIBUTING.md) are detected via SHA-256 hashes and flagged on `board_open`, `board_read`, and in the Board tab (`⚠️ Process may be out of date`).
 - **Flow on tasks.** Tasks can track `flow: { revision, stages, at, skipped }`. Skipped stages must provide non-empty reasons. Materialized stage tasks carry `stage: "<id>"` linking to parent flow.
 - **Compact & Expanded views.** Compact view displays the stage track directly on the task row; expanded view displays all flow stages and details. Progress counts each stage consistently in both views without double counting.
 

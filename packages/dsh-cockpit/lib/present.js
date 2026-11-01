@@ -63,7 +63,7 @@ export function callTitle(name, args = {}) {
     case 'board_add': return addTitle(args.item, args)
     case 'board_update': return updateTitle(args) + (Array.isArray(args.refines) && args.refines.length ? ' · from ' + args.refines.join(', ') : '')
     case 'board_inbox': return inboxTitle(args)
-    case 'board_process': return 'process: ' + (args.action ?? 'read')
+    case 'board_process': return args.action === 'adopt' ? 'process: adopt' + (args.revision ? ' rev ' + args.revision : '') : 'process: ' + (args.action ?? 'read')
     default: return name
   }
 }
@@ -76,7 +76,7 @@ export function resultTitle(name, args = {}, value) {
     case 'board_read': return ['read ' + value.board.key, ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(value.task.item, { ...args, status: value.task.status })
     case 'board_inbox': return inboxTitle(args, args.action === 'add' ? value.items?.[0]?.id : undefined) + (value.opened ? ' · opened ' + value.opened.key : '')
-    case 'board_process': return 'process: ' + (args.action ?? 'read') + (value.map?.revision ? ' · rev ' + value.map.revision : value.proposal?.next?.revision ? ' · rev ' + value.proposal.next.revision : '')
+    case 'board_process': return args.action === 'adopt' ? 'process: adopt · ' + value.count + ' items' : 'process: ' + (args.action ?? 'read') + (value.map?.revision ? ' · rev ' + value.map.revision : value.proposal?.next?.revision ? ' · rev ' + value.proposal.next.revision : '')
     default: return undefined
   }
 }

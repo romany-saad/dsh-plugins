@@ -5,6 +5,7 @@ export const PROCESS_PATH = '.dsh/cockpit/process.yml'
 export const PROCESS_FORMAT = 'dsh-cockpit.process'
 export const PROCESS_VERSION = 1
 
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import yaml from 'yaml'
@@ -66,7 +67,7 @@ const strings = (v, where) => { list(v, where); v.forEach((x) => text(x, where))
 
 /** Validate the complete persisted record; returns a detached JSON-safe copy. */
 export function validateProcess(map) {
-  object(map, 'process', ['format', 'version', 'revision', 'kinds', 'stages', 'sources'])
+  object(map, 'process', ['format', 'version', 'revision', 'kinds', 'stages', 'sources', 'changes'])
   if (map.format !== PROCESS_FORMAT || map.version !== PROCESS_VERSION) fail('unknown process format or version')
   if (!Number.isSafeInteger(map.revision) || map.revision < 1) fail('revision must be a positive integer')
   strings(map.kinds, 'kinds')
@@ -98,7 +99,75 @@ export function validateProcess(map) {
     paths.add(source.path)
     if (typeof source.hash !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(source.hash)) fail('source.hash must be a sha256 digest')
   }
+  if (map.changes !== undefined) {
+    list(map.changes, 'changes')
+    for (const c of map.changes) {
+      if (typeof c === 'string') text(c, 'change')
+      else if (c && typeof c === 'object') {
+        object(c, 'change', ['revision', 'summary', 'at'])
+        if (!Number.isSafeInteger(c.revision) || c.revision < 1) fail('change.revision must be positive integer')
+        text(c.summary, 'change.summary')
+        if (c.at !== undefined) text(c.at, 'change.at')
+      } else {
+        fail('change item must be string or object')
+      }
+    }
+  }
   return JSON.parse(JSON.stringify(map))
+}
+
+/** Compute human-readable diff between current and next process map. */
+export function diffProcess(current, next) {
+  if (!current) return ['Initial process map with ' + (next.stages?.length ?? 0) + ' stages']
+  const diffs = []
+  const oldStages = new Map((current.stages || []).map((s, i) => [s.id, { ...s, index: i }]))
+  const newStages = new Map((next.stages || []).map((s, i) => [s.id, { ...s, index: i }]))
+
+  // Stages added
+  for (const [id, s] of newStages) {
+    if (!oldStages.has(id)) diffs.push('Added stage ' + id + ' (' + (s.who || 'agent') + '): ' + (s.exitCheck || ''))
+  }
+  // Stages removed
+  for (const [id] of oldStages) {
+    if (!newStages.has(id)) diffs.push('Removed stage ' + id)
+  }
+  // Stages modified or reordered
+  for (const [id, sNew] of newStages) {
+    const sOld = oldStages.get(id)
+    if (!sOld) continue
+    const changes = []
+    if (sOld.exitCheck !== sNew.exitCheck) changes.push('exitCheck: ' + sNew.exitCheck)
+    if (sOld.who !== sNew.who) changes.push('who: ' + sNew.who)
+    if (JSON.stringify(sOld.skills) !== JSON.stringify(sNew.skills)) changes.push('skills: ' + (sNew.skills || []).join(', '))
+    if (sOld.readyCommand !== sNew.readyCommand) changes.push('readyCommand')
+    if (sOld.index !== sNew.index) changes.push('reordered to step ' + (sNew.index + 1))
+    if (changes.length) diffs.push('Modified stage ' + id + ' (' + changes.join('; ') + ')')
+  }
+  // Kinds
+  if (JSON.stringify(current.kinds) !== JSON.stringify(next.kinds)) {
+    diffs.push('Kinds changed: ' + (next.kinds || []).join(', '))
+  }
+  return diffs.length ? diffs : ['No functional changes']
+}
+
+/** Check if any recorded source file has changed or disappeared relative to projectRoot. */
+export async function checkSourceDrift(projectRoot, sources = []) {
+  if (!Array.isArray(sources) || !sources.length) return []
+  const drift = []
+  for (const src of sources) {
+    if (!src || typeof src.path !== 'string') continue
+    const full = join(projectRoot, src.path)
+    try {
+      const content = await readFile(full)
+      const hash = 'sha256:' + createHash('sha256').update(content).digest('hex')
+      if (src.hash && hash !== src.hash) {
+        drift.push({ path: src.path, expected: src.hash, actual: hash, error: null })
+      }
+    } catch (err) {
+      drift.push({ path: src.path, expected: src.hash, actual: null, error: err.code || err.message })
+    }
+  }
+  return drift
 }
 
 /**
@@ -129,8 +198,9 @@ export function createProcessStore({ adapter, codec }) {
       const { map: current, token } = await readSnapshot()
       const next = validateProcess({ ...draft, format: PROCESS_FORMAT, version: PROCESS_VERSION, revision: (current?.revision ?? 0) + 1 })
       const id = String(nextId++)
-      const proposal = { id, current, next }
-      const entry = { token, current: JSON.stringify(current), next: JSON.parse(JSON.stringify(next)) }
+      const diff = diffProcess(current, next)
+      const proposal = { id, current, next, diff }
+      const entry = { token, current: JSON.stringify(current), next: JSON.parse(JSON.stringify(next)), diff }
       proposals.set(proposal, entry)
       byId.set(id, entry)
       return proposal
@@ -143,9 +213,15 @@ export function createProcessStore({ adapter, codec }) {
       if (typeof proposal === 'object' && proposal !== null) proposals.delete(proposal)
       // Approval must match exactly what the caller presented, including current.
       if (JSON.stringify(proposal.current) !== captured.current || JSON.stringify(proposal.next) !== JSON.stringify(captured.next)) throw new ProcessError('invalid_proposal', 'proposal was changed')
-      const serialized = codec.stringify(captured.next)
+      const diffSummary = captured.diff ? captured.diff.join('; ') : 'Updated process map'
+      const isUpdate = captured.next.revision > 1
+      const changeEntry = { revision: captured.next.revision, summary: diffSummary, at: new Date().toISOString() }
+      const toWrite = isUpdate
+        ? { ...captured.next, changes: [...(captured.next.changes || []), changeEntry] }
+        : { ...captured.next }
+      const serialized = codec.stringify(toWrite)
       await adapter.write(PROCESS_PATH, serialized, captured.token)
-      return captured.next
+      return toWrite
     },
   }
 }

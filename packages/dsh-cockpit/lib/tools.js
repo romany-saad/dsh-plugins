@@ -5,7 +5,7 @@ import { driftResult, runDriftCommand } from './drift.js'
 import { BoardError, FORMAT, VERSION } from './store.js'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { PROCESS_PATH, ProcessError, createFsProcessStore } from './process.js'
+import { PROCESS_PATH, ProcessError, checkSourceDrift, createFsProcessStore } from './process.js'
 import { INBOX_STATES, defaultBoardKey, inboxOf, nextInboxId, orderInboxItem, shownInbox } from './inbox.js'
 import { STATUSES, STRING_FIELDS, nextItem, orderTask } from './task.js'
 import { boardFlags, boardTree } from './tree.js'
@@ -183,7 +183,8 @@ Actions:
 - save: save an approved process map to .dsh/cockpit/process.yml and bump its revision. Use only after the user has reviewed and explicitly approved the proposal.
 ${DATA_NOTE}`,
     parameters: {
-      action: { type: 'string', enum: ['read', 'propose', 'save'], required: true, description: 'What to do: read, propose, or save.' },
+      action: { type: 'string', enum: ['read', 'propose', 'save', 'adopt'], required: true, description: 'What to do: read, propose, save, or adopt.' },
+      items: { type: 'array', items: { type: 'string' }, description: 'Task items to adopt the new process revision for (adopt action; default all open flow tasks).' },
       map: {
         type: 'object',
         additionalProperties: true,
@@ -236,13 +237,15 @@ const meta = (board) => {
   return m
 }
 
-function view(board, path, { only, inbox = 'shown' } = {}) {
+function view(board, path, { only, inbox = 'shown', processDrift } = {}) {
   const tasks = only ? board.tasks.filter((t) => only.has(t.item)) : board.tasks
-  const { tree, flags } = boardTree(board, only ? { only } : { inbox })
+  let { tree, flags } = boardTree(board, only ? { only } : { inbox })
+  if (processDrift) tree = 'Warning: ' + processDrift.message + '\n\n' + tree
   const out = { board: meta(board), file: { path, format: board.format, version: board.version }, tasks, tree, flags }
   const items = inboxOf(board)
   if (!only && items.length) out.inbox = inbox === 'all' ? items : shownInbox(items)
   if (board.drift !== undefined) out.drift = board.drift
+  if (processDrift) out.processDrift = processDrift
   return out
 }
 
@@ -398,6 +401,22 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
     if (!processStores.has(root)) processStores.set(root, createFsProcessStore(root))
     return processStores.get(root)
   }
+
+  async function detectProcessDrift(exec) {
+    const projectRoot = findProjectRoot(exec)
+    const pStore = getProcessStore(projectRoot)
+    const map = await pStore.read().catch(() => null)
+    if (map && Array.isArray(map.sources)) {
+      const drift = await checkSourceDrift(projectRoot, map.sources).catch(() => [])
+      if (drift.length) {
+        return {
+          changed: drift.map((d) => d.path),
+          message: 'Process may be out of date: ' + drift.map((d) => d.path).join(', ') + ' changed',
+        }
+      }
+    }
+    return undefined
+  }
   const sessionOf = (exec) => exec?.agent?.session?.id ?? ''
 
   async function keyOf(exec) {
@@ -498,7 +517,8 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
         return { board: current, write: false, created: false }
       }, { by: sid || undefined, signal: exec.signal })
       if (!sid) unscopedKey = args.key
-      return ok({ created, ...view(board, store.file(args.key)) })
+      const processDrift = await detectProcessDrift(exec)
+      return ok({ created, ...view(board, store.file(args.key), { processDrift }) })
     }),
 
     board_read: (args = {}, exec = {}) => guard(async () => {
@@ -518,7 +538,8 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
         only = new Set(board.tasks.filter((t) => keep.has(t.status) && (!only || only.has(t.item))).map((t) => t.item))
       }
       if (args.inbox !== undefined && args.inbox !== 'shown' && args.inbox !== 'all') return err('invalid_input', 'inbox must be shown or all.')
-      const out = ok(view(board, store.file(key), { only, inbox: args.inbox }))
+      const processDrift = await detectProcessDrift(exec)
+      const out = ok(view(board, store.file(key), { only, inbox: args.inbox, processDrift }))
       if (args.checkDrift === true) out.driftCheck = runDrift ? (board.drift.error !== undefined ? 'failed' : 'ran') : 'not_configured'
       return out
     }),
@@ -678,20 +699,30 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
 
     board_process: (args = {}, exec = {}) => guard(async () => {
       const action = args.action
-      if (!['read', 'propose', 'save'].includes(action)) return err('invalid_input', 'action must be read, propose or save.')
+      if (!['read', 'propose', 'save', 'adopt'].includes(action)) return err('invalid_input', 'action must be read, propose, save or adopt.')
       const projectRoot = findProjectRoot(exec)
       const pStore = getProcessStore(projectRoot)
 
       if (action === 'read') {
         const map = await pStore.read()
-        return ok({ map: map ?? null, exists: map !== undefined, path: PROCESS_PATH })
+        const out = { map: map ?? null, exists: map !== undefined, path: PROCESS_PATH }
+        if (map && Array.isArray(map.sources)) {
+          const drift = await checkSourceDrift(projectRoot, map.sources).catch(() => [])
+          if (drift.length) {
+            out.processDrift = {
+              changed: drift.map((d) => d.path),
+              message: 'Process may be out of date: ' + drift.map((d) => d.path).join(', ') + ' changed',
+            }
+          }
+        }
+        return ok(out)
       }
 
       if (action === 'propose') {
         const draft = args.map ?? { kinds: args.kinds, stages: args.stages, sources: args.sources }
         if (!draft || typeof draft !== 'object') return err('invalid_input', 'propose requires a map or kinds/stages/sources.')
         const proposal = await pStore.propose(draft)
-        return ok({ proposal, path: PROCESS_PATH })
+        return ok({ proposal, path: PROCESS_PATH, diff: proposal.diff })
       }
 
       if (action === 'save') {
@@ -710,6 +741,43 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
           }, { by: by(exec), signal: exec.signal }).catch(() => {})
         }
         return ok({ saved: true, map: saved, path: PROCESS_PATH })
+      }
+
+      if (action === 'adopt') {
+        const map = await pStore.read()
+        if (!map) return err('invalid_process', 'No process map exists to adopt.')
+        const key = await boundKey(exec)
+        const targetItems = args.items ? new Set(args.items) : undefined
+        const { board, tasks, updated } = await change(key, (current) => {
+          existing(key, current)
+          const at = store.now()
+          const byItem = new Map(current.tasks.map((t) => [t.item, t]))
+          const toUpdate = []
+          for (const task of current.tasks) {
+            if (targetItems && !targetItems.has(task.item)) continue
+            if (!task.flow || !Array.isArray(task.flow.stages)) continue
+            if (task.status === 'done' || task.status === 'dropped') continue
+            const existingStages = task.flow.stages
+            const existingById = new Map(existingStages.map((s) => [s.id, s]))
+            const merged = []
+            for (const mStage of map.stages) {
+              const cur = existingById.get(mStage.id)
+              if (cur) merged.push(cur)
+              else merged.push({ id: mStage.id, title: mStage.id, status: 'next' })
+            }
+            for (const cur of existingStages) {
+              if (!map.stages.some((s) => s.id === cur.id)) merged.push(cur)
+            }
+            const nextFlow = { ...task.flow, revision: map.revision, stages: merged }
+            const next = orderTask({ ...task, flow: nextFlow, updatedAt: at })
+            byItem.set(task.item, next)
+            toUpdate.push(next)
+          }
+          if (!toUpdate.length) return { board: current, write: false, tasks: [], updated: [] }
+          const nextTasks = current.tasks.map((t) => byItem.get(t.item) ?? t)
+          return { board: { ...current, tasks: nextTasks, process: { revision: map.revision, stagesCount: map.stages.length } }, write: true, tasks: toUpdate, updated: toUpdate.map((t) => t.item) }
+        }, { by: by(exec), signal: exec.signal })
+        return ok({ adopted: true, revision: map.revision, count: updated.length, items: updated, tasks })
       }
     }),
   }

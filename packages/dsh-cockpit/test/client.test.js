@@ -830,3 +830,15 @@ test('a board_process card: its title from lib/present.js', () => {
   assert.equal(card({ phase: 'start', toolName: 'board_process', block: { argsRaw: argsOf({ action: 'propose' }) } }).summary, 'process: propose')
   assert.equal(card({ phase: 'result', toolName: 'board_process', block: { argsRaw: argsOf({ action: 'save' }), meta: { title: 'process: save · rev 2' }, content: [{ type: 'text', text: JSON.stringify({ ok: true, saved: true, map: { revision: 2 } }) }] } }).summary, 'process: save · rev 2')
 })
+
+test('header shows warning when processDrift is reported', () => {
+  const withDrift = {
+    ...live,
+    processDrift: {
+      changed: ['CONTRIBUTING.md'],
+      message: 'Process may be out of date: CONTRIBUTING.md changed',
+    },
+  }
+  const out = render(withDrift)
+  assert.ok(out.includes('Process may be out of date: CONTRIBUTING.md changed'))
+})
