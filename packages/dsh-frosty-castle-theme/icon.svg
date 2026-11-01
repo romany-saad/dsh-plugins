@@ -1,0 +1,14 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- An icy, ornamental frame around one warm crystal. -->
+  <path d="M18 5.5L21.5 9.5L26.5 8.5L26 13.5L30.5 18L26 22.5L26.5 27.5L21.5 26.5L18 30.5L14.5 26.5L9.5 27.5L10 22.5L5.5 18L10 13.5L9.5 8.5L14.5 9.5L18 5.5ZM18 12L12 18L18 24L24 18L18 12Z" fill="url(#frost-frame)" fill-rule="evenodd" />
+  <clipPath id="frost-frame-clip"><path d="M18 5.5L21.5 9.5L26.5 8.5L26 13.5L30.5 18L26 22.5L26.5 27.5L21.5 26.5L18 30.5L14.5 26.5L9.5 27.5L10 22.5L5.5 18L10 13.5L9.5 8.5L14.5 9.5L18 5.5ZM18 12L12 18L18 24L24 18L18 12Z" clip-rule="evenodd" /></clipPath>
+  <path d="M18 5.5L21.5 9.5L26.5 8.5L26 13.5L30.5 18L26 22.5L26.5 27.5L21.5 26.5L18 30.5L14.5 26.5L9.5 27.5L10 22.5L5.5 18L10 13.5L9.5 8.5L14.5 9.5L18 5.5Z" stroke="url(#frost-frame-rim)" stroke-width="2" clip-path="url(#frost-frame-clip)" />
+  <path d="M18 12.5L23.5 18L18 23.5L12.5 18L18 12.5Z" fill="url(#frost-crystal)" />
+  <path d="M18 13.07L22.93 18L18 22.93L13.07 18L18 13.07Z" stroke="url(#frost-crystal-rim)" stroke-width="0.8" />
+  <defs>
+    <linearGradient id="frost-frame" x1="8" y1="7" x2="28" y2="29" gradientUnits="userSpaceOnUse"><stop stop-color="#6DB9FB" /><stop offset="1" stop-color="#3650DE" /></linearGradient>
+    <linearGradient id="frost-frame-rim" x1="8" y1="6" x2="22" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.6" /><stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0" /></linearGradient>
+    <linearGradient id="frost-crystal" x1="12.5" y1="12.5" x2="23.5" y2="23.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD59A" /><stop offset="0.55" stop-color="#F2AF63" /><stop offset="1" stop-color="#E08A2E" /></linearGradient>
+    <linearGradient id="frost-crystal-rim" x1="13" y1="13" x2="21" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.95" /><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0" /></linearGradient>
+  </defs>
+</svg>

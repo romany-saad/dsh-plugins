@@ -43,6 +43,11 @@ function registered() {
       },
       bind: () => (key) => key,
     },
+    theme: { overrideTokens: () => () => {} },
+    configForms: {
+      get: () => ({ getSnapshot: () => ({ status: 'loading', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false }), subscribe: () => () => {}, mutate: async () => false }),
+      whileServed: () => () => {},
+    },
     inputTriggers: { registerSource: () => () => {} },
     uiConversation: { userText: { register: () => () => {} } },
     slots: { inject: (_n, make) => make(), register: () => () => {} },

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- **Settings form components.** `ui.SettingsForm`, `ui.SettingsValueField`, `ui.SettingsFormModel` and `ui.settingsNumberField` are DSH's own staged settings form, so a plugin can show its options on its page under Plugins. dsh-frost uses them for its Border width.
+
 ## 0.1.3
 
 - **Declares the DSH versions it supports.** `engines.dsh` is `>=0.2.1-rc.2 <0.3.0-0`, the DSH 0.2 line it is tested with. DSH checks it before installing, and plugin markets show it as the version's compatibility. Nothing else changes.
