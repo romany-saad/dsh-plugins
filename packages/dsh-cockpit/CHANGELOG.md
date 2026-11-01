@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0-rc.2
+
+- **Fix `text.indexOf is not a function` during turn prompt assembly.** `rs-dsh:cockpit-context` now returns synchronous string context from memory cache with `interpolate: false`, while the `system-prompt/assemble` waterfall handles asynchronous cache populating on session resume. This fixes turn failures across all DSH versions (including `0.2.1-rc.2` and `0.2.1-rc.5`).
+
 ## 0.6.0-rc.1
 
 Per-project process maps, flow stages, process updates, and todo replacement ([#52](https://github.com/romany-saad/dsh-plugins/issues/52), [#53](https://github.com/romany-saad/dsh-plugins/issues/53), [#29](https://github.com/romany-saad/dsh-plugins/issues/29), parts 2, 3 & 4 of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)).
