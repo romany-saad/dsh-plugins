@@ -386,7 +386,7 @@ test('card error and stopped text use the tab colour names, set on the card in b
 test('the empty state and a board that cannot be shown', () => {
   const out = render({ key: null, boards: ['a'] })
   assert.ok(out.includes('No board in this session'))
-  assert.ok(out.includes('A hub agent binds a board when it starts to coordinate work. The board shows here after that.'))
+  assert.ok(out.includes('An agent opens a board when it starts work with several steps. The board shows here after that.'))
   assert.ok(render({ key: 'k', error: 'no such board' }).includes('k: no such board'))
 })
 

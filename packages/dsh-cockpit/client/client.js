@@ -625,7 +625,7 @@ function stripTitle(m) {
 /** What the tab shows with no board: the design's title and one line. */
 const EMPTY_STATE = {
   title: 'No board in this session',
-  line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
+  line: 'An agent opens a board when it starts work with several steps. The board shows here after that.',
 }
 
 return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, firstByItem, boardParent, boardGroups, sectionOrder, boardSegments, driftState, driftWords, stripModel, stripText, stripTitle, EMPTY_STATE }

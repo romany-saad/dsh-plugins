@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+Agents plan multi-step work on a board instead of DSH's todo list (first part of [#29](https://github.com/romany-saad/dsh-plugins/issues/29)). The Board tab, the strip, the tools' behaviour and the board format are unchanged.
+
+- **When to open a board.** Cockpit's instructions now tell the agent to open a board, or keep using the session's board, and to add the steps before it starts any work that takes several steps. While it uses a board, it doesn't keep the todo list as well. A question or a one-step request gets no board. A subagent reports to the agent that gave it the task and opens no board of its own. Before, the instructions only applied once a board was open, and told the agent not to open one because of them. So agents used the todo list and the board stayed empty.
+- **Not only for hubs.** The tool descriptions say when to use each tool, and no longer call the board the hub's. The README, the package description and the Board tab's empty state describe the board as the plan for any multi-step work.
+- **Config.** `planning: { enabled: false }` leaves the new rule out. The rules for keeping an open board current stay.
+
 ## 0.3.3
 
 - **Declares the DSH versions it supports.** `engines.dsh` is `>=0.2.1-rc.2 <0.3.0-0`, the DSH 0.2 line it is tested with. DSH checks it before installing, and plugin markets show it as the version's compatibility. Nothing else changes.
