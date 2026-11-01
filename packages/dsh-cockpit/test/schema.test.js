@@ -5,7 +5,8 @@ import { driftResult } from '../lib/drift.js'
 import { FORMAT, VERSION } from '../lib/store.js'
 import { STATUSES, TASK_FIELDS } from '../lib/task.js'
 import { check } from './schema-check.mjs'
-import { newBoard, setup, t } from './helpers.mjs'
+import { INBOX_FIELDS, INBOX_STATES } from '../lib/inbox.js'
+import { exec, newBoard, setup, t } from './helpers.mjs'
 
 const schema = JSON.parse(await readFile(new URL('../board.schema.json', import.meta.url), 'utf8'))
 const fixtures = new URL('./fixtures/', import.meta.url)
@@ -30,11 +31,27 @@ test('a board the store writes, with a drift result, validates', async () => {
   assert.deepEqual(check(schema, board), [])
 })
 
-test('the schema agrees with the model: format, version, statuses, task fields', () => {
+test('the schema agrees with the model: format, version, statuses, task fields, inbox fields and states', () => {
   assert.equal(schema.properties.format.const, FORMAT)
   assert.equal(schema.properties.version.const, VERSION)
   assert.deepEqual(schema.$defs.status.enum, STATUSES)
   assert.deepEqual(Object.keys(schema.$defs.task.properties), TASK_FIELDS)
+  assert.deepEqual(Object.keys(schema.$defs.inboxItem.properties), INBOX_FIELDS)
+  assert.deepEqual(schema.$defs.inboxItem.properties.state.enum, INBOX_STATES)
+})
+
+test('a board the inbox tools write validates', async () => {
+  const { tools, store } = await setup()
+  const { opened } = await tools.board_inbox({ action: 'add', text: 'a', note: 'n' }, exec())
+  await tools.board_inbox({ action: 'add', text: 'b', source: 'panel' }, exec())
+  await tools.board_add({ what: 't', refines: ['i1'], refinedWith: 'grill-me' }, exec())
+  await tools.board_inbox({ action: 'drop', id: 'i2' }, exec())
+  await tools.board_inbox({ action: 'clear', id: 'i2' }, exec())
+  const board = await store.read(opened.key)
+  assert.equal(board.inbox.length, 2)
+  assert.deepEqual(check(schema, board), [])
+  assert.notDeepEqual(check(schema, { ...board, inbox: [{ id: 'x', text: 'a', state: 'open' }] }), [], 'an id is i and a number')
+  assert.notDeepEqual(check(schema, { ...board, inbox: [{ id: 'i1', text: 'a', state: 'later' }] }), [])
 })
 
 test('the schema refuses what the store refuses, and a bad status', () => {

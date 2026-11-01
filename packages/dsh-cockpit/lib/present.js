@@ -9,7 +9,7 @@ const MAX = 48
 const clip = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > MAX ? t.slice(0, MAX - 1) + '…' : t }
 const quote = (s) => '"' + clip(s) + '"'
 // board_open may create a board, set its parent and write the session binding.
-const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit' }
+const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit', board_inbox: 'edit' }
 
 const itemsText = (item) => (Array.isArray(item) ? item.join(', ') : String(item))
 
@@ -25,7 +25,16 @@ function addTitle(item, args) {
   const parts = ['add ' + (item ?? 'next') + ' ' + quote(args.what ?? '')]
   parts.push(args.status ?? 'next')
   if (Array.isArray(args.dependsOn) && args.dependsOn.length) parts.push('after ' + args.dependsOn.join(', '))
+  if (Array.isArray(args.refines) && args.refines.length) parts.push('from ' + args.refines.join(', '))
   return parts.join(' · ')
+}
+
+/** "inbox: add "dark mode…"", "inbox: drop i2", "inbox: clear i1, i2". */
+function inboxTitle(args, id) {
+  if (args.action === 'add') return 'inbox: add ' + (id ? id + ' ' : '') + quote(args.text ?? '')
+  const which = args.id === undefined ? '' : ' ' + itemsText(args.id)
+  if (args.action === 'update') return 'inbox: update' + which + (typeof args.text === 'string' ? ' ' + quote(args.text) : args.note === null ? ': clear note' : ': note')
+  return 'inbox: ' + String(args.action ?? '') + which
 }
 
 function updateTitle(args) {
@@ -52,7 +61,8 @@ export function callTitle(name, args = {}) {
     case 'board_open': return 'open ' + args.key + (args.parent !== undefined ? ' · parent ' + clip(args.parent) : '')
     case 'board_read': return ['read board', ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(args.item, args)
-    case 'board_update': return updateTitle(args)
+    case 'board_update': return updateTitle(args) + (Array.isArray(args.refines) && args.refines.length ? ' · from ' + args.refines.join(', ') : '')
+    case 'board_inbox': return inboxTitle(args)
     default: return name
   }
 }
@@ -64,6 +74,7 @@ export function resultTitle(name, args = {}, value) {
     case 'board_open': return 'open ' + value.board.key + (value.created ? ' (new)' : '') + (args.parent !== undefined ? ' · parent ' + clip(args.parent) : '')
     case 'board_read': return ['read ' + value.board.key, ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(value.task.item, { ...args, status: value.task.status })
+    case 'board_inbox': return inboxTitle(args, args.action === 'add' ? value.items?.[0]?.id : undefined) + (value.opened ? ' · opened ' + value.opened.key : '')
     default: return undefined
   }
 }

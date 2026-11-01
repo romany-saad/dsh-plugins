@@ -25,10 +25,21 @@ export function createHost() {
       })
     }
   }
+  const skills = new Map()
+  class Skills extends Service {
+    constructor(ctx) { super(ctx, 'skills') }
+    register(skill) {
+      return this.ctx.effect(() => {
+        skills.set(skill.name, skill)
+        return () => skills.delete(skill.name)
+      })
+    }
+  }
   const ctx = new Context()
   ctx.plugin(Tools)
   ctx.plugin(SystemPrompt)
-  return { ctx, tools, sections }
+  ctx.plugin(Skills)
+  return { ctx, tools, sections, skills }
 }
 
 /** Load the plugin under ctx and wait until its tools are registered (or it settles). */

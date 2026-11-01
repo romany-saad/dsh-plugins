@@ -6,6 +6,7 @@ export const DEFAULT_CONFIG = {
   drift: { command: '', cwd: '', mode: 'report' },
   links: { issue: '', pr: '' },
   planning: { enabled: true },
+  inbox: { refineSkill: '' },
 }
 
 const fail = (path, want, got) => {
@@ -40,6 +41,8 @@ function section(config, name) {
  *   refUrl() in lib/rows.js. Empty by default: only full http(s) URLs link.
  * - planning.enabled false leaves out the rule that agents plan multi-step
  *   work on a board (#29); the upkeep rules for a bound board stay.
+ * - inbox.refineSkill (#51): the skill cockpit-refine hands the domain work
+ *   to when the user names none; empty: its own checklist.
  */
 export function resolveConfig(config = {}) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) fail('config', 'an object', config)
@@ -52,6 +55,7 @@ export function resolveConfig(config = {}) {
     drift,
     links: section(config, 'links'),
     planning: section(config, 'planning'),
+    inbox: section(config, 'inbox'),
   }
 }
 

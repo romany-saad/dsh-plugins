@@ -3,6 +3,7 @@
 import { driftConfigured } from './config.js'
 import { driftResult, runDriftCommand } from './drift.js'
 import { BoardError, FORMAT, VERSION } from './store.js'
+import { INBOX_STATES, defaultBoardKey, inboxOf, nextInboxId, orderInboxItem, shownInbox } from './inbox.js'
 import { STATUSES, STRING_FIELDS, nextItem, orderTask } from './task.js'
 import { boardFlags, boardTree } from './tree.js'
 
@@ -77,6 +78,9 @@ export const RESULT_SPEC = {
   ],
 }
 
+const REFINES_DOC = 'Ids of Inbox items (i1, i2, …) this task was refined from: each is marked refined and linked to the task in the same write. Use it when you turn Inbox items into tasks.'
+const REFINED_WITH_DOC = 'With refines: the skill whose analysis the tasks came from, e.g. grill-me; recorded on the Inbox items.'
+
 export const TOOL_SPECS = {
   board_open: {
     description: `Open (or create) the dsh-cockpit board with this key and bind this session to it; after a resume the binding still holds. Use it when multi-step work starts, before doing the steps, then add them with board_add. The board is this session's plan: a tree of steps kept in a local JSON file. Returns its tasks, the tree text, flags, and the file's path and format version. ${DATA_NOTE}`,
@@ -91,6 +95,7 @@ export const TOOL_SPECS = {
       item: str('Return only this task and its subtree.'),
       status: { type: 'array', items: statusSpec, description: 'Return only tasks with these statuses.' },
       checkDrift: { type: 'boolean', description: 'Run the configured drift command first (default false).' },
+      inbox: { type: 'string', enum: ['shown', 'all'], description: 'Which Inbox items to return: shown (default) leaves out cleared ones; all includes them.' },
     },
   },
   board_add: {
@@ -100,6 +105,8 @@ export const TOOL_SPECS = {
       what: { type: 'string', required: true, description: FIELD_DOCS.what },
       status: statusSpec,
       ...fieldSpecs((s) => s),
+      refines: { type: 'array', items: { type: 'string' }, description: REFINES_DOC },
+      refinedWith: str(REFINED_WITH_DOC),
     },
   },
   board_update: {
@@ -117,6 +124,25 @@ export const TOOL_SPECS = {
         properties: { what: str(FIELD_DOCS.what), status: statusSpec, ...fieldSpecs(nullable) },
       },
       remove: { type: 'boolean', const: true, description: 'Delete the tasks.' },
+      refines: { type: 'array', items: { type: 'string' }, description: REFINES_DOC },
+      refinedWith: str(REFINED_WITH_DOC),
+    },
+  },
+  board_inbox: {
+    description: `The board's Inbox: rough items the user notes for later ("item for later", "todo next", "add to the inbox"), kept outside the task tree until they are refined into tasks. Record the text as the user said it and do not start or refine the work: refining is a separate step (the cockpit-refine skill), which links the items to the tasks they become with refines on board_add. With no board bound, add opens a board for this session first. Actions:
+- add: text (required), note, source (chat, the default, or panel when the text came from the Board tab's Add item). Returns the new item.
+- update: id, and text or note to change; null in note clears it.
+- drop: id or ids; the item will not be done and stays listed.
+- reopen: id or ids; a dropped or refined item is open again (its links stay).
+- clear: id or ids of refined or dropped items; hides them from the Board tab and the tree text, kept in the file (board_read inbox: all shows them).
+- delete: id or ids; removes them from the file, for mistakes. Returns them in previous.
+Returns the inbox (items not cleared), the changed items and the revision. Items are not tasks: they are not counted in progress and cannot be a parent or a dependency. ${DATA_NOTE}`,
+    parameters: {
+      action: { type: 'string', enum: ['add', 'update', 'drop', 'reopen', 'clear', 'delete'], required: true, description: 'What to do; see the description.' },
+      id: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }], description: 'The item (i1, i2, …) or items to act on; not for add.' },
+      text: str('The item as the user said it (add), or its new text (update).'),
+      note: nullable(str('A short note on the item: context, a link, why it was dropped.')),
+      source: { type: 'string', enum: ['chat', 'panel'], description: 'Where the text came from (add): chat (default) or panel.' },
     },
   },
 }
@@ -132,10 +158,12 @@ const meta = (board) => {
   return m
 }
 
-function view(board, path, { only } = {}) {
+function view(board, path, { only, inbox = 'shown' } = {}) {
   const tasks = only ? board.tasks.filter((t) => only.has(t.item)) : board.tasks
-  const { tree, flags } = boardTree(board, only ? { only } : {})
+  const { tree, flags } = boardTree(board, only ? { only } : { inbox })
   const out = { board: meta(board), file: { path, format: board.format, version: board.version }, tasks, tree, flags }
+  const items = inboxOf(board)
+  if (!only && items.length) out.inbox = inbox === 'all' ? items : shownInbox(items)
   if (board.drift !== undefined) out.drift = board.drift
   return out
 }
@@ -153,7 +181,41 @@ function subtree(tasks, item) {
 /** The arguments board_add stores; set in board_update allows the same, but item. */
 const ADD_ARGS = ['item', ...TASK_PARAMS]
 // updatedAt is accepted and replaced, so a task from previous can be passed back as it is.
-const ADD_KEYS = new Set([...ADD_ARGS, 'updatedAt'])
+// refines and refinedWith link Inbox items and are not stored on the task.
+const ADD_KEYS = new Set([...ADD_ARGS, 'updatedAt', 'refines', 'refinedWith'])
+
+const ids = (id) => [...new Set(Array.isArray(id) ? id : id === undefined ? [] : [id])]
+
+/**
+ * Mark Inbox items refined into these tasks (refines on board_add and
+ * board_update): each item names every task it became, and the skill when
+ * given. An unknown id refuses the call, as does a dropped item, so nothing
+ * is linked by halves. Returns the board's new inbox and the items changed.
+ */
+function refineInbox(key, board, refines, items, refinedWith, at) {
+  if (refines === undefined) return { inbox: board.inbox, changed: [] }
+  if (!Array.isArray(refines) || refines.some((r) => typeof r !== 'string' || r === '')) throw new BoardError('invalid_input', 'refines must be a list of Inbox ids, such as ["i3"].')
+  if (refinedWith !== undefined && (typeof refinedWith !== 'string' || !refinedWith.trim())) throw new BoardError('invalid_input', 'refinedWith must be a non-empty skill name.')
+  const inbox = inboxOf(board)
+  const byId = new Map(inbox.map((i) => [i.id, i]))
+  const wanted = ids(refines)
+  const missing = wanted.filter((r) => !byId.has(r))
+  if (missing.length) throw new BoardError('unknown_reference', `No Inbox item ${missing.map((r) => JSON.stringify(r)).join(', ')} on board ${key}; nothing was changed.`)
+  const dropped = wanted.filter((r) => byId.get(r).state === 'dropped')
+  if (dropped.length) throw new BoardError('invalid_input', `Inbox item ${dropped.join(', ')} is dropped; reopen it with board_inbox first. Nothing was changed.`)
+  const changed = new Map()
+  for (const r of wanted) {
+    const item = byId.get(r)
+    const had = Array.isArray(item.refinedInto) ? item.refinedInto : []
+    const into = [...new Set([...had, ...items])]
+    const withSkill = refinedWith === undefined ? item.refinedWith : refinedWith.trim()
+    // Linking an item again to the tasks it already names changes nothing.
+    if (item.state === 'refined' && into.length === had.length && withSkill === item.refinedWith) continue
+    const next = { ...item, state: 'refined', refinedInto: into, refinedWith: withSkill, updatedAt: at }
+    changed.set(r, orderInboxItem(next))
+  }
+  return { inbox: (Array.isArray(board.inbox) ? board.inbox : []).map((i) => changed.get(i?.id) ?? i), changed: [...changed.values()] }
+}
 
 /** extra holds string values (board.schema.json); null in set clears it. */
 function checkExtra(extra) {
@@ -178,6 +240,9 @@ function checkRefs(key, tasks, fields) {
   const which = [...new Set(missing.map(([f]) => f))].join(' and ')
   throw new BoardError('unknown_reference', `No task ${names} on board ${key} for ${which}; nothing was changed. Add ${missing.length > 1 ? 'those tasks' : 'that task'} first with board_add, then link them.`)
 }
+
+const INBOX_ACTIONS = ['add', 'update', 'drop', 'reopen', 'clear', 'delete']
+const INBOX_KEYS = new Set(['action', 'id', 'text', 'note', 'source'])
 
 const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(error.code)
 
@@ -273,7 +338,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
     return next
   }
 
-  return {
+  const bodies = {
     board_open: (args, exec = {}) => guard(async () => {
       if (typeof args.key !== 'string' || args.key === '') return err('invalid_input', 'key must be a non-empty string.')
       const sid = sessionOf(exec)
@@ -312,7 +377,8 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
         const keep = new Set(args.status)
         only = new Set(board.tasks.filter((t) => keep.has(t.status) && (!only || only.has(t.item))).map((t) => t.item))
       }
-      const out = ok(view(board, store.file(key), { only }))
+      if (args.inbox !== undefined && args.inbox !== 'shown' && args.inbox !== 'all') return err('invalid_input', 'inbox must be shown or all.')
+      const out = ok(view(board, store.file(key), { only, inbox: args.inbox }))
       if (args.checkDrift === true) out.driftCheck = runDrift ? (board.drift.error !== undefined ? 'failed' : 'ran') : 'not_configured'
       return out
     }),
@@ -323,16 +389,24 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
       const unknown = Object.keys(args).filter((k) => !ADD_KEYS.has(k))
       if (unknown.length) return err('invalid_input', `Unknown field ${unknown.map((k) => JSON.stringify(k)).join(', ')}; the fields are ${ADD_ARGS.join(', ')}. Use extra for anything else.`)
       checkExtra(args.extra)
-      const { board, task } = await change(key, (current) => {
+      const { refines, refinedWith, ...fields } = args
+      if (refinedWith !== undefined && refines === undefined) return err('invalid_input', 'refinedWith goes with refines.')
+      const { board, task, refined } = await change(key, (current) => {
         existing(key, current)
-        if (args.item !== undefined && current.tasks.some((t) => t.item === args.item)) {
-          throw new BoardError('item_exists', `Task ${JSON.stringify(args.item)} is already on board ${key}; use board_update.`)
+        if (fields.item !== undefined && current.tasks.some((t) => t.item === fields.item)) {
+          throw new BoardError('item_exists', `Task ${JSON.stringify(fields.item)} is already on board ${key}; use board_update.`)
         }
-        checkRefs(key, current.tasks, args)
-        const task = orderTask({ ...args, item: args.item ?? nextItem(current.tasks), status: args.status ?? 'next', updatedAt: store.now() })
-        return { board: { ...current, tasks: [...current.tasks, task] }, write: true, task }
+        checkRefs(key, current.tasks, fields)
+        const at = store.now()
+        const task = orderTask({ ...fields, item: fields.item ?? nextItem(current.tasks), status: fields.status ?? 'next', updatedAt: at })
+        const { inbox, changed } = refineInbox(key, current, refines, [task.item], refinedWith, at)
+        const board = { ...current, tasks: [...current.tasks, task] }
+        if (changed.length) board.inbox = inbox
+        return { board, write: true, task, refined: changed }
       }, { by: by(exec), signal: exec.signal })
-      return ok({ task, revision: board.revision, flags: boardFlags(board.tasks) })
+      const out = ok({ task, revision: board.revision, flags: boardFlags(board.tasks) })
+      if (refined.length) out.refined = refined
+      return out
     }),
 
     board_update: (args, exec = {}) => guard(async () => {
@@ -340,8 +414,10 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
       const items = [...new Set(Array.isArray(args.item) ? args.item : [args.item])]
       if (!items.length || items.some((i) => typeof i !== 'string' || i === '')) return err('invalid_input', 'item must be a non-empty string or a non-empty list of them.')
       if (args.remove && args.set !== undefined) return err('invalid_input', 'Use set or remove: true, not both.')
+      if (args.remove && args.refines !== undefined) return err('invalid_input', 'refines links Inbox items to tasks that stay; not with remove.')
+      if (args.refinedWith !== undefined && args.refines === undefined) return err('invalid_input', 'refinedWith goes with refines.')
       checkExtra(args.set?.extra)
-      const { board, tasks, previous } = await change(key, (current) => {
+      const { board, tasks, previous, refined = [] } = await change(key, (current) => {
         existing(key, current)
         const byItem = new Map(current.tasks.map((t) => [t.item, t]))
         const missing = items.filter((i) => !byItem.has(i))
@@ -355,8 +431,12 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
           return { board: { ...current, tasks: current.tasks.filter((t) => !gone.has(t.item)) }, write: true, tasks: [], previous }
         }
         const set = args.set ?? {}
-        if (Object.keys(set).length === 0) return { board: current, write: false, tasks: previous, previous }
         const at = store.now()
+        const { inbox, changed: refined } = refineInbox(key, current, args.refines, items, args.refinedWith, at)
+        if (Object.keys(set).length === 0) {
+          if (!refined.length) return { board: current, write: false, tasks: previous, previous }
+          return { board: { ...current, inbox }, write: true, tasks: previous, previous, refined }
+        }
         const changed = new Map()
         for (const i of items) {
           const next = { ...byItem.get(i) }
@@ -367,14 +447,94 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
           next.updatedAt = at
           changed.set(i, orderTask(next))
         }
-        return {
-          board: { ...current, tasks: current.tasks.map((t) => changed.get(t.item) ?? t) },
-          write: true,
-          tasks: items.map((i) => changed.get(i)),
-          previous,
-        }
+        const board = { ...current, tasks: current.tasks.map((t) => changed.get(t.item) ?? t) }
+        if (refined.length) board.inbox = inbox
+        return { board, write: true, tasks: items.map((i) => changed.get(i)), previous, refined }
       }, { by: by(exec), signal: exec.signal })
-      return ok({ tasks, previous, revision: board.revision, flags: boardFlags(board.tasks) })
+      const out = ok({ tasks, previous, revision: board.revision, flags: boardFlags(board.tasks) })
+      if (refined.length) out.refined = refined
+      return out
+    }),
+
+    board_inbox: (args = {}, exec = {}) => guard(async () => {
+      const action = args.action
+      if (!INBOX_ACTIONS.includes(action)) return err('invalid_input', 'action must be one of ' + INBOX_ACTIONS.join(', ') + '.')
+      const unknown = Object.keys(args).filter((k) => !INBOX_KEYS.has(k))
+      if (unknown.length) return err('invalid_input', `Unknown field ${unknown.map((k) => JSON.stringify(k)).join(', ')}; the fields are ${[...INBOX_KEYS].join(', ')}.`)
+      const want = ids(args.id)
+      if (want.some((i) => typeof i !== 'string' || i === '')) return err('invalid_input', 'id must be an Inbox id such as "i3", or a list of them.')
+      if (action === 'add') {
+        if (want.length) return err('invalid_input', 'add takes no id: the next one is given.')
+        if (typeof args.text !== 'string' || !args.text.trim()) return err('invalid_input', 'add needs text: the item as the user said it.')
+      } else if (!want.length) return err('invalid_input', action + ' needs id: the Inbox item, such as "i3".')
+      if (action === 'update') {
+        if (want.length > 1) return err('invalid_input', 'update changes one item at a time.')
+        if (args.text === undefined && args.note === undefined) return err('invalid_input', 'update needs text or note.')
+        if (args.text !== undefined && (typeof args.text !== 'string' || !args.text.trim())) return err('invalid_input', 'text must be non-empty; use drop or delete to retire an item.')
+      } else if (action !== 'add' && (args.text !== undefined || args.note !== undefined && action !== 'drop')) {
+        return err('invalid_input', action + ' takes only id' + (action === 'drop' ? ' and note.' : '.'))
+      }
+      if (args.source !== undefined && action !== 'add') return err('invalid_input', 'source goes with add.')
+      // The first item opens a board when the session has none (#51).
+      let key = await keyOf(exec)
+      let opened
+      if (key === undefined) {
+        if (action !== 'add') throw new BoardError('not_bound', 'No board is open in this session, so its Inbox is empty: add an item first, or call board_open.')
+        key = defaultBoardKey(sessionOf(exec))
+        const result = await bodies.board_open({ key }, exec)
+        if (!result.ok) return result
+        opened = { key, created: result.created }
+      }
+      const { board, items, previous } = await change(key, (current) => {
+        existing(key, current)
+        const inbox = Array.isArray(current.inbox) ? current.inbox : []
+        const all = inboxOf(current)
+        const at = store.now()
+        if (action === 'add') {
+          const id = nextInboxId(all, current.inboxSeq)
+          const item = orderInboxItem({ id, text: args.text.trim(), state: 'open', source: args.source ?? 'chat', note: typeof args.note === 'string' && args.note.trim() ? args.note.trim() : undefined, addedAt: at })
+          return { board: { ...current, inbox: [...inbox, item], inboxSeq: Number(id.slice(1)) }, write: true, items: [item], previous: [] }
+        }
+        const byId = new Map(all.map((i) => [i.id, i]))
+        const missing = want.filter((i) => !byId.has(i))
+        if (missing.length) throw new BoardError('item_unknown', `No Inbox item ${missing.map((i) => JSON.stringify(i)).join(', ')} on board ${key}; nothing was changed.`)
+        const previous = want.map((i) => byId.get(i))
+        if (action === 'delete') {
+          const gone = new Set(want)
+          return { board: { ...current, inbox: inbox.filter((i) => !gone.has(i?.id)) }, write: true, items: [], previous }
+        }
+        if (action === 'clear') {
+          const open = previous.filter((i) => i.state === 'open').map((i) => i.id)
+          if (open.length) throw new BoardError('invalid_input', `Inbox item ${open.join(', ')} is still open: refine or drop it before clearing. Nothing was changed.`)
+        }
+        const changed = new Map()
+        for (const item of previous) {
+          const next = { ...item, updatedAt: at }
+          if (action === 'update') {
+            if (args.text !== undefined) next.text = args.text.trim()
+            if (args.note === null || (typeof args.note === 'string' && !args.note.trim())) delete next.note
+            else if (typeof args.note === 'string') next.note = args.note.trim()
+          } else if (action === 'drop') {
+            next.state = 'dropped'
+            if (typeof args.note === 'string' && args.note.trim()) next.note = args.note.trim()
+            delete next.clearedAt
+          } else if (action === 'reopen') {
+            next.state = 'open'
+            delete next.clearedAt
+          } else if (action === 'clear') {
+            if (typeof item.clearedAt === 'string') { changed.set(item.id, item); continue }
+            next.clearedAt = at
+          }
+          changed.set(item.id, orderInboxItem(next))
+        }
+        const same = previous.every((p) => changed.get(p.id) === p)
+        if (same) return { board: current, write: false, items: previous, previous }
+        return { board: { ...current, inbox: inbox.map((i) => changed.get(i?.id) ?? i) }, write: true, items: want.map((i) => changed.get(i)), previous }
+      }, { by: by(exec), signal: exec.signal })
+      const out = ok({ board: meta(board), items, previous, inbox: shownInbox(inboxOf(board)), revision: board.revision })
+      if (opened) out.opened = opened
+      return out
     }),
   }
+  return bodies
 }

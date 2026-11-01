@@ -27,3 +27,7 @@
         # rules for keeping a bound board current stay.
         planning:
           enabled: true
+        # The skill /cockpit-refine hands the domain analysis of Inbox items to
+        # when the user names none, such as grill-me; empty: its own checklist.
+        inbox:
+          refineSkill: ''

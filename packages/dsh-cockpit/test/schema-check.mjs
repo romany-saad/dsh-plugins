@@ -1,8 +1,8 @@
 // A small checker for the JSON Schema keywords board.schema.json uses, so the
 // schema test needs no dependency: type, const, enum, required, properties,
-// items, additionalProperties, minLength, minimum and local $ref. A keyword
+// items, additionalProperties, minLength, minimum, pattern and local $ref. A keyword
 // the schema uses that this file does not know fails the check.
-const KNOWN = new Set(['$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties', 'items', 'additionalProperties', 'minLength', 'minimum'])
+const KNOWN = new Set(['$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'const', 'enum', 'required', 'properties', 'items', 'additionalProperties', 'minLength', 'minimum', 'pattern'])
 
 const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v)
 const isType = (v, type) => typeOf(v) === type || (type === 'number' && typeOf(v) === 'integer')
@@ -22,6 +22,7 @@ export function check(root, value) {
     if (schema.enum && !schema.enum.includes(v)) errors.push(`${path}: not one of ${schema.enum.join(', ')}`)
     if (schema.minLength !== undefined && typeof v === 'string' && v.length < schema.minLength) errors.push(`${path}: too short`)
     if (schema.minimum !== undefined && typeof v === 'number' && v < schema.minimum) errors.push(`${path}: below ${schema.minimum}`)
+    if (schema.pattern !== undefined && typeof v === 'string' && !new RegExp(schema.pattern, 'u').test(v)) errors.push(`${path}: does not match ${schema.pattern}`)
     if (typeOf(v) === 'object') {
       for (const r of schema.required ?? []) if (!(r in v)) errors.push(`${path}: missing ${r}`)
       for (const [k, x] of Object.entries(v)) {
