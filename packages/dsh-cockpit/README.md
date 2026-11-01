@@ -1,6 +1,6 @@
 # @rs-dsh/dsh-cockpit
 
-A task board for a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) hub, the session that coordinates the work of an effort across many pull requests. The board is a tree of steps, each linked to its issue and PR, kept as a local file that you and your scripts can read.
+A task board for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) sessions: the plan for work that takes several steps, from one change across a few files to an effort coordinated across many pull requests. The board is a tree of steps, each linked to its issue and PR, kept as a local file that you and your scripts can read.
 
 ![The Board tab: whole-board progress, a Needs you card, separate parent sections with local progress, and standalone tasks](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-tab.png)
 
@@ -17,10 +17,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.3.3
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.4.0
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.3.3&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.4.0&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -41,6 +41,7 @@ For `#12`, `{repo}` comes from the board's parent ticket. Without `links`, only 
 
 - `tools: { enabled: false }` registers no board tools.
 - `route: { enabled: false }` turns off the data the Board tab and the strip read; the tab then says the board is unavailable.
+- `planning: { enabled: false }` stops asking agents to plan multi-step work on a board (see Use). They still keep a board current once one is open.
 
 ### Drift
 
@@ -48,7 +49,9 @@ Drift is a step whose status no longer matches its work, such as a merged PR on 
 
 ## Use
 
-Ask the hub to keep a board for the effort, or let it use the tools on its own. Once a session is using a board, Cockpit asks the agent to keep its steps and next actions current and to check its work before marking a step done. This is guidance, not automatic tracking: check the board and correct it when needed. Child sessions have separate bindings.
+Cockpit asks the agent to plan any work that takes several steps on a board, in place of DSH's todo list. Before it starts, the agent opens a board, or keeps using the one the session has, and adds the steps. A question or a one-step request gets no board. While a board is open, the agent keeps its steps and next actions current and checks its work before marking a step done. A subagent doesn't open its own board: it reports to the agent that gave it the task, which records the result.
+
+This is guidance in the agent's instructions, not automatic tracking: check the board and correct it when needed. You can also ask for a board by name. Child sessions have separate bindings.
 
 - **Open a board** with a key, such as `bosla-883`, and optionally the parent ticket. The session stays bound to it, also after a resume.
 - **Add steps**, each with what it is and its issue or PR. `parent` puts a step under another; `dependsOn` lists steps that come first, so a step shows as blocked until they are done or dropped. Both must name steps already on the board: the agent adds a step first, then links others to it.

@@ -5,6 +5,7 @@ export const DEFAULT_CONFIG = {
   route: { enabled: true },
   drift: { command: '', cwd: '', mode: 'report' },
   links: { issue: '', pr: '' },
+  planning: { enabled: true },
 }
 
 const fail = (path, want, got) => {
@@ -37,6 +38,8 @@ function section(config, name) {
  * - links (decision 20, Q3): URL patterns for issue and pr references that
  *   are not full URLs, with the placeholders {ref}, {repo} and {number} of
  *   refUrl() in lib/rows.js. Empty by default: only full http(s) URLs link.
+ * - planning.enabled false leaves out the rule that agents plan multi-step
+ *   work on a board (#29); the upkeep rules for a bound board stay.
  */
 export function resolveConfig(config = {}) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) fail('config', 'an object', config)
@@ -48,6 +51,7 @@ export function resolveConfig(config = {}) {
     route: section(config, 'route'),
     drift,
     links: section(config, 'links'),
+    planning: section(config, 'planning'),
   }
 }
 

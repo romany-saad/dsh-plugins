@@ -23,3 +23,7 @@
         links:
           issue: ''
           pr: ''
+        # false: agents are not asked to plan multi-step work on a board; the
+        # rules for keeping a bound board current stay.
+        planning:
+          enabled: true

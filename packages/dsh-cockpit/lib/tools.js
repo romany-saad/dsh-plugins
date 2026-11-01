@@ -79,7 +79,7 @@ export const RESULT_SPEC = {
 
 export const TOOL_SPECS = {
   board_open: {
-    description: `Open (or create) the dsh-cockpit board with this key and bind this session to it; after a resume the binding still holds. The board is a local JSON file, the record of the hub's steps. Returns its tasks, the tree text, flags, and the file's path and format version. ${DATA_NOTE}`,
+    description: `Open (or create) the dsh-cockpit board with this key and bind this session to it; after a resume the binding still holds. Use it when multi-step work starts, before doing the steps, then add them with board_add. The board is this session's plan: a tree of steps kept in a local JSON file. Returns its tasks, the tree text, flags, and the file's path and format version. ${DATA_NOTE}`,
     parameters: {
       key: { type: 'string', required: true, description: 'Board key, e.g. bosla-883.' },
       parent: str('Free-form reference to the parent ticket; sets or replaces it.'),
@@ -94,7 +94,7 @@ export const TOOL_SPECS = {
     },
   },
   board_add: {
-    description: `Add a task to the bound board. item defaults to the next integer; status defaults to next. parent and dependsOn must name tasks already on the board: an unknown one refuses the call (unknown_reference), so add that task first, then this one or board_update to link them. Returns the task, the revision and the board's flags. ${DATA_NOTE}\n${fieldLines(['item', ...TASK_PARAMS])}`,
+    description: `Add a task to the bound board: record each step of multi-step work before you start it. item defaults to the next integer; status defaults to next. parent and dependsOn must name tasks already on the board: an unknown one refuses the call (unknown_reference), so add that task first, then this one or board_update to link them. Returns the task, the revision and the board's flags. ${DATA_NOTE}\n${fieldLines(['item', ...TASK_PARAMS])}`,
     parameters: {
       item: str(FIELD_DOCS.item + ' Omit for the next integer.'),
       what: { type: 'string', required: true, description: FIELD_DOCS.what },
@@ -103,7 +103,7 @@ export const TOOL_SPECS = {
     },
   },
   board_update: {
-    description: `Change or remove tasks of the bound board, in one write. item is one item or a list; set applies to each of them, and null in set clears a field; or remove: true deletes them (not both). If any item is not on the board, nothing changes (item_unknown); nor if set names a parent or dependsOn item that is not on it (unknown_reference): add that task first. Returns tasks (after the change; empty on a removal) and previous (each task as it was), so a removed task can be added back from previous with board_add. ${DATA_NOTE}\n${fieldLines(TASK_PARAMS)}`,
+    description: `Change or remove tasks of the bound board, in one write, as the work moves: a step starts, finishes, waits or gets a new next action. item is one item or a list; set applies to each of them, and null in set clears a field; or remove: true deletes them (not both). If any item is not on the board, nothing changes (item_unknown); nor if set names a parent or dependsOn item that is not on it (unknown_reference): add that task first. Returns tasks (after the change; empty on a removal) and previous (each task as it was), so a removed task can be added back from previous with board_add. ${DATA_NOTE}\n${fieldLines(TASK_PARAMS)}`,
     parameters: {
       item: {
         oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],

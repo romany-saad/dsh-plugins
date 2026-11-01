@@ -620,5 +620,5 @@ export function stripTitle(m) {
 /** What the tab shows with no board: the design's title and one line. */
 export const EMPTY_STATE = {
   title: 'No board in this session',
-  line: 'A hub agent binds a board when it starts to coordinate work. The board shows here after that.',
+  line: 'An agent opens a board when it starts work with several steps. The board shows here after that.',
 }
