@@ -6,7 +6,7 @@ export const DEFAULT_CONFIG = {
   drift: { command: '', cwd: '', mode: 'report' },
   links: { issue: '', pr: '' },
   planning: { enabled: true },
-  inbox: { refineSkill: '' },
+  inbox: { refineSkill: '', sendOnClick: true },
   replaces: { todo: true },
 }
 
@@ -44,6 +44,8 @@ function section(config, name) {
  *   work on a board (#29); the upkeep rules for a bound board stay.
  * - inbox.refineSkill (#51): the skill cockpit-refine hands the domain work
  *   to when the user names none; empty: its own checklist.
+ * - inbox.sendOnClick: the Inbox's Refine, Refine all and Clear buttons queue their
+ *   request for the agent directly; false: they only fill the message box.
  * - replaces.todo (#29): hide the todo_write tool for the agent while a
  *   board is bound; subagents keep their own todo list.
  */

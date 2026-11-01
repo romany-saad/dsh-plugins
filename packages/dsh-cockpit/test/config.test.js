@@ -12,7 +12,7 @@ test('defaults: tools and route on, no drift command, report mode, no link patte
     drift: { command: '', cwd: '', mode: 'report' },
     links: { issue: '', pr: '' },
     planning: { enabled: true },
-    inbox: { refineSkill: '' },
+    inbox: { refineSkill: '', sendOnClick: true },
     replaces: { todo: true },
   })
 })

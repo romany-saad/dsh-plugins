@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0-rc.3
+
+- **Inbox buttons send.** **Refine**, **Refine all** and **Clear** now queue their request for the agent in one click, instead of only filling the message box. They still refuse when the message box holds a draft, so nothing you typed is sent or replaced, and they work while other messages are already queued (the click goes behind them). **Add item…** still fills the box, because you type the text. New config `inbox.sendOnClick` (default `true`); `false` restores fill-only.
+
 ## 0.6.0-rc.2
 
 - **Fix `text.indexOf is not a function` during turn prompt assembly.** `rs-dsh:cockpit-context` now returns synchronous string context from memory cache with `interpolate: false`, while the `system-prompt/assemble` waterfall handles asynchronous cache populating on session resume. This fixes turn failures across all DSH versions (including `0.2.1-rc.2` and `0.2.1-rc.5`).

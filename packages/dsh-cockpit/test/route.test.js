@@ -93,7 +93,7 @@ test('boards: the keys in the folder; none when the folder does not exist', asyn
 test('view: a bound session gets its board, tree, flags, problems and whether drift is configured', async () => {
   const { routes, dataDir } = await home()
   const v = await (await routes[ROUTES.view](get(ROUTES.view, '?sessionId=s1'))).json()
-  assert.deepEqual(Object.keys(v), ['key', 'board', 'tree', 'flags', 'problems', 'driftConfigured', 'links'])
+  assert.deepEqual(Object.keys(v), ['key', 'board', 'tree', 'flags', 'problems', 'driftConfigured', 'links', 'inboxSend'])
   assert.deepEqual(v.links, {})
   assert.equal(v.key, 'bosla-883')
   assert.deepEqual(v.board, BOARD)

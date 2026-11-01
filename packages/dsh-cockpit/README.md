@@ -15,15 +15,15 @@ A task board for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 - **A card per board tool call** in the chat.
 - **A small reader** for scripts, with no DSH needed.
 
-The panel and the strip only show the board. They run no command and change nothing. The Inbox's buttons put a request in the message box for you to send; the agent makes the change.
+The panel and the strip only show the board. They run no command and change nothing. The Inbox's buttons send a request to the agent, and the agent makes the change.
 
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.2
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.3
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.2&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.3&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -46,6 +46,7 @@ For `#12`, `{repo}` comes from the board's parent ticket. Without `links`, only 
 - `route: { enabled: false }` turns off the data the Board tab and the strip read; the tab then says the board is unavailable.
 - `planning: { enabled: false }` stops asking agents to plan multi-step work on a board (see Use). They still keep a board current once one is open.
 - `inbox: { refineSkill: 'grill-me' }` names the skill `/cockpit-refine` uses for the analysis when you name none (see Inbox). By default it uses its own checklist.
+- `inbox: { sendOnClick: false }` makes the Inbox's **Refine**, **Refine all** and **Clear** buttons only fill the message box for you to send, instead of queueing the request for the agent.
 - `replaces: { todo: false }` keeps DSH's built-in `todo_write` tool available alongside a bound board. By default it is hidden for the session while a board is bound; subagents always keep their own todo list.
 
 ### Drift
