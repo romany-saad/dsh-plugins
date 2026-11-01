@@ -71,7 +71,7 @@ function viewError(key, error) {
  *   patterns (linkOptions), which the tab passes to boardRows
  * @returns {Record<string, (request: Request) => Promise<Response>>}
  */
-export function createRouteHandlers(dataDir, { drift = false, links = {} } = {}) {
+export function createRouteHandlers(dataDir, { drift = false, links = {}, inboxSend = false } = {}) {
   const store = createStore({ dataDir })
   return {
     [ROUTES.boards]: async () => json({ boards: await listBoards(dataDir) }),
@@ -104,7 +104,7 @@ export function createRouteHandlers(dataDir, { drift = false, links = {} } = {})
         return json({ key, error: viewError(key, error) })
       }
       const { tree, flags, problems } = drawn
-      return json({ key, board, tree, flags, problems, driftConfigured: drift, links })
+      return json({ key, board, tree, flags, problems, driftConfigured: drift, links, inboxSend })
     },
   }
 }
@@ -119,7 +119,7 @@ export function createRouteHandlers(dataDir, { drift = false, links = {} } = {})
  * @param {{ dataDir: string, config: ReturnType<typeof import('./config.js').resolveConfig> }} options
  */
 export function registerRoutes(ctx, { dataDir, config }) {
-  const handlers = createRouteHandlers(dataDir, { drift: driftConfigured(config), links: linkOptions(config).links })
+  const handlers = createRouteHandlers(dataDir, { drift: driftConfigured(config), links: linkOptions(config).links, inboxSend: config.inbox.sendOnClick })
   for (const [path, handle] of Object.entries(handlers)) {
     ctx.connection.fetch.register({
       path,

@@ -842,3 +842,55 @@ test('header shows warning when processDrift is reported', () => {
   const out = render(withDrift)
   assert.ok(out.includes('Process may be out of date: CONTRIBUTING.md changed'))
 })
+
+
+// ---- Send on click (rc.3) ----
+
+test('Inbox buttons queue the request when sending is on: Refine, Refine all and Clear; Add item stays a fill', () => {
+  const calls = []
+  const actions = { setDraft: (t) => calls.push(['draft', t]), submit: (...a) => calls.push(['submit', ...a]) }
+  const hook = (state) => (selector, equal) => selector(state)
+  const { exports } = load()
+  const fill = exports.useFill(hook({ draft: '', phase: 'plain', queue: [] }), actions, true)
+  assert.equal(fill('/cockpit-refine i1', { send: true }), 'sent')
+  assert.deepEqual(calls, [['draft', '/cockpit-refine i1'], ['submit', 'queue', 'click']])
+  calls.length = 0
+  assert.equal(fill('Add to the inbox: x'), 'filled', 'no send option: only filled')
+  assert.deepEqual(calls, [['draft', 'Add to the inbox: x']])
+})
+
+test('sending is off with the config switch or without a submit action: the button only fills', () => {
+  const calls = []
+  const hook = (state) => (selector) => selector(state)
+  const { exports } = load()
+  const off = exports.useFill(hook({ draft: '', phase: 'plain' }), { setDraft: (t) => calls.push(t), submit: () => calls.push('submit') }, false)
+  assert.equal(off('x', { send: true }), 'filled')
+  const none = exports.useFill(hook({ draft: '', phase: 'plain' }), { setDraft: (t) => calls.push(t) }, true)
+  assert.equal(none('y', { send: true }), 'filled')
+  assert.deepEqual(calls, ['x', 'y'])
+})
+
+test('a draft in the box is never sent or replaced, and queued messages do not block a click', () => {
+  const calls = []
+  const actions = { setDraft: (t) => calls.push(['draft', t]), submit: () => calls.push(['submit']) }
+  const hook = (state) => (selector) => selector(state)
+  const { exports } = load()
+  assert.equal(exports.useFill(hook({ draft: 'my text', phase: 'plain', queue: [] }), actions, true)('x', { send: true }), 'draft')
+  assert.equal(exports.useFill(hook({ draft: '', phase: 'submitting', queue: [] }), actions, true)('x', { send: true }), 'unavailable')
+  assert.deepEqual(calls, [], 'nothing was written')
+  // Messages waiting for their turn: the click still queues behind them.
+  const queued = exports.useFill(hook({ draft: '', phase: 'submitting', queue: [{ id: 'm1' }] }), actions, true)
+  assert.equal(queued('/cockpit-refine i2', { send: true }), 'sent')
+  const plainQueued = exports.useFill(hook({ draft: '', phase: 'plain', queue: [{ id: 'm1' }, { id: 'm2' }] }), actions, true)
+  assert.equal(plainQueued('/cockpit-refine', { send: true }), 'sent')
+  assert.equal(calls.filter((c) => c[0] === 'submit').length, 2)
+})
+
+test('the buttons ask for a send; the Add item field does not', () => {
+  const asked = []
+  const fill = (text, options) => { asked.push([text, options && options.send === true]); return 'sent' }
+  const all = inboxOfView(withInbox(live, [...INBOX, { id: 'i5', text: 'Second', state: 'open' }]), fill)
+  const click = (label, within) => all.find((n) => n.type === 'button' && textOf(n) === label && (!within || n.props.title.includes(within))).props.onClick()
+  click('Refine', 'i1'); click('Refine all'); click('Clear', 'i2')
+  assert.deepEqual(asked.map((a) => a[1]), [true, true, true])
+})

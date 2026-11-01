@@ -6,7 +6,7 @@ Public plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 |---|---|---|
 | [`@rs-dsh/dsh-core`](packages/dsh-core) | The shared base of the rs-dsh plugins: one selection toolbar for all their actions, and boxes drawn with DSH's own components. Installed by the plugins that use it | 0.1.4 |
 | [`@rs-dsh/dsh-threads`](packages/dsh-threads) | Comment on any passage of a Web conversation and get a brief reply from the session's own model in a small thread next to it; passages stay highlighted, and a thread can be sent to the chat. Formerly `@rs-dsh/dsh-comment` | 0.4.3 |
-| [`@rs-dsh/dsh-cockpit`](packages/dsh-cockpit) | A durable task board that agents plan multi-step work on, with project process mapping, flow stages, and an Inbox for ideas noted for later, kept as local files that other processes can read | 0.6.0-rc.2 |
+| [`@rs-dsh/dsh-cockpit`](packages/dsh-cockpit) | A durable task board that agents plan multi-step work on, with project process mapping, flow stages, and an Inbox for ideas noted for later, kept as local files that other processes can read | 0.6.0-rc.3 |
 | [`@rs-dsh/dsh-quote`](packages/dsh-quote) | Quote passages from a Web conversation into your next message as composer chips, each with an optional note you can edit; hover shows the full quote, and sent quotes render as cards | 0.3.3 |
 | [`@rs-dsh/dsh-frosty-castle-theme`](packages/dsh-frosty-castle-theme) | Frosty Castle Theme: a frost-fantasy palette, stone-and-iron frame, crest and carved controls for the DSH Web GUI | 0.1.0-rc.1 |
 | [`@rs-dsh/dsh-drafts`](packages/dsh-drafts) | Get back what you typed into a new Web conversation and left before sending: unsent drafts are listed above the message box of a new conversation, with Open and Discard | 0.1.2 |

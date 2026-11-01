@@ -620,24 +620,34 @@ function Empty({ fill }) {
  * fill(text) for this session's message box, from the tab's standard props:
  * 'filled', 'draft' when the box holds a draft, or 'unavailable'.
  */
-function useFill(useInput, inputActions) {
-  // A selector hook (SnapshotSelectorHook): it takes the selector; this one reads two fields.
+function useFill(useInput, inputActions, sendOnClick = false) {
+  // A selector hook (SnapshotSelectorHook): it takes the selector; this one reads three fields.
   const draft = typeof useInput === 'function' ? useInput(inputDraft, sameDraft) : undefined
   const input = draft
   if (!inputActions || typeof inputActions.setDraft !== 'function') return undefined
-  return (text) => {
-    if (input && input.phase !== undefined && input.phase !== 'plain') return 'unavailable'
+  const canSend = sendOnClick && typeof inputActions.submit === 'function'
+  // fill(text): put it in the box. fill(text, { send: true }): and queue it for the agent
+  // (config inbox.sendOnClick), so a fixed request is one click.
+  return (text, options) => {
+    // Messages already queued do not block a click: only a message mid-submission does.
+    const queued = input && input.queued > 0
+    if (input && input.phase !== undefined && input.phase !== 'plain' && !queued) return 'unavailable'
     if (input && typeof input.draft === 'string' && input.draft.trim()) return 'draft'
     inputActions.setDraft(text)
+    if (options && options.send && canSend) {
+      inputActions.submit('queue', 'click')
+      return 'sent'
+    }
     return 'filled'
   }
 }
 
-const inputDraft = (s) => ({ draft: s ? s.draft : undefined, phase: s ? s.phase : undefined })
-const sameDraft = (a, b) => a.draft === b.draft && a.phase === b.phase
+const inputDraft = (s) => ({ draft: s ? s.draft : undefined, phase: s ? s.phase : undefined, queued: s && Array.isArray(s.queue) ? s.queue.length : 0 })
+const sameDraft = (a, b) => a.draft === b.draft && a.phase === b.phase && a.queued === b.queued
 
 const FILL_NOTE = {
   filled: 'In the message box: send it to ask the agent.',
+  sent: 'Queued for the agent.',
   draft: 'The message box has a draft: send or clear it first.',
   unavailable: 'The message box is busy: try again in a moment.',
 }
@@ -645,7 +655,7 @@ const FILL_NOTE = {
 /** The line under the Inbox that says what a button did, until the next one. */
 function FillNote({ result }) {
   if (!result) return null
-  return h('p', { className: 'dshc-ibnote', role: 'status', 'data-kind': result === 'filled' ? 'ok' : 'busy' }, FILL_NOTE[result])
+  return h('p', { className: 'dshc-ibnote', role: 'status', 'data-kind': result === 'filled' || result === 'sent' ? 'ok' : 'busy' }, FILL_NOTE[result])
 }
 
 /** "Add item…": a one-line field; Enter or Add fills "Add to the inbox: <text>". */
@@ -684,7 +694,7 @@ function Inbox({ board, fill }) {
   const [result, setResult] = React.useState(undefined)
   if (!items.length && !fill) return null
   const open = openInbox(items)
-  const act = (text) => setResult(fill(text))
+  const act = (text) => setResult(fill(text, { send: true }))
   return h('section', { className: 'dshc-sec dshc-inbox', 'data-inbox': '', 'aria-label': 'Inbox' },
     h('div', { className: 'dshc-sech' },
       h('span', null, 'Inbox ', h('span', { className: 'dshc-inbox-n' }, open.length ? open.length + ' open' : '')),
@@ -768,8 +778,8 @@ function useShowRow(useTabInfo, ready, root) {
 
 function BoardBody({ sessionId, useTabInfo, useInput, inputActions }) {
   useStyle()
-  const fill = useFill(useInput, inputActions)
   const { loading, view, error } = useView(sessionId)
+  const fill = useFill(useInput, inputActions, Boolean(view && view.inboxSend))
   const now = useMinute()
   const root = React.useRef(null)
   useShowRow(useTabInfo, Boolean(view && view.board), root)
