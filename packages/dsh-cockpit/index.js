@@ -45,7 +45,44 @@ export function apply(ctx, rawConfig) {
   if (config.route.enabled) ctx.inject(['connection'], (connCtx) => registerRoutes(connCtx, { dataDir, config }))
   if (!config.tools.enabled) return
   const store = createStore({ dataDir })
-  const bodies = createBoardTools({ store, drift: config.drift, dshHome: resolveDshHome() })
+
+  // Active restrictions on todo_write per session (#29)
+  const todoDisposers = new Map()
+  const restrictTodo = (agent) => {
+    if (!config.replaces.todo) return
+    if (!agent || !agent.ctx || !agent.ctx.tools || typeof agent.ctx.tools.restrict !== 'function') return
+    if (agent.session?.parent !== undefined) return
+    const sid = agent.session?.id
+    if (!sid || todoDisposers.has(sid)) return
+    try {
+      const dispose = agent.ctx.tools.restrict({ deny: ['todo_write'] })
+      todoDisposers.set(sid, dispose)
+    } catch {}
+  }
+  const liftTodo = (sid) => {
+    if (!sid) return
+    const dispose = todoDisposers.get(sid)
+    if (dispose) {
+      dispose()
+      todoDisposers.delete(sid)
+    }
+  }
+
+  // Restore restriction on resume / agent creation
+  ctx.on('agent/created', async ({ agent }) => {
+    if (!config.replaces.todo || !agent?.session?.id) return
+    if (agent.session?.parent !== undefined) return
+    const boundKey = await store.readBinding(agent.session.id).catch(() => undefined)
+    if (boundKey) restrictTodo(agent)
+  })
+
+  const bodies = createBoardTools({
+    store,
+    drift: config.drift,
+    dshHome: resolveDshHome(),
+    onBind: restrictTodo,
+    onUnusable: liftTodo,
+  })
   ctx.inject(['tools'], (toolsCtx) => {
     for (const definition of createDefinitions(bodies)) toolsCtx.tools.register(definition)
   })
@@ -53,6 +90,33 @@ export function apply(ctx, rawConfig) {
     promptCtx.systemPrompt.section({
       name: 'rs-dsh:cockpit', order: 2850, interpolate: false,
       text: guidance({ planning: config.planning.enabled }),
+    })
+    promptCtx.systemPrompt.context({
+      name: 'rs-dsh:cockpit-context', order: 125,
+      text: async (assembleContext) => {
+        const sid = assembleContext?.scope?.id ?? assembleContext?.scope
+        if (!sid) return ''
+        const key = await store.readBinding(sid).catch(() => undefined)
+        if (!key) return ''
+        const board = await store.read(key).catch(() => undefined)
+        if (!board || !Array.isArray(board.tasks)) return ''
+        const tasks = board.tasks
+        const ready = tasks.filter((t) => t.status === 'next' && (!t.dependsOn || t.dependsOn.every((d) => {
+          const s = tasks.find((o) => o.item === d)?.status
+          return s === 'done' || s === 'dropped'
+        })))
+        const inProgress = tasks.filter((t) => t.status === 'now')
+        const needsYou = tasks.filter((t) => t.status === 'waiting' && t.waitingOn?.toLowerCase() === 'owner')
+        const allClosed = tasks.length > 0 && tasks.every((t) => t.status === 'done' || t.status === 'dropped')
+        const lines = [`Cockpit board '${key}':`]
+        if (allClosed) lines.push('All tasks on the board are closed (done or dropped). If a goal is active, complete the goal.')
+        else {
+          if (inProgress.length) lines.push('In progress: ' + inProgress.map((t) => t.item + ' (' + t.what + ')').join(', '))
+          if (ready.length) lines.push('Next ready tasks: ' + ready.map((t) => t.item + ' (' + t.what + ')').join(', '))
+          if (needsYou.length) lines.push('Waiting on user: ' + needsYou.map((t) => t.item + ' (' + (t.nextAction || t.what) + ')').join(', '))
+        }
+        return lines.join('\n')
+      },
     })
   })
   // The refine and process skills (#51, #52), for the model and as /cockpit-* for the user.

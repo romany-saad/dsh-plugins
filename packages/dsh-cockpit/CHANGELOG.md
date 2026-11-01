@@ -2,7 +2,10 @@
 
 ## 0.6.0-rc.1
 
-Per-project process maps, flow stages, and process updates ([#52](https://github.com/romany-saad/dsh-plugins/issues/52), [#53](https://github.com/romany-saad/dsh-plugins/issues/53), parts 2 & 3 of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)).
+Per-project process maps, flow stages, process updates, and todo replacement ([#52](https://github.com/romany-saad/dsh-plugins/issues/52), [#53](https://github.com/romany-saad/dsh-plugins/issues/53), [#29](https://github.com/romany-saad/dsh-plugins/issues/29), parts 2, 3 & 4 of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)).
+
+- **Board replaces the todo list (`replaces.todo`).** When a board is bound, `todo_write` is masked for the session agent via `ctx.tools.restrict`. Subagents retain their private todo lists. The tool mask is lifted if the board cannot be read or if `replaces.todo: false` is configured.
+- **Goal integration via dynamic context.** `rs-dsh:cockpit-context` supplies the current board's next ready steps, active work, and user-waiting blockers to the model at each turn, and guides completion when all board tasks are closed.
 
 - **Process map.** `.dsh/cockpit/process.yml` records ordered workflow stages, exit checks, who acts, skills in order, command templates, kind filters, and when/skipIf hints.
 - **`board_process` tool.** Actions `read`, `propose`, `save`, and `adopt`. `propose` validates draft maps and returns a structured diff; `save` requires explicit user confirmation, saves the YAML file atomically, bumps the revision, and logs the change summary; `adopt` applies the new process revision to open items without modifying completed stages.

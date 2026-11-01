@@ -188,3 +188,74 @@ test('the tools write under $DSH_HOME/data/dsh-cockpit', async () => {
   const r = await tools.get('board_open').execute({ key: 'where' }, exec('where-s'))
   assert.equal(r.file.path, process.env.DSH_HOME + '/data/dsh-cockpit/boards/where.json')
 })
+
+
+test('cockpit context provides ready steps and goal completion guidance', async () => {
+  const { ctx, contexts, tools } = createHost()
+  const fork = await load(ctx, plugin, {})
+  const c = contexts.get('rs-dsh:cockpit-context')
+  assert.ok(c, 'context registered')
+  assert.equal(c.order, 125)
+
+  // When no board is bound
+  const textEmpty = await c.text({ scope: { id: 's-none' } })
+  assert.equal(textEmpty, '')
+
+  // Bind a board with tasks
+  const e = exec('s-goal')
+  await tools.get('board_open').execute({ key: 'g-board' }, e)
+  await tools.get('board_add').execute({ item: '1', what: 'Step 1', status: 'now' }, e)
+  await tools.get('board_add').execute({ item: '2', what: 'Step 2', status: 'next', dependsOn: ['1'] }, e)
+  await tools.get('board_add').execute({ item: '3', what: 'Owner step', status: 'waiting', waitingOn: 'owner', nextAction: 'Review PR' }, e)
+
+  const textActive = await c.text({ scope: { id: 's-goal' } })
+  assert.ok(textActive.includes("Cockpit board 'g-board':"))
+  assert.ok(textActive.includes('In progress: 1 (Step 1)'))
+  assert.ok(textActive.includes('Waiting on user: 3 (Review PR)'))
+
+  // Close all tasks
+  await tools.get('board_update').execute({ item: ['1', '2', '3'], set: { status: 'done' } }, e)
+  const textClosed = await c.text({ scope: { id: 's-goal' } })
+  assert.ok(textClosed.includes('All tasks on the board are closed (done or dropped). If a goal is active, complete the goal.'))
+  await fork.dispose()
+})
+
+test('replaces.todo restricts todo_write for root session on board_open; subagents keep their list', async () => {
+  const { ctx, tools } = createHost()
+  const fork = await load(ctx, plugin, { replaces: { todo: true } })
+
+  const deniedCalls = []
+  const mockAgent = {
+    session: { id: 'root-sess' },
+    ctx: {
+      tools: {
+        restrict(filter) {
+          deniedCalls.push({ session: 'root-sess', filter })
+          return () => {}
+        },
+      },
+    },
+  }
+  const e = { agent: mockAgent, signal: new AbortController().signal }
+  await tools.get('board_open').execute({ key: 'b-root' }, e)
+  assert.equal(deniedCalls.length, 1)
+  assert.deepEqual(deniedCalls[0].filter, { deny: ['todo_write'] })
+
+  // Subagent session with parent: should NOT restrict todo_write
+  const subagentDenied = []
+  const mockSubagent = {
+    session: { id: 'sub-sess', parent: 'root-sess' },
+    ctx: {
+      tools: {
+        restrict(filter) {
+          subagentDenied.push(filter)
+          return () => {}
+        },
+      },
+    },
+  }
+  const eSub = { agent: mockSubagent, signal: new AbortController().signal }
+  await tools.get('board_open').execute({ key: 'b-sub' }, eSub)
+  assert.equal(subagentDenied.length, 0, 'subagent todo_write is never restricted')
+  await fork.dispose()
+})

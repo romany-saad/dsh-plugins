@@ -394,7 +394,7 @@ const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(e
  * @param {Record<string, string|undefined>} [options.env] the drift command's base environment
  * @param {string} [options.dshHome] DSH_HOME for the drift command
  */
-export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome }) {
+export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome, onBind, onUnusable }) {
   let unscopedKey // Calls without a session keep their binding in memory only.
   const processStores = new Map()
   const getProcessStore = (root) => {
@@ -504,7 +504,10 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
       // The binding file first: if it cannot be written, the board is not
       // changed either. A binding to a board that a failed change did not
       // create reads as board_unreadable until board_open succeeds.
-      if (sid) await store.writeBinding(sid, args.key)
+      if (sid) {
+        await store.writeBinding(sid, args.key)
+        if (typeof onBind === 'function') onBind(exec?.agent)
+      }
       const { board, created } = await change(args.key, (current) => {
         if (!current) {
           const at = store.now()

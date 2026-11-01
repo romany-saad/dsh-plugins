@@ -16,12 +16,19 @@ export function createHost() {
     }
   }
   const sections = new Map()
+  const contexts = new Map()
   class SystemPrompt extends Service {
     constructor(ctx) { super(ctx, 'systemPrompt') }
     section(value) {
       return this.ctx.effect(() => {
         sections.set(value.name, value)
         return () => sections.delete(value.name)
+      })
+    }
+    context(value) {
+      return this.ctx.effect(() => {
+        contexts.set(value.name, value)
+        return () => contexts.delete(value.name)
       })
     }
   }
@@ -39,7 +46,7 @@ export function createHost() {
   ctx.plugin(Tools)
   ctx.plugin(SystemPrompt)
   ctx.plugin(Skills)
-  return { ctx, tools, sections, skills }
+  return { ctx, tools, sections, contexts, skills }
 }
 
 /** Load the plugin under ctx and wait until its tools are registered (or it settles). */
