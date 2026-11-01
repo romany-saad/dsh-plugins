@@ -42,6 +42,38 @@ export function fakePrimitives(names) {
     MarkdownText: ({ text }) => h('div', { 'data-markdown': '' }, text),
     Tooltip: ({ children }) => children,
     Toast: ({ text }) => h('div', { role: 'status' }, text),
+    // DSH's staged settings form, reduced to what a plugin page drives:
+    // drafts staged by edit, written by save as one mutate, seeded from the scope.
+    SettingsForm: ({ state, labels, onSave, onDiscard, children }) => !state.available ? null : h('form', { 'data-settings-form': '' },
+      children,
+      h('button', { type: 'button', 'data-action': 'save', disabled: !state.dirty || state.invalid || state.saving || !state.writable, onClick: onSave }, state.saving ? labels.saving : labels.save),
+      h('button', { type: 'button', 'data-action': 'discard', onClick: onDiscard }, 'Discard'),
+      state.failed ? h('div', { role: 'alert' }, labels.saveFailed) : null),
+    SettingsValueField: ({ id, label, hint, text, invalid, invalidLabel, disabled, onEdit }) => h('label', { htmlFor: id },
+      label, h('input', { id, value: text, disabled, 'aria-invalid': invalid, onChange: (e) => onEdit(e.currentTarget.value) }),
+      h('small', null, invalid ? invalidLabel : hint)),
+    settingsNumberField: (field) => ({
+      field,
+      format: (v) => (v === undefined ? '' : String(v)),
+      parse: (t) => (t.trim() === '' ? { kind: 'clear' } : Number.isFinite(Number(t)) ? { kind: 'set', value: Number(t) } : undefined),
+    }),
+    SettingsFormModel: class {
+      constructor(scope, specs) { this.scope = scope; this.specs = new Map(specs.map((s) => [s.field, s])); this.staged = new Map(); this.listeners = new Set(); this.saving = false; this.failed = false; this.off = scope.subscribe(() => this.publish()) }
+      publish() { for (const fn of this.listeners) fn() }
+      bind(project) { let snap = project(); const listeners = new Set(); this.listeners.add(() => { snap = project(); for (const fn of listeners) fn() }); return { getSnapshot: () => snap, subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn) } } }
+      shell() { const s = this.scope.getSnapshot(); const invalid = [...this.staged].some(([f, t]) => this.specs.get(f).parse(t) === undefined); return { available: s.status === 'ready', writable: s.writable, dirty: this.staged.size > 0, invalid, saving: this.saving, failed: this.failed } }
+      field(field) { const spec = this.specs.get(field); const s = this.scope.getSnapshot(); const text = this.staged.has(field) ? this.staged.get(field) : spec.format(s.value?.[field]); return { text, invalid: spec.parse(text) === undefined, overridden: s.user?.[field] !== undefined } }
+      actions() { return { edit: (f, t) => { this.staged.set(f, t); this.failed = false; this.publish() }, resetField: (f) => { this.staged.set(f, ''); this.publish() }, save: () => { this.save() }, discard: () => { this.staged.clear(); this.publish() } } }
+      async save() {
+        const ops = []
+        for (const [f, t] of this.staged) { const w = this.specs.get(f).parse(t); if (w === undefined) return; ops.push(w.kind === 'set' ? { op: 'set', path: [f], value: w.value } : { op: 'unset', path: [f] }) }
+        this.saving = true; this.publish()
+        let ok = false
+        try { ok = await this.scope.mutate(ops, this.scope.getSnapshot().revision) } catch (_) {}
+        this.saving = false; this.failed = !ok; if (ok) this.staged.clear(); this.publish()
+      }
+      dispose() { this.off() }
+    },
     // The library's bucketing, as DSH 0.2.1-rc.2 ships it.
     relativeTime: (at, now) => {
       const diff = Math.max(0, now - at)

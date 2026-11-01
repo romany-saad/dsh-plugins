@@ -36,6 +36,11 @@ function liveStyles(list) {
   page.window.requestAnimationFrame = (fn) => setTimeout(fn, 0)
   page.window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ threads: [], canWrite: true }) })
   page.start({
+    theme: { overrideTokens: () => () => {} },
+    configForms: {
+      get: () => ({ getSnapshot: () => ({ status: 'loading', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false }), subscribe: () => () => {}, mutate: async () => false }),
+      whileServed: () => () => {},
+    },
     inputTriggers: { registerSource: () => () => {} },
     uiConversation: { userText: { register: () => () => {} } },
     slots: { inject: (_n, make) => make(), register: () => () => {} },
@@ -96,7 +101,7 @@ test('every core-based plugin scopes its rules under its own [data-rs-dsh] root'
 
 // Inside its root a plugin styles only its own classes: one short prefix per
 // plugin, so even a scoped rule never names a class another plugin owns.
-const OWN_PREFIX = { 'dsh-core': null, 'dsh-drafts': 'dr-', 'dsh-quote': 'q-', 'dsh-threads': 'th-' }
+const OWN_PREFIX = { 'dsh-core': null, 'dsh-drafts': 'dr-', 'dsh-frosty-castle-theme': 'fr-', 'dsh-quote': 'q-', 'dsh-threads': 'th-' }
 
 test('a core-based plugin styles only classes with its own prefix', () => {
   const list = plugins().filter((p) => p.onCore).sort((a, b) => (a.dir === 'dsh-core' ? -1 : b.dir === 'dsh-core' ? 1 : 0))

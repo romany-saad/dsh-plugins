@@ -34,6 +34,8 @@ window.__ModuleLoader__.load({
       // Not a component: DSH's relative-time bucketing ({ unit, n }), so a
       // plugin dates a Session the way the sidebar does.
       'relativeTime',
+      // DSH's staged settings form, for a plugin's own page under Plugins.
+      'SettingsForm', 'SettingsValueField', 'SettingsFormModel', 'settingsNumberField',
     ]
 
     // ------------------------------------------------------------ pure logic

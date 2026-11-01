@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-core
+      name: '@rs-dsh/dsh-core'
+    - id: dsh-frosty-castle-theme
+      name: '@rs-dsh/dsh-frosty-castle-theme'

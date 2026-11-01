@@ -42,19 +42,24 @@ Use, in this order:
 2. `rsDshCore` helpers: `oneLine`, `stackChip`, `composer.*`, `popover.open`, `selection.register`. Never copy one into a plugin; the check fails if you do.
 3. DSH's design tokens (`--dsw-…`) and the CSS of the closest DSH component, copied with its token names when DSH does not export it. Put it in the plugin first; move it into core when a second plugin needs it.
 
+For numeric settings, DSH 0.2.1-rc.2 `SettingsValueField` with `numeric` renders `type="text"` and `inputmode="numeric"`, not a number input or spinner. If number/spinner semantics are required, inspect the public component contracts for a supported primitive; otherwise use a native number input only with an explicit justification, styled with DSH tokens. Do not depend on private selectors to change or test DSH components.
+
+For staged forms, keep editable draft text separate from saved values; validate required, numeric and range constraints before saving, show actionable errors, and preserve the draft on failure or cancel it explicitly. Associate labels, descriptions and errors with their controls; expose invalid state and ensure keyboard and screen-reader access.
+
 Text DSH already words — times, workspace names, actions — uses DSH's wording. Bucket times with `ui.relativeTime` and copy the sidebar's `time.*` strings; show `default-workspace` as **Default workspace** / **默认工作区**. Every string goes into `en` and `zh` (CONTRIBUTING.md, Translations).
 
 Styles go through `core.style(plugin, css)` under `[data-rs-dsh="<plugin>"]`, with one class prefix per plugin, registered in `OWN_PREFIX` in `packages/dsh-core/test/namespace.test.js`.
 
-## 3. A new package
+### Theme artwork, transparency, and session memory
 
-Copy the layout of the closest sibling (dsh-quote for a core-based client plugin): `package.json` (`exports`, `files`, `dsh.client.inject` listing every DSH package whose services you inject, `dependencies: { "@rs-dsh/dsh-core": "workspace:^" }`), `index.js`, `cordis.patch.yml` inserting the `dsh-core` row and then yours, `LICENSE`, `CHANGELOG.md`, `README.md`, `DEVELOPING.md`, `test/no-network.mjs`. Add the package to the root README table. The shared guard tests in `packages/dsh-core/test/` start every core-based plugin with a fake context: give it any new service your `inject` names.
+For decorative theme artwork such as borders, rails and ornaments, request **native transparency** from the image generator first. Inspect the returned file's alpha channel; do not assume a checkerboard, black area or requested background is actually transparent. If native alpha is unavailable or unsuitable, request a uniform, high-contrast key color absent from the artwork (for example vivid magenta), with no background gradient, shadow or glow, and remove it with a controlled chroma key. A generator may return transparency even when asked for a key color, so check the actual output before processing.
 
-Icon: an `icon.svg` in DSH's style, wired into `package.json`, and its storefront tile; follow the [dsh-plugin-icons skill](../dsh-plugin-icons/SKILL.md).
+Keep opaque material opaque: never key dark iron or stone solely by brightness. Preserve antialiased edges and remove key-color contamination without flattening fine details. Inspect the isolated asset against light, dark and saturated backgrounds; check corners, repeating seams and separate overlays at actual UI sizes, then verify both appearances in the scratch browser. Save the processed source asset, keep embedded copies synchronized, and add appropriate alpha and asset-integrity regression tests. Native transparency and chroma keys are starting points, not guarantees of clean edges.
 
-Tests: pure helpers in a `vm` (`client.test.js`), and the rendered UI on dsh-core's `test/dom.mjs` page with real React (`apply.test.js`). Objects from the bundle's realm compare by value: `JSON.parse(JSON.stringify(x))`.
-
-## 4. Verify in a real DSH before saying it works
+**Memory and asset efficiency during iteration:**
+- **Do not read or dump base64 strings in turns:** Inspect image geometry and alpha through small scripts that report metadata (dimensions, bounding boxes, size). Multi-megabyte inline assets in transcripts inflate session databases and V8 heaps.
+- **Constrain headless Playwright scripts:** Launch Chromium with lean flags (`--disable-dev-shm-usage`, `--js-flags="--max-old-space-size=256"`), capture 1× viewports rather than 2× unless evaluating retina detail, and ensure browser instances exit cleanly immediately after capture.
+- **Node memory during test loops:** When repeatedly running test suites against bundles with embedded artwork, pass `NODE_OPTIONS="--max-old-space-size=512"` or run targeted sub-tests so V8 proactively collects uncompressed image buffers.
 
 Unit tests do not prove a slot renders or a flow survives navigation. Run it:
 
