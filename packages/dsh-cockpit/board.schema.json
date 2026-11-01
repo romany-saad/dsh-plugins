@@ -140,12 +140,37 @@
           "type": "string",
           "description": "The item of another task on this board."
         },
+        "stage": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stage id on the parent task whose flow this task materializes."
+        },
         "dependsOn": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "description": "Items on this board that come first."
+        },
+        "flow": {
+          "type": "object",
+          "required": ["revision", "stages", "skipped"],
+          "properties": {
+            "revision": { "type": "integer", "minimum": 0 },
+            "stages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "title", "status"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "title": { "type": "string", "minLength": 1 },
+                  "status": { "$ref": "#/$defs/status" }
+                }
+              }
+            },
+            "skipped": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+          }
         },
         "extra": {
           "type": "object",

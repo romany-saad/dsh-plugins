@@ -54,6 +54,17 @@ test('a board the inbox tools write validates', async () => {
   assert.notDeepEqual(check(schema, { ...board, inbox: [{ id: 'i1', text: 'a', state: 'later' }] }), [])
 })
 
+test('flow snapshots and materialized stages validate', () => {
+  const ok = { format: FORMAT, version: 1, key: 'k', tasks: [
+    t('1', 'now', 'work', { flow: { revision: 1, stages: [{ id: 'build', title: 'Build', status: 'next' }], skipped: { test: 'not needed' } } }),
+    t('2', 'waiting', 'build', { parent: '1', stage: 'build' }),
+  ] }
+  assert.deepEqual(check(schema, ok), [])
+  const bad = structuredClone(ok)
+  bad.tasks[0].flow.stages[0].status = 'invalid'
+  assert.notDeepEqual(check(schema, bad), [])
+})
+
 test('the schema refuses what the store refuses, and a bad status', () => {
   const ok = { format: FORMAT, version: 1, key: 'k', tasks: [] }
   assert.deepEqual(check(schema, ok), [])

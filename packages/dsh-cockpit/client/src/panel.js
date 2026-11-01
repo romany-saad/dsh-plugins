@@ -42,7 +42,7 @@ const IDLE_MS = 10000
 // Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
 const VIEW = 'api/dsh-cockpit/view'
 // The board tools whose chat cards this bundle draws (tool.call.toolview keys).
-const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update', 'board_inbox']
+const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update', 'board_inbox', 'board_process']
 
 // ---- Style: host tokens only (dsh-client-ui-theme), one stylesheet in the head ----
 // The panel's own colour names, set per theme on its root. Where a host token
@@ -81,6 +81,15 @@ const CSS = [
   '.dshc-parent{font-size:12px;color:var(--dshc-t)}',
   '.dshc-meta{font-size:12px;color:var(--dshc-t);white-space:nowrap;flex:none}',
   '.dshc-drift{font-size:12px;line-height:16px;color:var(--dshc-t);margin-top:2px}',
+  '.dshc-process{font-size:12px;line-height:16px;color:var(--dshc-t);margin-top:2px}',
+  '.dshc-vbar{display:flex;align-items:center;justify-content:space-between;padding:4px 12px;font-size:12px;color:var(--dshc-s)}',
+  '.dshc-vtoggle{height:20px;padding:0 6px;font-size:11px}',
+  '.dshc-track{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;font-size:11px;line-height:16px;color:var(--dshc-s);margin-top:2px}',
+  '.dshc-track-item{display:inline-flex;align-items:center;gap:2px}',
+  '.dshc-track-item[data-status=done]{color:var(--dshc-ok)}',
+  '.dshc-track-item[data-status=now]{color:var(--dshc-p);font-weight:600}',
+  '.dshc-track-item[data-status=waiting]{color:var(--dshc-warn)}',
+  '.dshc-tag-stage{background:var(--dshc-l1);color:var(--dshc-s);border:1px solid var(--dshc-border)}',
   '.dshc-sec{padding:8px 12px 10px;border-bottom:1px solid var(--dshc-border)}',
   // Section titles as the host's panels write them (the todo panel): 12-13 px, medium, sentence case.
   '.dshc-sech{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;line-height:18px;margin-bottom:6px}',
@@ -400,6 +409,7 @@ function Header({ board, view, rows, now, overall }) {
         board.parent ? h('span', { className: 'dshc-parent dshc-trunc', title: board.parent }, board.parent) : null),
       h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
     showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null,
+    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
     overall && overall.total
       ? h('section', { className: 'dshc-overall', 'aria-label': 'Whole board' },
         h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'), h('span', null, progressText(overall))),
@@ -527,6 +537,22 @@ function Meta({ c, bar, parent }) {
   const lines = []
   // A root parent's bar; its count is on its title line (TaskRow).
   if (bar) lines.push(h(Bar, { key: 'bar', bar }))
+  if (c.stage) lines.push(tag('stage', 'dshc-tag-stage', 'stage: ' + c.stage))
+  if (c.flow && Array.isArray(c.flow.stages)) {
+    const skipped = c.flow.skipped && typeof c.flow.skipped === 'object' ? c.flow.skipped : {}
+    const active = c.flow.stages.filter((s) => s && s.id && !Object.hasOwn(skipped, s.id))
+    if (active.length) {
+      lines.push(h('span', { key: 'track', className: 'dshc-track' },
+        active.map((s, idx) => [
+          idx > 0 ? h('span', { key: 'sep' + idx, className: 'dshc-sep' }, '·') : null,
+          h('span', { key: s.id, className: 'dshc-track-item', 'data-status': s.status ?? 'next' },
+            s.title || s.id,
+            s.status === 'done' ? ' ✓' : s.status === 'now' ? ' ●' : s.status === 'waiting' ? ' …' : ''
+          ),
+        ]).flat().filter(Boolean)
+      ))
+    }
+  }
   if (c.line) lines.push(h('span', { key: 'line', className: 'dshc-wrap', 'data-line': '' }, c.line))
   if (c.needsYou) lines.push(tag('you', 'dshc-tag-warn', 'Needs you · see top'))
   if (c.blockedBy.length) {
@@ -540,17 +566,26 @@ function Meta({ c, bar, parent }) {
 }
 
 function Detail({ c, title }) {
+  const dl = [...c.detail]
+  if (c.flow && Array.isArray(c.flow.stages)) {
+    const skipped = c.flow.skipped && typeof c.flow.skipped === 'object' ? c.flow.skipped : {}
+    const flowText = c.flow.stages.map((s) => {
+      const isSkip = Object.hasOwn(skipped, s.id)
+      return s.id + ' (' + (s.title || '') + '): ' + (isSkip ? 'skipped: ' + skipped[s.id] : (s.status ?? 'next'))
+    }).join('; ')
+    dl.push({ key: 'Flow (rev ' + (c.flow.revision ?? 1) + ')', value: flowText, mono: false })
+  }
   return h('div', { className: 'dshc-detail', 'data-detail': '' },
-    c.detail.length ? h('dl', null, c.detail.map((d) => [h('dt', { key: d.key + 't' }, d.key), h('dd', { key: d.key + 'd', className: d.mono ? 'dshc-mono' : undefined }, d.value)])) : null,
+    dl.length ? h('dl', null, dl.map((d) => [h('dt', { key: d.key + 't' }, d.key), h('dd', { key: d.key + 'd', className: d.mono ? 'dshc-mono' : undefined }, d.value)])) : null,
     c.command ? h(CommandBox, { command: c.command, label: 'Copy command for ' + title }) : null)
 }
 
-function TaskRow({ boardKey, parent, row, task, flags, bar }) {
+function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView }) {
   const c = rowCells(row, flags)
   const id = boardKey + '\u0000' + row.item
   const [open, setOpen] = React.useState(expanded.get(id) === true)
   const toggle = () => { expanded.set(id, !open); setOpen(!open) }
-  const isOpen = c.expandable && open
+  const isOpen = (c.expandable && open) || (expandedView && Boolean(c.flow))
   const cls = 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.closed ? ' dshc-closed' : '') + (row.dropped ? ' dshc-dropped' : '')
   // The step id and the status word, which have no column: in the title's and the mark's tooltips.
   const tip = (c.wrap ? '' : row.title + ' · ') + 'step ' + row.item
@@ -674,6 +709,7 @@ function Inbox({ board, fill }) {
 function BoardView({ view, now, fill }) {
   if (!view.key) return h(Empty, { fill })
   if (!view.board) return h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error)
+  const [expandedView, setExpandedView] = React.useState(false)
   const { board } = view
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
   const links = view.links && typeof view.links === 'object' ? view.links : {}
@@ -687,11 +723,15 @@ function BoardView({ view, now, fill }) {
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const overall = boardSegments(board, rows, undefined)
   const groups = boardGroups(rows)
+  const hasFlow = tasks.some((t) => t.flow)
   return h('div', null,
     h(Header, { board, view, rows, now, overall }),
     h(NeedsYou, { board, rows, byItem }),
     h(Problems, { list }),
     h(Inbox, { board, fill }),
+    hasFlow ? h('div', { className: 'dshc-vbar' },
+      h('span', null, expandedView ? 'Expanded view (all stages shown)' : 'Compact view'),
+      h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', onClick: () => setExpandedView(!expandedView) }, expandedView ? 'Compact' : 'Expanded')) : null,
     rows.length
       ? h('div', { className: 'dshc-groups' }, groups.map((g) => h('section', {
         key: (g.standalone ? 'standalone' : 'parent:') + g.item,
@@ -701,6 +741,7 @@ function BoardView({ view, now, fill }) {
       h('ul', { className: 'dshc-tree', role: 'list' }, g.rows.map((row) => h(TaskRow, {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: row.depth === 0 && row.progress ? boardSegments(board, rows, row.item) : undefined,
+        expandedView,
       }))))))
       : h('p', { className: 'dshc-msg' }, inboxOf(board).length ? 'No tasks yet: refine Inbox items to add them.' : 'No tasks yet.'))
 }
@@ -850,13 +891,14 @@ function BoardDock({ sessionId, openBoard }) {
 // ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
 
 const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } }
-const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift', 'action', 'id', 'text', 'note', 'refines']
+const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift', 'action', 'id', 'text', 'note', 'refines', 'stage', 'flow', 'approved', 'kinds', 'stages', 'sources']
 /**
  * A settled call's arguments: its call head's argsRaw, else (the call has
  * left the loaded window) the node's own lazy argument view, else {}.
  */
 function settledArgs(block) {
   if (typeof block.call?.argsRaw === 'string') return parseArgs(block.call.argsRaw)
+  if (typeof block.argsRaw === 'string') return parseArgs(block.argsRaw)
   const view = block.args
   if (!view || typeof view.value !== 'function') return {}
   const out = {}

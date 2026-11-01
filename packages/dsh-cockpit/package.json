@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-cockpit",
-  "version": "0.5.0",
+  "version": "0.6.0-rc.1",
   "description": "A durable task board that DSH agents plan multi-step work on: a tree of steps with free-form link fields, kept as a local JSON file that other processes can read.",
   "license": "MIT",
   "type": "module",
@@ -61,6 +61,9 @@
         "@deepseek-ai/dsh-client-ui-tool"
       ]
     }
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-home-paths": "^0.2.1-rc.2",
