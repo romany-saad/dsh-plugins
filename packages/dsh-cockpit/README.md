@@ -46,6 +46,7 @@ For `#12`, `{repo}` comes from the board's parent ticket. Without `links`, only 
 - `route: { enabled: false }` turns off the data the Board tab and the strip read; the tab then says the board is unavailable.
 - `planning: { enabled: false }` stops asking agents to plan multi-step work on a board (see Use). They still keep a board current once one is open.
 - `inbox: { refineSkill: 'grill-me' }` names the skill `/cockpit-refine` uses for the analysis when you name none (see Inbox). By default it uses its own checklist.
+- `replaces: { todo: false }` keeps DSH's built-in `todo_write` tool available alongside a bound board. By default it is hidden for the session while a board is bound; subagents always keep their own todo list.
 
 ### Drift
 

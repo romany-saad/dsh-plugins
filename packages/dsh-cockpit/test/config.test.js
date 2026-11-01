@@ -13,6 +13,7 @@ test('defaults: tools and route on, no drift command, report mode, no link patte
     links: { issue: '', pr: '' },
     planning: { enabled: true },
     inbox: { refineSkill: '' },
+    replaces: { todo: true },
   })
 })
 
@@ -34,7 +35,7 @@ test('a wrong type or drift.mode fails with its path', () => {
 test('a misspelt key fails instead of being ignored', () => {
   assert.throws(() => resolveConfig({ tools: { enable: false } }), /unknown config key tools.enable; the keys are enabled/)
   assert.throws(() => resolveConfig({ drift: { mod: 'apply' } }), /unknown config key drift.mod/)
-  assert.throws(() => resolveConfig({ link: {} }), /unknown config key link; the keys are tools, route, drift, links, planning, inbox/)
+  assert.throws(() => resolveConfig({ link: {} }), /unknown config key link; the keys are tools, route, drift, links, planning, inbox, replaces/)
 })
 
 test('cordis.patch.yml restates every default', async () => {

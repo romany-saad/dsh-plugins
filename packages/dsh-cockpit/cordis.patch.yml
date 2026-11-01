@@ -31,3 +31,7 @@
         # when the user names none, such as grill-me; empty: its own checklist.
         inbox:
           refineSkill: ''
+        # true: hides the todo_write tool for the agent while a board is bound.
+        # Subagents keep their own todo lists.
+        replaces:
+          todo: true

@@ -7,6 +7,7 @@ export const DEFAULT_CONFIG = {
   links: { issue: '', pr: '' },
   planning: { enabled: true },
   inbox: { refineSkill: '' },
+  replaces: { todo: true },
 }
 
 const fail = (path, want, got) => {
@@ -43,6 +44,8 @@ function section(config, name) {
  *   work on a board (#29); the upkeep rules for a bound board stay.
  * - inbox.refineSkill (#51): the skill cockpit-refine hands the domain work
  *   to when the user names none; empty: its own checklist.
+ * - replaces.todo (#29): hide the todo_write tool for the agent while a
+ *   board is bound; subagents keep their own todo list.
  */
 export function resolveConfig(config = {}) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) fail('config', 'an object', config)
@@ -56,6 +59,7 @@ export function resolveConfig(config = {}) {
     links: section(config, 'links'),
     planning: section(config, 'planning'),
     inbox: section(config, 'inbox'),
+    replaces: section(config, 'replaces'),
   }
 }
 
