@@ -835,7 +835,7 @@ function callTitle(name, args = {}) {
     case 'board_add': return addTitle(args.item, args)
     case 'board_update': return updateTitle(args) + (Array.isArray(args.refines) && args.refines.length ? ' · from ' + args.refines.join(', ') : '')
     case 'board_inbox': return inboxTitle(args)
-    case 'board_process': return 'process: ' + (args.action ?? 'read')
+    case 'board_process': return args.action === 'adopt' ? 'process: adopt' + (args.revision ? ' rev ' + args.revision : '') : 'process: ' + (args.action ?? 'read')
     default: return name
   }
 }
@@ -848,7 +848,7 @@ function resultTitle(name, args = {}, value) {
     case 'board_read': return ['read ' + value.board.key, ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(value.task.item, { ...args, status: value.task.status })
     case 'board_inbox': return inboxTitle(args, args.action === 'add' ? value.items?.[0]?.id : undefined) + (value.opened ? ' · opened ' + value.opened.key : '')
-    case 'board_process': return 'process: ' + (args.action ?? 'read') + (value.map?.revision ? ' · rev ' + value.map.revision : value.proposal?.next?.revision ? ' · rev ' + value.proposal.next.revision : '')
+    case 'board_process': return args.action === 'adopt' ? 'process: adopt · ' + value.count + ' items' : 'process: ' + (args.action ?? 'read') + (value.map?.revision ? ' · rev ' + value.map.revision : value.proposal?.next?.revision ? ' · rev ' + value.proposal.next.revision : '')
     default: return undefined
   }
 }
@@ -1423,7 +1423,8 @@ function Header({ board, view, rows, now, overall }) {
         board.parent ? h('span', { className: 'dshc-parent dshc-trunc', title: board.parent }, board.parent) : null),
       h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
     showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null,
-    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
+    (view.processDrift || board.processDrift) ? h('div', { className: 'dshc-drift dshc-warn', 'data-process-drift': '' }, '⚠️ ' + (view.processDrift || board.processDrift).message) : null,
+    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ((view.process || board.process).updatedAt ? ' (updated ' + whenText((view.process || board.process).updatedAt, now) + ')' : '') + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
     overall && overall.total
       ? h('section', { className: 'dshc-overall', 'aria-label': 'Whole board' },
         h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'), h('span', null, progressText(overall))),

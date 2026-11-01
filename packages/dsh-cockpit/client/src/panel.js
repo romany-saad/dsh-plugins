@@ -409,7 +409,8 @@ function Header({ board, view, rows, now, overall }) {
         board.parent ? h('span', { className: 'dshc-parent dshc-trunc', title: board.parent }, board.parent) : null),
       h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
     showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null,
-    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
+    (view.processDrift || board.processDrift) ? h('div', { className: 'dshc-drift dshc-warn', 'data-process-drift': '' }, '⚠️ ' + (view.processDrift || board.processDrift).message) : null,
+    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ((view.process || board.process).updatedAt ? ' (updated ' + whenText((view.process || board.process).updatedAt, now) + ')' : '') + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
     overall && overall.total
       ? h('section', { className: 'dshc-overall', 'aria-label': 'Whole board' },
         h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'), h('span', null, progressText(overall))),
