@@ -68,12 +68,44 @@ export function apply(ctx, rawConfig) {
     }
   }
 
-  // Restore restriction on resume / agent creation
+  // In-memory cache of board state per session to provide synchronous prompt context without Promises
+  const sessionBoards = new Map()
+
+  function formatBoardContext(board) {
+    if (!board || !Array.isArray(board.tasks)) return ''
+    const key = board.key
+    const tasks = board.tasks
+    const ready = tasks.filter((t) => t.status === 'next' && (!t.dependsOn || t.dependsOn.every((d) => {
+      const s = tasks.find((o) => o.item === d)?.status
+      return s === 'done' || s === 'dropped'
+    })))
+    const inProgress = tasks.filter((t) => t.status === 'now')
+    const needsYou = tasks.filter((t) => t.status === 'waiting' && t.waitingOn?.toLowerCase() === 'owner')
+    const allClosed = tasks.length > 0 && tasks.every((t) => t.status === 'done' || t.status === 'dropped')
+    const lines = [`Cockpit board '${key}':`]
+    if (allClosed) lines.push('All tasks on the board are closed (done or dropped). If a goal is active, complete the goal.')
+    else {
+      if (inProgress.length) lines.push('In progress: ' + inProgress.map((t) => t.item + ' (' + t.what + ')').join(', '))
+      if (ready.length) lines.push('Next ready tasks: ' + ready.map((t) => t.item + ' (' + t.what + ')').join(', '))
+      if (needsYou.length) lines.push('Waiting on user: ' + needsYou.map((t) => t.item + ' (' + (t.nextAction || t.what) + ')').join(', '))
+    }
+    return lines.join('\n')
+  }
+
+  function updateSessionBoard(sid, board) {
+    if (sid && board) sessionBoards.set(sid, board)
+  }
+
+  // Restore restriction and cache on resume / agent creation
   ctx.on('agent/created', async ({ agent }) => {
-    if (!config.replaces.todo || !agent?.session?.id) return
-    if (agent.session?.parent !== undefined) return
-    const boundKey = await store.readBinding(agent.session.id).catch(() => undefined)
-    if (boundKey) restrictTodo(agent)
+    if (!agent?.session?.id) return
+    const sid = agent.session.id
+    const boundKey = await store.readBinding(sid).catch(() => undefined)
+    if (boundKey) {
+      if (config.replaces.todo && agent.session.parent === undefined) restrictTodo(agent)
+      const board = await store.read(boundKey).catch(() => undefined)
+      if (board) updateSessionBoard(sid, board)
+    }
   })
 
   const bodies = createBoardTools({
@@ -82,6 +114,7 @@ export function apply(ctx, rawConfig) {
     dshHome: resolveDshHome(),
     onBind: restrictTodo,
     onUnusable: liftTodo,
+    onBoardChange: updateSessionBoard,
   })
   ctx.inject(['tools'], (toolsCtx) => {
     for (const definition of createDefinitions(bodies)) toolsCtx.tools.register(definition)
@@ -91,32 +124,38 @@ export function apply(ctx, rawConfig) {
       name: 'rs-dsh:cockpit', order: 2850, interpolate: false,
       text: guidance({ planning: config.planning.enabled }),
     })
+    // Context text MUST be synchronous; async functions return a Promise, causing TypeError: text.indexOf is not a function
     promptCtx.systemPrompt.context({
-      name: 'rs-dsh:cockpit-context', order: 125,
-      text: async (assembleContext) => {
+      name: 'rs-dsh:cockpit-context', order: 125, interpolate: false,
+      text: (assembleContext) => {
         const sid = assembleContext?.scope?.id ?? assembleContext?.scope
         if (!sid) return ''
-        const key = await store.readBinding(sid).catch(() => undefined)
-        if (!key) return ''
-        const board = await store.read(key).catch(() => undefined)
-        if (!board || !Array.isArray(board.tasks)) return ''
-        const tasks = board.tasks
-        const ready = tasks.filter((t) => t.status === 'next' && (!t.dependsOn || t.dependsOn.every((d) => {
-          const s = tasks.find((o) => o.item === d)?.status
-          return s === 'done' || s === 'dropped'
-        })))
-        const inProgress = tasks.filter((t) => t.status === 'now')
-        const needsYou = tasks.filter((t) => t.status === 'waiting' && t.waitingOn?.toLowerCase() === 'owner')
-        const allClosed = tasks.length > 0 && tasks.every((t) => t.status === 'done' || t.status === 'dropped')
-        const lines = [`Cockpit board '${key}':`]
-        if (allClosed) lines.push('All tasks on the board are closed (done or dropped). If a goal is active, complete the goal.')
-        else {
-          if (inProgress.length) lines.push('In progress: ' + inProgress.map((t) => t.item + ' (' + t.what + ')').join(', '))
-          if (ready.length) lines.push('Next ready tasks: ' + ready.map((t) => t.item + ' (' + t.what + ')').join(', '))
-          if (needsYou.length) lines.push('Waiting on user: ' + needsYou.map((t) => t.item + ' (' + (t.nextAction || t.what) + ')').join(', '))
-        }
-        return lines.join('\n')
+        const board = sessionBoards.get(sid)
+        return board ? formatBoardContext(board) : ''
       },
+    })
+    promptCtx.on('system-prompt/assemble', async (_assembly, assembleCtx, next) => {
+      const sid = assembleCtx?.scope?.id ?? assembleCtx?.scope
+      if (sid && !sessionBoards.has(sid)) {
+        try {
+          const key = await store.readBinding(sid).catch(() => undefined)
+          if (key) {
+            const board = await store.read(key).catch(() => undefined)
+            if (board) sessionBoards.set(sid, board)
+          }
+        } catch {}
+      }
+      const assembly = await next()
+      const board = sid ? sessionBoards.get(sid) : undefined
+      const text = board ? formatBoardContext(board) : ''
+      if (text) {
+        const entry = assembly.contexts.find((c) => c.name === 'rs-dsh:cockpit-context')
+        if (entry) {
+          entry.text = text
+          entry.interpolate = false
+        }
+      }
+      return assembly
     })
   })
   // The refine and process skills (#51, #52), for the model and as /cockpit-* for the user.

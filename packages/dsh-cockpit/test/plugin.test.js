@@ -208,6 +208,10 @@ test('cockpit context provides ready steps and goal completion guidance', async 
   await tools.get('board_add').execute({ item: '2', what: 'Step 2', status: 'next', dependsOn: ['1'] }, e)
   await tools.get('board_add').execute({ item: '3', what: 'Owner step', status: 'waiting', waitingOn: 'owner', nextAction: 'Review PR' }, e)
 
+  // Verify c.text is synchronous and does NOT return a Promise (prevents TypeError: text.indexOf is not a function in dsh-system-prompt)
+  const syncResult = c.text({ scope: { id: 's-goal' } })
+  assert.equal(typeof syncResult, 'string')
+  assert.ok(!(syncResult instanceof Promise))
   const textActive = await c.text({ scope: { id: 's-goal' } })
   assert.ok(textActive.includes("Cockpit board 'g-board':"))
   assert.ok(textActive.includes('In progress: 1 (Step 1)'))

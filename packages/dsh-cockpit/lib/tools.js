@@ -394,7 +394,7 @@ const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(e
  * @param {Record<string, string|undefined>} [options.env] the drift command's base environment
  * @param {string} [options.dshHome] DSH_HOME for the drift command
  */
-export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome, onBind, onUnusable }) {
+export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome, onBind, onUnusable, onBoardChange }) {
   let unscopedKey // Calls without a session keep their binding in memory only.
   const processStores = new Map()
   const getProcessStore = (root) => {
@@ -456,7 +456,11 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
   async function change(key, fn, options) {
     let readDone = false
     try {
-      return await store.change(key, (current) => { readDone = true; return fn(current) }, options)
+      const res = await store.change(key, (current) => { readDone = true; return fn(current) }, options)
+      if (typeof onBoardChange === 'function' && options?.by && res?.board) {
+        onBoardChange(options.by, res.board)
+      }
+      return res
     } catch (error) {
       throw !readDone && isErrno(error) ? unreadable(key, error) : error
     }
@@ -520,6 +524,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
         return { board: current, write: false, created: false }
       }, { by: sid || undefined, signal: exec.signal })
       if (!sid) unscopedKey = args.key
+      else if (board && typeof onBoardChange === 'function') onBoardChange(sid, board)
       const processDrift = await detectProcessDrift(exec)
       return ok({ created, ...view(board, store.file(args.key), { processDrift }) })
     }),
