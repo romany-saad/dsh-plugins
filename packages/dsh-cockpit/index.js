@@ -55,13 +55,25 @@ export function apply(ctx, rawConfig) {
       text: guidance({ planning: config.planning.enabled }),
     })
   })
-  // The refine skill (#51), for the model and as /cockpit-refine for the user.
+  // The refine and process skills (#51, #52), for the model and as /cockpit-* for the user.
   ctx.inject(['tools', 'skills'], (skillCtx) => {
     skillCtx.skills.register(refineSkill(config.inbox.refineSkill))
+    skillCtx.skills.register(processSkill())
   })
 }
 
 const REFINE_BODY = readFileSync(new URL('./skills/cockpit-refine.md', import.meta.url), 'utf8')
+const PROCESS_BODY = readFileSync(new URL('./skills/cockpit-process.md', import.meta.url), 'utf8')
+
+/** The cockpit-process skill (#52): discover and map the project's development workflow. */
+export function processSkill() {
+  return {
+    name: 'cockpit-process',
+    description: "Map the project's development process from documentation and workflows into ordered stages with exit checks and skills. Proposes or updates .dsh/cockpit/process.yml before work starts on the board.",
+    source: 'bundled',
+    content: PROCESS_BODY,
+  }
+}
 
 /** The cockpit-refine skill, with the profile's default delegate (inbox.refineSkill) filled in. */
 export function refineSkill(refineSkill = '') {

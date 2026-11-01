@@ -109,11 +109,11 @@ test('the bundle registers the Board tab, the five tool cards and the strip; mat
   assert.equal(calls.tabs[0].title(), 'Board', 'still "Board" in 0.1')
   assert.deepEqual(calls.slots.map((s) => [s.entry.name, s.entry.key ?? s.entry.id]), [
     ['sidebar.right.pane.tab', '@rs-dsh/dsh-cockpit'],
-    ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'], ['tool.call.toolview', 'board_inbox'],
+    ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'], ['tool.call.toolview', 'board_inbox'], ['tool.call.toolview', 'board_process'],
     ['conversation.input.dock', 'dsh-cockpit-progress'],
   ])
   assert.equal(JSON.stringify(calls.slots[0].entry.inject('s1')), '{"sessionId":"s1"}')
-  const dock = calls.slots[6].entry
+  const dock = calls.slots[7].entry
   assert.equal(dock.order, 30, 'after the Todo, Goal and Queue docks')
   const props = dock.inject('s1')
   assert.equal(props.sessionId, 's1')
@@ -784,4 +784,49 @@ test('a board_inbox card: its title from lib/present.js, the new id and an opene
   assert.equal(card({ phase: 'start', toolName: 'board_inbox', block: { argsRaw: argsOf(args) } }).summary, 'inbox: add "dark mode for the strip"')
   assert.equal(card({ phase: 'start', toolName: 'board_inbox', block: { argsRaw: argsOf({ action: 'clear', id: ['i1', 'i2'] }) } }).summary, 'inbox: clear i1, i2')
   assert.equal(card({ phase: 'start', toolName: 'board_add', block: { argsRaw: argsOf({ what: 'x', refines: ['i3'] }) } }).summary, 'add next "x" · next · from i3')
+})
+
+
+// ---- Process map and Flow (#52) ----
+
+test('header shows Process line when process info is present', () => {
+  const withProc = { ...live, process: { revision: 4, stagesCount: 8 } }
+  const out = render(withProc)
+  assert.ok(out.includes('Process: rev 4 · 8 stages'))
+})
+
+test('compact view shows stage track on flow items; stage tag shows on materialized stage tasks', () => {
+  const flowTask = {
+    item: 'f1', what: 'Feature work', status: 'next',
+    flow: {
+      revision: 1,
+      stages: [
+        { id: 'refine', title: 'Refine', status: 'done' },
+        { id: 'build', title: 'Build', status: 'now' },
+        { id: 'verify', title: 'Verify', status: 'waiting' },
+        { id: 'docs', title: 'Docs', status: 'next' },
+      ],
+      skipped: { docs: 'no docs needed' },
+    },
+  }
+  const stageChild = {
+    item: 'c1', what: 'Build implementation', status: 'now', parent: 'f1', stage: 'build',
+  }
+  const view = {
+    key: 'flow-board',
+    board: { key: 'flow-board', tasks: [flowTask, stageChild] },
+  }
+  const out = render(view)
+  assert.ok(out.includes('Refine ✓'))
+  assert.ok(out.includes('Build ●'))
+  assert.ok(out.includes('Verify …'))
+  assert.ok(!out.includes('Docs'), 'skipped stage is not in track')
+  assert.ok(out.includes('stage: build'))
+  assert.ok(out.includes('Compact view'))
+})
+
+test('a board_process card: its title from lib/present.js', () => {
+  assert.equal(card({ phase: 'start', toolName: 'board_process', block: { argsRaw: argsOf({ action: 'read' }) } }).summary, 'process: read')
+  assert.equal(card({ phase: 'start', toolName: 'board_process', block: { argsRaw: argsOf({ action: 'propose' }) } }).summary, 'process: propose')
+  assert.equal(card({ phase: 'result', toolName: 'board_process', block: { argsRaw: argsOf({ action: 'save' }), meta: { title: 'process: save · rev 2' }, content: [{ type: 'text', text: JSON.stringify({ ok: true, saved: true, map: { revision: 2 } }) }] } }).summary, 'process: save · rev 2')
 })

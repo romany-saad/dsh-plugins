@@ -6,9 +6,10 @@ A task board for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## What you get
 
-- **Five board tools** for the agent: open a board, read it, add steps, update them, and keep its Inbox.
+- **Six board tools** for the agent: open a board, read it, add steps, update them, keep its Inbox, and map the project process.
 - **An Inbox** for rough ideas noted for later, kept on the board but outside its steps until they are refined.
-- **The `cockpit-refine` skill**, which turns Inbox items into steps with you, optionally through another skill you prefer.
+- **The `cockpit-refine` and `cockpit-process` skills**, which turn ideas into requirements and discover the project development process.
+- **Per-project process map** in `.dsh/cockpit/process.yml`: ordered stages, exit checks, skills, and compact/expanded stage tracks on tasks.
 - **The Board tab** in the web GUI's right sidebar: whole-board progress, a "Needs you" list, separate sections for each top-level parent and its children, and a Standalone tasks section. Each parent has its own local progress. Each step shows its status mark, what is blocked or ready, and links to its PR and issue; hover a mark for its status and a title for the step id. It uses DSH's own icons and status marks, in the light and dark themes.
 - **A progress strip** above the chat input: how far the board is, and what is blocked or needs you.
 - **A card per board tool call** in the chat.
@@ -19,10 +20,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.5.0
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.1
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.5.0&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.1&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 

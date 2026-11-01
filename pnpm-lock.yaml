@@ -180,6 +180,10 @@ importers:
         version: 0.2.1-rc.2(@deepseek-ai/cordis@4.0.5)
 
   packages/dsh-cockpit:
+    dependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.5

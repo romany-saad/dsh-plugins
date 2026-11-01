@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0-rc.1
+
+Per-project process maps and flow stages on the board ([#52](https://github.com/romany-saad/dsh-plugins/issues/52), part of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)).
+
+- **Process map.** `.dsh/cockpit/process.yml` records ordered workflow stages, exit checks, who acts, skills in order, command templates, kind filters, and when/skipIf hints.
+- **`board_process` tool.** Actions `read`, `propose`, and `save`. `propose` validates draft maps; `save` requires explicit user confirmation and writes the YAML file atomically, bumping the revision.
+- **`cockpit-process` skill.** Bundled skill to discover and draft the project workflow from CONTRIBUTING, AGENTS.md, CI workflows, and skills.
+- **Flow on tasks.** Tasks can track `flow: { revision, stages, at, skipped }`. Skipped stages must provide non-empty reasons. Materialized stage tasks carry `stage: "<id>"` linking to parent flow.
+- **Compact & Expanded views.** Compact view displays the stage track directly on the task row; expanded view displays all flow stages and details. Progress counts each stage consistently in both views without double counting.
+
 ## 0.5.0
 
 An Inbox for ideas noted for later, and a skill that refines them into steps ([#51](https://github.com/romany-saad/dsh-plugins/issues/51), part of [#50](https://github.com/romany-saad/dsh-plugins/issues/50)). The board format stays version 1. A board without an Inbox reads and draws as before.

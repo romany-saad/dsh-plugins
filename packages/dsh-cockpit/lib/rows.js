@@ -234,6 +234,25 @@ export function titleText(task) {
   return issue && !leads ? issue + ' ' + what : what
 }
 
+/** Project a flow and its immediate children into one unit per stage or ordinary child.
+ * The first materialized child supplies the stage status and owner wait; skipped
+ * stages are excluded. Other children remain ordinary work. No board is mutated.
+ */
+export function flowUnits(task, children) {
+  if (!Array.isArray(task.flow?.stages)) return undefined
+  const skipped = task.flow.skipped && typeof task.flow.skipped === 'object' ? task.flow.skipped : {}
+  const ids = new Set(task.flow.stages.filter((s) => s && typeof s.id === 'string').map((s) => s.id))
+  const seen = new Set()
+  const stages = []
+  for (const stage of task.flow.stages) {
+    if (!stage || typeof stage.id !== 'string' || seen.has(stage.id) || Object.hasOwn(skipped, stage.id)) continue
+    seen.add(stage.id)
+    const child = children.find((c) => c.stage === stage.id)
+    stages.push({ item: child?.item ?? task.item, stage: stage.id, title: stage.title, status: child?.status ?? stage.status, task: child })
+  }
+  return stages.concat(children.filter((c) => !ids.has(c.stage)).map((c) => ({ item: c.item, title: titleText(c), status: c.status, task: c })))
+}
+
 /**
  * The board's rows in tree order, each with what it shows:
  * - closed: done or dropped; a closed row has no wait line;
@@ -263,6 +282,8 @@ export function boardRows(board, options = {}) {
       ? (typeof d.note === 'string' ? { status: d.status, note: d.note } : { status: d.status })
       : undefined
     const children = childrenOf.get(task.item) ?? []
+    const units = flowUnits(task, children)
+    const counted = units ?? children.map((c) => ({ status: c.status, task: c }))
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
     const isClosed = closed(task.status)
     const all = notes(task)
@@ -288,12 +309,14 @@ export function boardRows(board, options = {}) {
       blockedBy: blocked ? deps.filter((d) => byItem.has(d) && !closed(byItem.get(d).status)).map((d) => ({ ref: refOf(byItem.get(d)), status: byItem.get(d).status })) : [],
       // Only dependencies on the board; an unknown one shows in its flag alone.
       after: deps.filter((d) => byItem.has(d)).map((d) => refOf(byItem.get(d))),
-      progress: children.length
+      flow: task.flow,
+      stage: text(task.stage),
+      progress: counted.length
         ? {
-            done: children.filter((c) => c.status === 'done').length,
-            dropped: children.filter((c) => c.status === 'dropped').length,
-            total: children.length,
-            needsYou: children.filter((c) => mine.has(c.item)).length,
+            done: counted.filter((c) => c.status === 'done').length,
+            dropped: counted.filter((c) => c.status === 'dropped').length,
+            total: counted.length,
+            needsYou: counted.filter((c) => c.task && mine.has(c.task.item)).length,
           }
         : undefined,
       model: modelText(task),
@@ -418,9 +441,11 @@ export function rowCells(row, flags = []) {
     ready: row.ready,
     problems: flags.map((f) => { const t = flagText(f); return t.charAt(0).toUpperCase() + t.slice(1) }),
     reported: row.reported ? { text: reportedText(row.reported), note: row.reported.note } : undefined,
+    stage: row.stage,
+    flow: row.flow,
     detail,
     command,
-    expandable: detail.length > 0 || Boolean(command),
+    expandable: detail.length > 0 || Boolean(command) || Boolean(row.flow),
   }
 }
 
@@ -515,7 +540,35 @@ export function boardSegments(board, rows, item) {
       for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
     }
   }
-  const segments = children.map((r) => {
+  // Replace a flow owner's representation with its stages. Materialized stage
+  // rows supply their own state, but must not also appear as separate units.
+  const byRow = new Map(rows.map((r) => [r.item, r]))
+  const directChildren = (owner) => (Array.isArray(board?.tasks) ? board.tasks : []).filter((t) => t.parent === owner.item)
+  const flowRows = (owner, includeOrdinary) => {
+    const units = flowUnits(owner, directChildren(owner)) ?? []
+    return units.filter((u) => includeOrdinary || u.stage !== undefined).map((u) => {
+      const materialized = u.task && byRow.get(u.item)
+      if (materialized) return u.stage === undefined ? materialized : { ...materialized, stage: u.stage }
+      return { item: u.item, stage: u.stage, title: u.title, status: u.status,
+        done: u.status === 'done', dropped: u.status === 'dropped',
+        needsYou: false, ready: u.status === 'next', blockedBy: [] }
+    })
+  }
+  let projected = children
+  if (item !== undefined && byItem.get(item)?.flow) projected = flowRows(byItem.get(item), true)
+  else if (item === undefined) {
+    const suppressed = new Set()
+    for (const task of byItem.values()) if (Array.isArray(task.flow?.stages)) {
+      for (const child of directChildren(task)) if (task.flow.stages.some((s) => s?.id === child.stage)) suppressed.add(child.item)
+    }
+    projected = []
+    for (const row of sectionOrder(rows)) {
+      const task = byItem.get(row.item)
+      if (task && Array.isArray(task.flow?.stages)) projected.push(...flowRows(task, false))
+      else if (!row.progress && !suppressed.has(row.item)) projected.push(row)
+    }
+  }
+  const segments = projected.map((r) => {
     const kind = segmentKind(r)
     let said = [kind]
     if (kind === 'now') said = ['now', modelText(byItem.get(r.item) ?? {}, ' ')]
@@ -524,14 +577,14 @@ export function boardSegments(board, rows, item) {
       const blockers = blockerTexts(r, byItem.get(r.item), byItem)
       said = [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
     }
-    return { item: r.item, kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
+    return { item: r.item, ...(r.stage === undefined ? {} : { stage: r.stage }), kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
   })
   return {
     segments,
-    continuous: children.length > SEGMENT_MAX,
-    done: children.filter((r) => r.done).length,
-    dropped: children.filter((r) => r.dropped).length,
-    total: children.length,
+    continuous: projected.length > SEGMENT_MAX,
+    done: projected.filter((r) => r.done).length,
+    dropped: projected.filter((r) => r.dropped).length,
+    total: projected.length,
   }
 }
 

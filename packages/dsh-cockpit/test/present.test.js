@@ -52,3 +52,11 @@ test('a read with checkDrift says so', () => {
   assert.equal(callTitle('board_read', { checkDrift: true }), 'read board · drift check')
   assert.equal(resultTitle('board_read', { checkDrift: true, status: ['done'] }, { ok: true, board: { key: 'k' } }), 'read k · done · drift check')
 })
+
+test('board_process presentation titles', () => {
+  assert.equal(callTitle('board_process', { action: 'read' }), 'process: read')
+  assert.equal(callTitle('board_process', { action: 'propose' }), 'process: propose')
+  assert.equal(callTitle('board_process', { action: 'save' }), 'process: save')
+  assert.equal(resultTitle('board_process', { action: 'save' }, { ok: true, map: { revision: 2 } }), 'process: save · rev 2')
+  assert.equal(resultTitle('board_process', { action: 'propose' }, { ok: true, proposal: { next: { revision: 1 } } }), 'process: propose · rev 1')
+})

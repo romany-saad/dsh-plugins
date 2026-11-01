@@ -10,11 +10,11 @@ export const CLOSED_STATUSES = ['done', 'dropped']
 /** Optional free-form string fields, in file order. */
 export const STRING_FIELDS = [
   'why', 'issue', 'pr', 'branch', 'worktree', 'provider', 'model', 'effort',
-  'nextAction', 'waitingOn', 'readyCommand', 'startWhen', 'parent',
+  'nextAction', 'waitingOn', 'readyCommand', 'startWhen', 'parent', 'stage',
 ]
 
 /** Every task field, in the order the file stores them. */
-export const TASK_FIELDS = ['item', 'what', 'status', ...STRING_FIELDS, 'dependsOn', 'extra', 'updatedAt']
+export const TASK_FIELDS = ['item', 'what', 'status', ...STRING_FIELDS, 'dependsOn', 'flow', 'extra', 'updatedAt']
 
 /** done or dropped. */
 export const isClosed = (status) => CLOSED_STATUSES.includes(status)

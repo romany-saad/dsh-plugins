@@ -110,7 +110,8 @@ function alive(pid) {
 export function changesRecord(current, next) {
   if (!current) return true
   return current.parent !== next.parent || JSON.stringify(current.tasks) !== JSON.stringify(next.tasks) ||
-    JSON.stringify(current.inbox ?? []) !== JSON.stringify(next.inbox ?? [])
+    JSON.stringify(current.inbox ?? []) !== JSON.stringify(next.inbox ?? []) ||
+    JSON.stringify(current.process ?? null) !== JSON.stringify(next.process ?? null)
 }
 
 /**

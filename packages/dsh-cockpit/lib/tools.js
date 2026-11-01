@@ -3,6 +3,9 @@
 import { driftConfigured } from './config.js'
 import { driftResult, runDriftCommand } from './drift.js'
 import { BoardError, FORMAT, VERSION } from './store.js'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { PROCESS_PATH, ProcessError, createFsProcessStore } from './process.js'
 import { INBOX_STATES, defaultBoardKey, inboxOf, nextInboxId, orderInboxItem, shownInbox } from './inbox.js'
 import { STATUSES, STRING_FIELDS, nextItem, orderTask } from './task.js'
 import { boardFlags, boardTree } from './tree.js'
@@ -27,25 +30,51 @@ export const FIELD_DOCS = {
   readyCommand: 'The exact command the owner runs to act on this task. Stored and shown, never run.',
   startWhen: 'The condition for starting this task, shown as "Start when".',
   parent: 'Item of the parent task, already on this board.',
+  stage: 'Stage id on the parent task whose flow this task materializes.',
   dependsOn: 'Items already on this board that come first.',
+  flow: 'Flow tracking ordered stages, current stage, and skipped reasons.',
   extra: 'Anything else to keep, as string values.',
 }
 
-const TASK_PARAMS = ['what', 'status', ...STRING_FIELDS, 'dependsOn', 'extra']
+const TASK_PARAMS = ['what', 'status', ...STRING_FIELDS, 'dependsOn', 'flow', 'extra']
 const fieldLines = (names) => 'Fields, one per line:\n' + names.map((n) => `- ${n}: ${FIELD_DOCS[n]}`).join('\n')
 
 const str = (description) => ({ type: 'string', description })
 const nullable = (spec) => ({ oneOf: [spec, { type: 'null' }], description: spec.description })
 const statusSpec = { type: 'string', enum: STATUSES, description: FIELD_DOCS.status }
+const flowSpec = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    revision: { type: 'integer', description: 'Process map revision this flow was drawn from.' },
+    stages: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          id: { type: 'string', description: 'Stage id.' },
+          title: { type: 'string', description: 'Stage title.' },
+          status: statusSpec,
+        },
+      },
+      description: 'Ordered stages for this item.',
+    },
+    at: { type: 'string', description: 'Active stage id.' },
+    skipped: { type: 'object', additionalProperties: true, description: 'Skipped stage ids mapped to non-empty reason strings.' },
+  },
+  description: FIELD_DOCS.flow,
+}
 const fieldSpecs = (wrap) => {
   const out = {}
   for (const f of STRING_FIELDS) out[f] = wrap(str(FIELD_DOCS[f]))
   out.dependsOn = wrap({ type: 'array', items: { type: 'string' }, description: FIELD_DOCS.dependsOn })
+  out.flow = wrap(flowSpec)
   out.extra = wrap({ type: 'object', additionalProperties: true, description: FIELD_DOCS.extra })
   return out
 }
 
-export const ERROR_CODES = ['not_bound', 'item_exists', 'item_unknown', 'unknown_reference', 'invalid_input', 'board_unreadable', 'write_failed']
+export const ERROR_CODES = ['not_bound', 'item_exists', 'item_unknown', 'unknown_reference', 'invalid_input', 'board_unreadable', 'write_failed', 'approval_required', 'invalid_process', 'stale_process', 'invalid_proposal']
 
 export const RESULT_SPEC = {
   oneOf: [
@@ -145,6 +174,55 @@ Returns the inbox (items not cleared), the changed items and the revision. Items
       source: { type: 'string', enum: ['chat', 'panel'], description: 'Where the text came from (add): chat (default) or panel.' },
     },
   },
+  board_process: {
+    description: `Read, propose or save the project's development process map (.dsh/cockpit/process.yml).
+The process map records how work moves from idea to completion for this project: ordered stages, who acts, skills in order, readyCommand templates, and hints.
+Actions:
+- read: return the project's current process map (or null if none exists yet).
+- propose: validate draft process map fields (kinds, stages, sources). Returns the validated proposal without saving.
+- save: save an approved process map to .dsh/cockpit/process.yml and bump its revision. Use only after the user has reviewed and explicitly approved the proposal.
+${DATA_NOTE}`,
+    parameters: {
+      action: { type: 'string', enum: ['read', 'propose', 'save'], required: true, description: 'What to do: read, propose, or save.' },
+      map: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'The process map object (for propose or save).',
+      },
+      kinds: { type: 'array', items: { type: 'string' }, description: 'Applicable kinds of work, e.g. ["feature", "fix", "release"].' },
+      stages: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            id: { type: 'string', description: 'Unique stage id.' },
+            exitCheck: { type: 'string', description: 'Condition signaling completion.' },
+            skills: { type: 'array', items: { type: 'string' }, description: 'Ordered skills to use.' },
+            who: { type: 'string', enum: ['agent', 'owner', 'CI', 'subagent'], description: 'Who acts on this stage.' },
+            readyCommand: { type: 'string', description: 'Command template when who is owner.' },
+            kinds: { type: 'array', items: { type: 'string' }, description: 'Kinds of work this stage applies to.' },
+            when: { type: 'string', description: 'Hint when this stage applies.' },
+            skipIf: { type: 'string', description: 'Hint when this stage can be skipped.' },
+          },
+        },
+        description: 'Ordered stages for this project.',
+      },
+      sources: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            path: { type: 'string', description: 'Relative project path (e.g. CONTRIBUTING.md).' },
+            hash: { type: 'string', description: 'sha256 digest of source content.' },
+          },
+        },
+        description: 'Source files the map was drawn from.',
+      },
+      approved: { type: 'boolean', description: 'Confirmation that the user explicitly approved saving this proposal.' },
+    },
+  },
 }
 
 const ok = (value) => ({ ok: true, ...value })
@@ -154,7 +232,7 @@ const err = (code, message) => ({ ok: false, code, message })
 // version, key and tasks are required), and a result must be lossless JSON.
 const meta = (board) => {
   const m = { key: board.key }
-  for (const f of ['parent', 'revision', 'updatedAt']) if (board[f] !== undefined) m[f] = board[f]
+  for (const f of ['parent', 'revision', 'updatedAt', 'process']) if (board[f] !== undefined) m[f] = board[f]
   return m
 }
 
@@ -230,7 +308,63 @@ function checkExtra(extra) {
  * defined before it is used, so the board never holds a dangling one by the
  * tools' hand (a hand-written file still can, and is flagged).
  */
+function findProjectRoot(exec) {
+  let dir = exec?.agent?.workingDirectory ?? exec?.cwd ?? process.cwd()
+  while (dir && dir !== dirname(dir)) {
+    if (existsSync(join(dir, '.git')) || existsSync(join(dir, '.dsh'))) return dir
+    dir = dirname(dir)
+  }
+  return exec?.agent?.workingDirectory ?? exec?.cwd ?? process.cwd()
+}
+
+function checkFlow(flow) {
+  if (flow === undefined || flow === null) return
+  if (typeof flow !== 'object' || Array.isArray(flow)) throw new BoardError('invalid_input', 'flow must be an object.')
+  if (!Array.isArray(flow.stages) || !flow.stages.length) throw new BoardError('invalid_input', 'flow.stages must be a non-empty array.')
+  const stageIds = new Set()
+  for (const s of flow.stages) {
+    if (!s || typeof s !== 'object' || typeof s.id !== 'string' || !s.id.trim()) {
+      throw new BoardError('invalid_input', 'Each stage in flow.stages must have a non-empty string id.')
+    }
+    if (stageIds.has(s.id)) throw new BoardError('invalid_input', `Duplicate stage id: ${s.id} in flow.stages.`)
+    stageIds.add(s.id)
+    if (typeof s.title !== 'string' || !s.title.trim()) {
+      throw new BoardError('invalid_input', `Stage ${s.id} in flow.stages must have a non-empty title.`)
+    }
+  }
+  if (flow.skipped !== undefined && flow.skipped !== null) {
+    if (typeof flow.skipped !== 'object' || Array.isArray(flow.skipped)) {
+      throw new BoardError('invalid_input', 'flow.skipped must be an object mapping stage id to reason.')
+    }
+    for (const [sId, reason] of Object.entries(flow.skipped)) {
+      if (!stageIds.has(sId)) {
+        throw new BoardError('invalid_input', `Unknown stage ${sId} in flow.skipped.`)
+      }
+      if (typeof reason !== 'string' || !reason.trim()) {
+        throw new BoardError('invalid_input', `Skipped stage ${sId} must have a non-empty reason.`)
+      }
+    }
+  }
+}
+
+function checkStage(key, tasks, fields) {
+  if (typeof fields.stage === 'string') {
+    if (!fields.parent) {
+      throw new BoardError('invalid_input', 'A task with stage must specify parent.')
+    }
+    const parentTask = tasks.find((t) => t.item === fields.parent)
+    if (parentTask && Array.isArray(parentTask.flow?.stages)) {
+      const known = parentTask.flow.stages.some((s) => s.id === fields.stage)
+      if (!known) {
+        throw new BoardError('invalid_input', `Parent task ${fields.parent} flow does not have stage ${JSON.stringify(fields.stage)}.`)
+      }
+    }
+  }
+}
+
 function checkRefs(key, tasks, fields) {
+  checkStage(key, tasks, fields)
+  checkFlow(fields.flow)
   const known = new Set(tasks.map((t) => t.item))
   const missing = []
   if (typeof fields.parent === 'string' && !known.has(fields.parent)) missing.push(['parent', fields.parent])
@@ -259,6 +393,11 @@ const isErrno = (error) => typeof error?.code === 'string' && /^E[A-Z]+$/.test(e
  */
 export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 'report' }, env = process.env, dshHome }) {
   let unscopedKey // Calls without a session keep their binding in memory only.
+  const processStores = new Map()
+  const getProcessStore = (root) => {
+    if (!processStores.has(root)) processStores.set(root, createFsProcessStore(root))
+    return processStores.get(root)
+  }
   const sessionOf = (exec) => exec?.agent?.session?.id ?? ''
 
   async function keyOf(exec) {
@@ -276,6 +415,7 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
       return await fn()
     } catch (error) {
       if (error instanceof BoardError) return err(error.code, error.message)
+      if (error instanceof ProcessError) return err(error.code, error.message)
       if (error?.name === 'AbortError') throw error
       if (isErrno(error)) return err('write_failed', error.message)
       throw error
@@ -534,6 +674,43 @@ export function createBoardTools({ store, drift = { command: '', cwd: '', mode: 
       const out = ok({ board: meta(board), items, previous, inbox: shownInbox(inboxOf(board)), revision: board.revision })
       if (opened) out.opened = opened
       return out
+    }),
+
+    board_process: (args = {}, exec = {}) => guard(async () => {
+      const action = args.action
+      if (!['read', 'propose', 'save'].includes(action)) return err('invalid_input', 'action must be read, propose or save.')
+      const projectRoot = findProjectRoot(exec)
+      const pStore = getProcessStore(projectRoot)
+
+      if (action === 'read') {
+        const map = await pStore.read()
+        return ok({ map: map ?? null, exists: map !== undefined, path: PROCESS_PATH })
+      }
+
+      if (action === 'propose') {
+        const draft = args.map ?? { kinds: args.kinds, stages: args.stages, sources: args.sources }
+        if (!draft || typeof draft !== 'object') return err('invalid_input', 'propose requires a map or kinds/stages/sources.')
+        const proposal = await pStore.propose(draft)
+        return ok({ proposal, path: PROCESS_PATH })
+      }
+
+      if (action === 'save') {
+        if (args.approved !== true) return err('approval_required', 'Explicit user approval is required to save the process map.')
+        let proposal = args.proposal
+        if (!proposal && args.map) {
+          proposal = await pStore.propose(args.map)
+        }
+        if (!proposal) return err('invalid_input', 'save requires an approved proposal or map.')
+        const saved = await pStore.save(proposal, { approved: true })
+        const key = await keyOf(exec)
+        if (key) {
+          await change(key, (current) => {
+            existing(key, current)
+            return { board: { ...current, process: { revision: saved.revision, stagesCount: saved.stages.length } }, write: true }
+          }, { by: by(exec), signal: exec.signal }).catch(() => {})
+        }
+        return ok({ saved: true, map: saved, path: PROCESS_PATH })
+      }
     }),
   }
   return bodies

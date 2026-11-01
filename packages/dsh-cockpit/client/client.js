@@ -239,6 +239,25 @@ function titleText(task) {
   return issue && !leads ? issue + ' ' + what : what
 }
 
+/** Project a flow and its immediate children into one unit per stage or ordinary child.
+ * The first materialized child supplies the stage status and owner wait; skipped
+ * stages are excluded. Other children remain ordinary work. No board is mutated.
+ */
+function flowUnits(task, children) {
+  if (!Array.isArray(task.flow?.stages)) return undefined
+  const skipped = task.flow.skipped && typeof task.flow.skipped === 'object' ? task.flow.skipped : {}
+  const ids = new Set(task.flow.stages.filter((s) => s && typeof s.id === 'string').map((s) => s.id))
+  const seen = new Set()
+  const stages = []
+  for (const stage of task.flow.stages) {
+    if (!stage || typeof stage.id !== 'string' || seen.has(stage.id) || Object.hasOwn(skipped, stage.id)) continue
+    seen.add(stage.id)
+    const child = children.find((c) => c.stage === stage.id)
+    stages.push({ item: child?.item ?? task.item, stage: stage.id, title: stage.title, status: child?.status ?? stage.status, task: child })
+  }
+  return stages.concat(children.filter((c) => !ids.has(c.stage)).map((c) => ({ item: c.item, title: titleText(c), status: c.status, task: c })))
+}
+
 /**
  * The board's rows in tree order, each with what it shows:
  * - closed: done or dropped; a closed row has no wait line;
@@ -268,6 +287,8 @@ function boardRows(board, options = {}) {
       ? (typeof d.note === 'string' ? { status: d.status, note: d.note } : { status: d.status })
       : undefined
     const children = childrenOf.get(task.item) ?? []
+    const units = flowUnits(task, children)
+    const counted = units ?? children.map((c) => ({ status: c.status, task: c }))
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : []
     const isClosed = closed(task.status)
     const all = notes(task)
@@ -293,12 +314,14 @@ function boardRows(board, options = {}) {
       blockedBy: blocked ? deps.filter((d) => byItem.has(d) && !closed(byItem.get(d).status)).map((d) => ({ ref: refOf(byItem.get(d)), status: byItem.get(d).status })) : [],
       // Only dependencies on the board; an unknown one shows in its flag alone.
       after: deps.filter((d) => byItem.has(d)).map((d) => refOf(byItem.get(d))),
-      progress: children.length
+      flow: task.flow,
+      stage: text(task.stage),
+      progress: counted.length
         ? {
-            done: children.filter((c) => c.status === 'done').length,
-            dropped: children.filter((c) => c.status === 'dropped').length,
-            total: children.length,
-            needsYou: children.filter((c) => mine.has(c.item)).length,
+            done: counted.filter((c) => c.status === 'done').length,
+            dropped: counted.filter((c) => c.status === 'dropped').length,
+            total: counted.length,
+            needsYou: counted.filter((c) => c.task && mine.has(c.task.item)).length,
           }
         : undefined,
       model: modelText(task),
@@ -423,9 +446,11 @@ function rowCells(row, flags = []) {
     ready: row.ready,
     problems: flags.map((f) => { const t = flagText(f); return t.charAt(0).toUpperCase() + t.slice(1) }),
     reported: row.reported ? { text: reportedText(row.reported), note: row.reported.note } : undefined,
+    stage: row.stage,
+    flow: row.flow,
     detail,
     command,
-    expandable: detail.length > 0 || Boolean(command),
+    expandable: detail.length > 0 || Boolean(command) || Boolean(row.flow),
   }
 }
 
@@ -520,7 +545,35 @@ function boardSegments(board, rows, item) {
       for (let i = at + 1; i < rows.length && rows[i].depth > rows[at].depth; i++) if (rows[i].depth === rows[at].depth + 1) children.push(rows[i])
     }
   }
-  const segments = children.map((r) => {
+  // Replace a flow owner's representation with its stages. Materialized stage
+  // rows supply their own state, but must not also appear as separate units.
+  const byRow = new Map(rows.map((r) => [r.item, r]))
+  const directChildren = (owner) => (Array.isArray(board?.tasks) ? board.tasks : []).filter((t) => t.parent === owner.item)
+  const flowRows = (owner, includeOrdinary) => {
+    const units = flowUnits(owner, directChildren(owner)) ?? []
+    return units.filter((u) => includeOrdinary || u.stage !== undefined).map((u) => {
+      const materialized = u.task && byRow.get(u.item)
+      if (materialized) return u.stage === undefined ? materialized : { ...materialized, stage: u.stage }
+      return { item: u.item, stage: u.stage, title: u.title, status: u.status,
+        done: u.status === 'done', dropped: u.status === 'dropped',
+        needsYou: false, ready: u.status === 'next', blockedBy: [] }
+    })
+  }
+  let projected = children
+  if (item !== undefined && byItem.get(item)?.flow) projected = flowRows(byItem.get(item), true)
+  else if (item === undefined) {
+    const suppressed = new Set()
+    for (const task of byItem.values()) if (Array.isArray(task.flow?.stages)) {
+      for (const child of directChildren(task)) if (task.flow.stages.some((s) => s?.id === child.stage)) suppressed.add(child.item)
+    }
+    projected = []
+    for (const row of sectionOrder(rows)) {
+      const task = byItem.get(row.item)
+      if (task && Array.isArray(task.flow?.stages)) projected.push(...flowRows(task, false))
+      else if (!row.progress && !suppressed.has(row.item)) projected.push(row)
+    }
+  }
+  const segments = projected.map((r) => {
     const kind = segmentKind(r)
     let said = [kind]
     if (kind === 'now') said = ['now', modelText(byItem.get(r.item) ?? {}, ' ')]
@@ -529,14 +582,14 @@ function boardSegments(board, rows, item) {
       const blockers = blockerTexts(r, byItem.get(r.item), byItem)
       said = [blockers.length ? 'blocked by ' + blockers.join(', ') : 'blocked']
     }
-    return { item: r.item, kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
+    return { item: r.item, ...(r.stage === undefined ? {} : { stage: r.stage }), kind, tooltip: [r.title, ...said].filter(Boolean).join(' · ') }
   })
   return {
     segments,
-    continuous: children.length > SEGMENT_MAX,
-    done: children.filter((r) => r.done).length,
-    dropped: children.filter((r) => r.dropped).length,
-    total: children.length,
+    continuous: projected.length > SEGMENT_MAX,
+    done: projected.filter((r) => r.done).length,
+    dropped: projected.filter((r) => r.dropped).length,
+    total: projected.length,
   }
 }
 
@@ -628,7 +681,7 @@ const EMPTY_STATE = {
   line: 'An agent opens a board when it starts work with several steps. The board shows here after that.',
 }
 
-return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, firstByItem, boardParent, boardGroups, sectionOrder, boardSegments, driftState, driftWords, stripModel, stripText, stripTitle, EMPTY_STATE }
+return { parentLoops, placement, treeOrder, duplicateRefs, boardFlags, flagText, problems, waitsOnOwner, needsYou, notes, modelText, refUrl, titleText, flowUnits, boardRows, reportedText, progressText, blockedText, STATUS_MARK, shortRef, titleParts, prText, rowCells, SEGMENT_MAX, segmentKind, firstByItem, boardParent, boardGroups, sectionOrder, boardSegments, driftState, driftWords, stripModel, stripText, stripTitle, EMPTY_STATE }
 })(),
 "../../lib/inbox.js": (() => {
 // The Inbox (#51): rough items noted for later, on the board but outside its
@@ -728,7 +781,7 @@ const MAX = 48
 const clip = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > MAX ? t.slice(0, MAX - 1) + '…' : t }
 const quote = (s) => '"' + clip(s) + '"'
 // board_open may create a board, set its parent and write the session binding.
-const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit', board_inbox: 'edit' }
+const KIND = { board_open: 'edit', board_read: 'read', board_add: 'edit', board_update: 'edit', board_inbox: 'edit', board_process: 'edit' }
 
 const itemsText = (item) => (Array.isArray(item) ? item.join(', ') : String(item))
 
@@ -782,6 +835,7 @@ function callTitle(name, args = {}) {
     case 'board_add': return addTitle(args.item, args)
     case 'board_update': return updateTitle(args) + (Array.isArray(args.refines) && args.refines.length ? ' · from ' + args.refines.join(', ') : '')
     case 'board_inbox': return inboxTitle(args)
+    case 'board_process': return 'process: ' + (args.action ?? 'read')
     default: return name
   }
 }
@@ -794,6 +848,7 @@ function resultTitle(name, args = {}, value) {
     case 'board_read': return ['read ' + value.board.key, ...readFilters(args)].join(' · ')
     case 'board_add': return addTitle(value.task.item, { ...args, status: value.task.status })
     case 'board_inbox': return inboxTitle(args, args.action === 'add' ? value.items?.[0]?.id : undefined) + (value.opened ? ' · opened ' + value.opened.key : '')
+    case 'board_process': return 'process: ' + (args.action ?? 'read') + (value.map?.revision ? ' · rev ' + value.map.revision : value.proposal?.next?.revision ? ' · rev ' + value.proposal.next.revision : '')
     default: return undefined
   }
 }
@@ -1001,7 +1056,7 @@ const IDLE_MS = 10000
 // Relative to the document, as dsh-client-ui-deliverables does, so a mounted app works.
 const VIEW = 'api/dsh-cockpit/view'
 // The board tools whose chat cards this bundle draws (tool.call.toolview keys).
-const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update', 'board_inbox']
+const TOOLS = ['board_open', 'board_read', 'board_add', 'board_update', 'board_inbox', 'board_process']
 
 // ---- Style: host tokens only (dsh-client-ui-theme), one stylesheet in the head ----
 // The panel's own colour names, set per theme on its root. Where a host token
@@ -1040,6 +1095,15 @@ const CSS = [
   '.dshc-parent{font-size:12px;color:var(--dshc-t)}',
   '.dshc-meta{font-size:12px;color:var(--dshc-t);white-space:nowrap;flex:none}',
   '.dshc-drift{font-size:12px;line-height:16px;color:var(--dshc-t);margin-top:2px}',
+  '.dshc-process{font-size:12px;line-height:16px;color:var(--dshc-t);margin-top:2px}',
+  '.dshc-vbar{display:flex;align-items:center;justify-content:space-between;padding:4px 12px;font-size:12px;color:var(--dshc-s)}',
+  '.dshc-vtoggle{height:20px;padding:0 6px;font-size:11px}',
+  '.dshc-track{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;font-size:11px;line-height:16px;color:var(--dshc-s);margin-top:2px}',
+  '.dshc-track-item{display:inline-flex;align-items:center;gap:2px}',
+  '.dshc-track-item[data-status=done]{color:var(--dshc-ok)}',
+  '.dshc-track-item[data-status=now]{color:var(--dshc-p);font-weight:600}',
+  '.dshc-track-item[data-status=waiting]{color:var(--dshc-warn)}',
+  '.dshc-tag-stage{background:var(--dshc-l1);color:var(--dshc-s);border:1px solid var(--dshc-border)}',
   '.dshc-sec{padding:8px 12px 10px;border-bottom:1px solid var(--dshc-border)}',
   // Section titles as the host's panels write them (the todo panel): 12-13 px, medium, sentence case.
   '.dshc-sech{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;line-height:18px;margin-bottom:6px}',
@@ -1359,6 +1423,7 @@ function Header({ board, view, rows, now, overall }) {
         board.parent ? h('span', { className: 'dshc-parent dshc-trunc', title: board.parent }, board.parent) : null),
       h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
     showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null,
+    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
     overall && overall.total
       ? h('section', { className: 'dshc-overall', 'aria-label': 'Whole board' },
         h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'), h('span', null, progressText(overall))),
@@ -1486,6 +1551,22 @@ function Meta({ c, bar, parent }) {
   const lines = []
   // A root parent's bar; its count is on its title line (TaskRow).
   if (bar) lines.push(h(Bar, { key: 'bar', bar }))
+  if (c.stage) lines.push(tag('stage', 'dshc-tag-stage', 'stage: ' + c.stage))
+  if (c.flow && Array.isArray(c.flow.stages)) {
+    const skipped = c.flow.skipped && typeof c.flow.skipped === 'object' ? c.flow.skipped : {}
+    const active = c.flow.stages.filter((s) => s && s.id && !Object.hasOwn(skipped, s.id))
+    if (active.length) {
+      lines.push(h('span', { key: 'track', className: 'dshc-track' },
+        active.map((s, idx) => [
+          idx > 0 ? h('span', { key: 'sep' + idx, className: 'dshc-sep' }, '·') : null,
+          h('span', { key: s.id, className: 'dshc-track-item', 'data-status': s.status ?? 'next' },
+            s.title || s.id,
+            s.status === 'done' ? ' ✓' : s.status === 'now' ? ' ●' : s.status === 'waiting' ? ' …' : ''
+          ),
+        ]).flat().filter(Boolean)
+      ))
+    }
+  }
   if (c.line) lines.push(h('span', { key: 'line', className: 'dshc-wrap', 'data-line': '' }, c.line))
   if (c.needsYou) lines.push(tag('you', 'dshc-tag-warn', 'Needs you · see top'))
   if (c.blockedBy.length) {
@@ -1499,17 +1580,26 @@ function Meta({ c, bar, parent }) {
 }
 
 function Detail({ c, title }) {
+  const dl = [...c.detail]
+  if (c.flow && Array.isArray(c.flow.stages)) {
+    const skipped = c.flow.skipped && typeof c.flow.skipped === 'object' ? c.flow.skipped : {}
+    const flowText = c.flow.stages.map((s) => {
+      const isSkip = Object.hasOwn(skipped, s.id)
+      return s.id + ' (' + (s.title || '') + '): ' + (isSkip ? 'skipped: ' + skipped[s.id] : (s.status ?? 'next'))
+    }).join('; ')
+    dl.push({ key: 'Flow (rev ' + (c.flow.revision ?? 1) + ')', value: flowText, mono: false })
+  }
   return h('div', { className: 'dshc-detail', 'data-detail': '' },
-    c.detail.length ? h('dl', null, c.detail.map((d) => [h('dt', { key: d.key + 't' }, d.key), h('dd', { key: d.key + 'd', className: d.mono ? 'dshc-mono' : undefined }, d.value)])) : null,
+    dl.length ? h('dl', null, dl.map((d) => [h('dt', { key: d.key + 't' }, d.key), h('dd', { key: d.key + 'd', className: d.mono ? 'dshc-mono' : undefined }, d.value)])) : null,
     c.command ? h(CommandBox, { command: c.command, label: 'Copy command for ' + title }) : null)
 }
 
-function TaskRow({ boardKey, parent, row, task, flags, bar }) {
+function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView }) {
   const c = rowCells(row, flags)
   const id = boardKey + '\u0000' + row.item
   const [open, setOpen] = React.useState(expanded.get(id) === true)
   const toggle = () => { expanded.set(id, !open); setOpen(!open) }
-  const isOpen = c.expandable && open
+  const isOpen = (c.expandable && open) || (expandedView && Boolean(c.flow))
   const cls = 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.closed ? ' dshc-closed' : '') + (row.dropped ? ' dshc-dropped' : '')
   // The step id and the status word, which have no column: in the title's and the mark's tooltips.
   const tip = (c.wrap ? '' : row.title + ' · ') + 'step ' + row.item
@@ -1633,6 +1723,7 @@ function Inbox({ board, fill }) {
 function BoardView({ view, now, fill }) {
   if (!view.key) return h(Empty, { fill })
   if (!view.board) return h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error)
+  const [expandedView, setExpandedView] = React.useState(false)
   const { board } = view
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
   const links = view.links && typeof view.links === 'object' ? view.links : {}
@@ -1646,11 +1737,15 @@ function BoardView({ view, now, fill }) {
   for (const f of flags) { if (!flagsOf.has(f.item)) flagsOf.set(f.item, []); flagsOf.get(f.item).push(f) }
   const overall = boardSegments(board, rows, undefined)
   const groups = boardGroups(rows)
+  const hasFlow = tasks.some((t) => t.flow)
   return h('div', null,
     h(Header, { board, view, rows, now, overall }),
     h(NeedsYou, { board, rows, byItem }),
     h(Problems, { list }),
     h(Inbox, { board, fill }),
+    hasFlow ? h('div', { className: 'dshc-vbar' },
+      h('span', null, expandedView ? 'Expanded view (all stages shown)' : 'Compact view'),
+      h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', onClick: () => setExpandedView(!expandedView) }, expandedView ? 'Compact' : 'Expanded')) : null,
     rows.length
       ? h('div', { className: 'dshc-groups' }, groups.map((g) => h('section', {
         key: (g.standalone ? 'standalone' : 'parent:') + g.item,
@@ -1660,6 +1755,7 @@ function BoardView({ view, now, fill }) {
       h('ul', { className: 'dshc-tree', role: 'list' }, g.rows.map((row) => h(TaskRow, {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: row.depth === 0 && row.progress ? boardSegments(board, rows, row.item) : undefined,
+        expandedView,
       }))))))
       : h('p', { className: 'dshc-msg' }, inboxOf(board).length ? 'No tasks yet: refine Inbox items to add them.' : 'No tasks yet.'))
 }
@@ -1809,13 +1905,14 @@ function BoardDock({ sessionId, openBoard }) {
 // ---- Chat cards for the board tools (the keyed tool.call.toolview slot) ----
 
 const parseArgs = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } }
-const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift', 'action', 'id', 'text', 'note', 'refines']
+const CARD_FIELDS = ['key', 'parent', 'item', 'what', 'status', 'dependsOn', 'set', 'remove', 'checkDrift', 'action', 'id', 'text', 'note', 'refines', 'stage', 'flow', 'approved', 'kinds', 'stages', 'sources']
 /**
  * A settled call's arguments: its call head's argsRaw, else (the call has
  * left the loaded window) the node's own lazy argument view, else {}.
  */
 function settledArgs(block) {
   if (typeof block.call?.argsRaw === 'string') return parseArgs(block.call.argsRaw)
+  if (typeof block.argsRaw === 'string') return parseArgs(block.argsRaw)
   const view = block.args
   if (!view || typeof view.value !== 'function') return {}
   const out = {}
