@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0-rc.4
+
+- **The agent is told about board problems.** When the board has a flag (the same PR or issue on two tasks, an unknown parent or dependency, a parent loop), the per-turn context now lists it under "Board problems", up to five lines and then "and N more", until it is fixed. The context reads the board file on every turn, so a mistake made outside the session shows too. Before, the flags came back in a write's result and nothing asked the agent to look at them, so a duplicate PR went unnoticed.
+- **Fix only what is wrong.** The instructions say to fix a flagged case only when it is actually wrong, such as a PR recorded on the wrong task, and to leave it as it is when it looks intentional.
+
 ## 0.6.0-rc.3
 
 - **Inbox buttons send.** **Refine**, **Refine all** and **Clear** now queue their request for the agent in one click, instead of only filling the message box. They still refuse when the message box holds a draft, so nothing you typed is sent or replaced, and they work while other messages are already queued (the click goes behind them). **Add item…** still fills the box, because you type the text. New config `inbox.sendOnClick` (default `true`); `false` restores fill-only.

@@ -263,3 +263,76 @@ test('replaces.todo restricts todo_write for root session on board_open; subagen
   assert.equal(subagentDenied.length, 0, 'subagent todo_write is never restricted')
   await fork.dispose()
 })
+
+
+// ---- Board problems in the per-turn context (rc.4) ----
+
+const problemsHost = async () => {
+  const host = createHost()
+  const fork = await load(host.ctx, plugin, {})
+  return { ...host, fork, c: host.contexts.get('rs-dsh:cockpit-context') }
+}
+const assemble = async (ctx, sid, contexts) => {
+  const assembly = { sections: [], contexts: [{ name: 'rs-dsh:cockpit-context', text: '', interpolate: false }] }
+  return ctx.waterfall('system-prompt/assemble', assembly, { scope: { id: sid } }, async () => assembly)
+}
+
+test('the context lists a duplicate PR, tells the agent to fix only what is wrong, and returns a string', async () => {
+  const { tools, c, fork } = await problemsHost()
+  const e = exec('p-dup')
+  await tools.get('board_open').execute({ key: 'p-dup-board' }, e)
+  await tools.get('board_add').execute({ item: 'a', what: 'Parent', pr: '#62' }, e)
+  await tools.get('board_add').execute({ item: 'b', what: 'Child', parent: 'a', pr: '#62' }, e)
+  const text = c.text({ scope: { id: 'p-dup' } })
+  assert.equal(typeof text, 'string', 'DSH reads it synchronously: never a Promise')
+  assert.match(text, /Board problems \(fix only what is actually wrong; if one looks intentional, leave it as it is\):/)
+  assert.match(text, /- Duplicate pr: #62 \(items a, b\)/)
+  await fork.dispose()
+})
+
+test('a clean board lists no problems', async () => {
+  const { tools, c, fork } = await problemsHost()
+  const e = exec('p-clean')
+  await tools.get('board_open').execute({ key: 'p-clean-board' }, e)
+  await tools.get('board_add').execute({ item: 'a', what: 'One', pr: '#1' }, e)
+  await tools.get('board_add').execute({ item: 'b', what: 'Two', pr: '#2' }, e)
+  assert.doesNotMatch(c.text({ scope: { id: 'p-clean' } }), /Board problems/)
+  await fork.dispose()
+})
+
+test('the list is capped at five problems, with "and N more"', async () => {
+  const { tools, c, fork } = await problemsHost()
+  const e = exec('p-many')
+  await tools.get('board_open').execute({ key: 'p-many-board' }, e)
+  // Eight shared PR numbers: eight problems, more than the five the context shows.
+  for (let i = 0; i < 16; i++) await tools.get('board_add').execute({ item: 'y' + i, what: 'Y' + i, pr: '#' + (100 + Math.floor(i / 2)) }, e)
+  const text = c.text({ scope: { id: 'p-many' } })
+  const lines = text.split('\n').filter((l) => l.startsWith('- '))
+  assert.ok(lines.length <= 6, lines.join('|'))
+  assert.match(text, /- and \d+ more: read the board/)
+  await fork.dispose()
+})
+
+test('a mistake made outside the session shows on the next assembly', async () => {
+  const { ctx, tools, fork } = await problemsHost()
+  const e = exec('p-out')
+  await tools.get('board_open').execute({ key: 'p-out-board' }, e)
+  await tools.get('board_add').execute({ item: 'a', what: 'One', pr: '#7' }, e)
+  await tools.get('board_add').execute({ item: 'b', what: 'Two' }, e)
+  // Another process edits the file: no tool call in this session, so no cache update from it.
+  const file = process.env.DSH_HOME + '/data/dsh-cockpit/boards/p-out-board.json'
+  const { readFile, writeFile } = await import('node:fs/promises')
+  const board = JSON.parse(await readFile(file, 'utf8'))
+  board.tasks.find((t) => t.item === 'b').pr = '#7'
+  await writeFile(file, JSON.stringify(board))
+  const out = await assemble(ctx, 'p-out')
+  const entry = out.contexts.find((x) => x.name === 'rs-dsh:cockpit-context')
+  assert.match(entry.text, /Duplicate pr: #7 \(items a, b\)/)
+  await fork.dispose()
+})
+
+test('the upkeep rule: fix only what is wrong, leave what looks intentional', () => {
+  const text = plugin.guidance()
+  assert.match(text, /fix only what is actually wrong/)
+  assert.match(text, /if a flagged case looks intentional, leave it as it is/)
+})
