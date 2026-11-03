@@ -1,7 +1,7 @@
 // A real cordis Context with in-memory stand-ins for the Host services the
 // plugin injects: schedule, sessionController, storageDomain,
 // workspaceRegistry, llm, sessionProjections, permissionPresets and commands.
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -101,9 +101,32 @@ function createSessions() {
   }
 }
 
+/** Stand-ins for the agent-facing registries: each entry goes with the scope that added it. */
+function registries(ctx) {
+  const tools = new Map()
+  const sections = new Map()
+  const skills = new Map()
+  const registry = (name, method, map, key = 'name') => class extends Service {
+    constructor(c) {
+      super(c, name)
+    }
+    [method](value) {
+      return this.ctx.effect(() => {
+        map.set(value[key], value)
+        return () => map.delete(value[key])
+      })
+    }
+  }
+  ctx.plugin(registry('tools', 'register', tools))
+  ctx.plugin(registry('systemPrompt', 'section', sections))
+  ctx.plugin(registry('skills', 'register', skills))
+  return { tools, sections, skills }
+}
+
 /** A Context with every service the plugin needs, and handles on their state. */
-export function createHost() {
+export function createHost({ defaultWorkspace } = {}) {
   const ctx = new Context()
+  const agent = registries(ctx)
   const schedule = createSchedule()
   const storageDomain = createStorageDomain()
   const sessionController = createSessions()
@@ -111,6 +134,7 @@ export function createHost() {
   const workspaceRegistry = {
     archivedSessionIds: [],
     resolveByPath: async (path) => ({ id: path }),
+    list: () => (defaultWorkspace ? [{ id: 'ws-default', path: defaultWorkspace }] : []),
     create: async (path) => ({ id: path }),
     archiveSession: async (id) => void archived.push(id),
     unarchiveSession: async () => {},
@@ -146,7 +170,14 @@ export function createHost() {
     for (let i = 0; !commands.has('automations') && i < 100; i++) await new Promise((r) => setTimeout(r, 5))
     return commands.get('automations').handler({ rawInput: input })
   }
-  return { ctx, schedule, storageDomain, sessionController, workspaceRegistry, archived, commands, run }
+  /** Call an agent tool as the registry would: the pre-execute gate, then the body. */
+  const call = async (name, args = {}) => {
+    for (let i = 0; !agent.tools.has(name) && i < 100; i++) await new Promise((r) => setTimeout(r, 5))
+    const gate = await ctx.waterfall('tools/pre-execute', { name, arguments: args }, () => Promise.resolve({ kind: 'allow' }))
+    if (gate.kind !== 'allow') return { gate }
+    return agent.tools.get(name).execute(args, { name, arguments: args, signal: new AbortController().signal })
+  }
+  return { ctx, schedule, storageDomain, sessionController, workspaceRegistry, archived, commands, run, call, ...agent }
 }
 
 /** Config for tests: no watcher, no poll, no status file, no Schedule-change trigger. */

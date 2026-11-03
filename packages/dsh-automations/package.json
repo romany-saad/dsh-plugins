@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-automations",
-  "version": "0.1.1",
+  "version": "0.2.0-rc.1",
   "description": "Keep DSH automation tasks in task files: the plugin reconciles the Schedule with them, creating, updating, disabling and deleting tasks to match.",
   "license": "MIT",
   "type": "module",
@@ -34,6 +34,7 @@
   "files": [
     "index.js",
     "lib",
+    "skills",
     "locale",
     "examples",
     "icon.svg",
@@ -54,10 +55,12 @@
     "yaml": "^2.9.1"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-home-paths": "^0.2.1-rc.2"
+    "@deepseek-ai/dsh-home-paths": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.1-rc.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
-    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2"
   }
 }

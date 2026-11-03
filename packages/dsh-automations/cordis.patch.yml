@@ -12,3 +12,7 @@
         baseDir: ''
         # Merged under each file's own defaults, e.g. cwd, timeZone, permission, model.
         defaults: {}
+        # The automation_* tools, the automations skill and the agent guidance.
+        tools: true
+        # Where the tools write task files, from baseDir; always read.
+        agentDir: automations/agent

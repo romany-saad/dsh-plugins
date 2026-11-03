@@ -10,7 +10,7 @@ Public plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 | [`@rs-dsh/dsh-quote`](packages/dsh-quote) | Quote passages from a Web conversation into your next message as composer chips, each with an optional note you can edit; hover shows the full quote, and sent quotes render as cards | 0.3.3 |
 | [`@rs-dsh/dsh-frosty-castle-theme`](packages/dsh-frosty-castle-theme) | Frosty Castle Theme: a frost-fantasy palette, stone-and-iron frame, crest and carved controls for the DSH Web GUI | 0.1.0-rc.1 |
 | [`@rs-dsh/dsh-drafts`](packages/dsh-drafts) | Get back what you typed into a new Web conversation and left before sending: unsent drafts are listed above the message box of a new conversation, with Open and Discard | 0.1.2 |
-| [`@rs-dsh/dsh-automations`](packages/dsh-automations) | Keep automation tasks in YAML, JSON or JS files: the Schedule is synced to match them, with each task's schedule, prompt, model, permission and working folder | 0.1.1 |
+| [`@rs-dsh/dsh-automations`](packages/dsh-automations) | Keep automation tasks in YAML, JSON or JS files: the Schedule is synced to match them, with each task's schedule, prompt, model, permission and working folder; agents create tasks through tools | 0.2.0-rc.1 |
 
 ## Install
 

@@ -1,19 +1,19 @@
 # @rs-dsh/dsh-automations
 
-Keep your [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) automation tasks in files. Write each task (its schedule, prompt, model, permission and working folder) in a YAML, JSON or JS file, and the plugin makes the Schedule match: it creates, updates, disables and deletes tasks so that they are exactly what the files say.
+Keep your [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) automation tasks in files. Write each task (its schedule, prompt, model, permission and working folder) in a YAML, JSON or JS file, and the plugin makes the Schedule match: it creates, updates, disables and deletes tasks so that they are exactly what the files say. Or ask the agent: "summarise this channel every Tuesday and Friday at 9" becomes a task file too.
 
 ![Three tasks from a task file on DSH's Automation tasks page, one open with its weekday schedule](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-automations/docs/images/automation-tasks.png)
 
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.1.1
+dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.2.0-rc.1
 ```
 
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.1.1&path:packages/dsh-automations'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.2.0-rc.1&path:packages/dsh-automations'
 ```
 
 Restart DSH after installing.
@@ -53,7 +53,7 @@ Each task has:
 | `id` | yes | The task's identity: letters, digits, `.`, `_` and `-`, up to 100 characters. Renaming it makes a new task. |
 | `prompt` | yes | The message the task sends when it runs. |
 | `schedule` | yes | When it runs; see below. |
-| `cwd` | yes, here or in `defaults` | The folder it works in. A relative path is read from the task file's folder. |
+| `cwd` | no | The folder it works in. A relative path is read from the task file's folder. Leave it out for a task that needs no project folder, such as a digest: it works in DSH's **Default workspace**. |
 | `title` | no | The name on the Automation tasks page, up to 120 characters. Defaults to the id. |
 | `timeZone` | no | Defaults to your computer's time zone. |
 | `model` | no | `provider/model`, or `{ provider, model, reasoningEffort }`. |
@@ -71,6 +71,26 @@ Each task has:
 - `at: 2026-12-01T09:00:00+02:00`: once.
 
 Add `timeZone:` inside `schedule` to give one schedule its own time zone.
+
+### Or ask the agent
+
+Ask in any conversation for a routine, for example *"summarise https://example.slack.com/archives/C0123 every Tuesday and Friday at 9:00 with what's new and the overall picture"*. The agent loads the plugin's `automations` skill and creates the task with the `automation_upsert` tool. The tool writes the task as its own file in `~/.dsh/automations/agent/` and syncs it, so the task is a file like any other, and you can open and edit it. The agent replies with the task id, its schedule and its next run.
+
+![The agent creating a twice-weekly channel digest with automation_upsert, and its reply with the next run](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-automations/docs/images/agent-upsert.png)
+
+What the agent can do:
+
+| Tool | What it does |
+|---|---|
+| `automation_list` | Lists the tasks, with their next run, their conversation and the file each comes from. It also lists reminders on the Schedule that no task manages. |
+| `automation_upsert` | Creates or replaces a task in the agent folder, then syncs. A task DSH refuses is undone, so nothing half-made is left behind. |
+| `automation_remove` | Removes a task the agent created. Its conversation stays. |
+| `automation_sync` | Syncs now, the same as `/automations`. |
+| `automation_adopt` | Turns a reminder made with DSH's built-in scheduling into a task, then deletes the reminder so the work doesn't run twice. |
+
+- **Your files stay yours.** The tools change only files in the agent folder. For a task from a file you wrote, the agent tells you which file to edit.
+- **Read-only unless you agree.** A task the agent creates is `read-only` by default. Asking for `workspace-write` or `danger-full-access` shows you an approval first, because the task runs on its own.
+- **The agent knows when to use them.** The plugin tells the agent to use these tools for routines, and DSH's built-in `schedule_create` only for a reminder in the current conversation.
 
 ### What happens when you save
 
@@ -98,7 +118,7 @@ If the files hold no tasks at all, the plugin refuses to delete every task, so a
 
 ### Each task has its own conversation
 
-Each task runs in a conversation of its own, titled `⏱ <title>`. With `session: persistent`, every run is a new message in that same conversation, so the task remembers earlier runs.
+Each task runs in a conversation of its own, titled `⏱ <title>`. With `session: persistent`, every run is a new message in that same conversation, so the task remembers earlier runs. That suits a digest: "what's new since last time" works because the previous summary is right there.
 
 With `session: fresh`, every run starts a new conversation that holds only the task's prompt, titled `⏱ <title> · <date and time>`. The newest 10 run conversations are kept and older ones are archived. The task's own conversation stays, so the Automation tasks page still lists and edits it, but nothing runs in it.
 
@@ -131,6 +151,8 @@ It works with no config. To change something, add a `dsh-automations` row to the
 | `debounceMs` | `750` | Wait this long after a change before syncing. |
 | `syncOnScheduleChange` | `true` | Sync when the Schedule changes, so an edit on the page is put back. |
 | `runRetryMs`, `runMaxAttempts` | `30000`, `5` | How a `fresh` run that fails to start is retried. |
+| `tools` | `true` | `false` gives the agent no automation tools, no `automations` skill and no guidance. |
+| `agentDir` | `automations/agent` | Where the agent's task files go, from `baseDir`. It is always read, along with `sources`. |
 | `statusFile` | `$DSH_HOME/data/dsh-automations/status.json` | Where the last sync's result is written. `false` writes none. |
 
 ## Limits
@@ -138,6 +160,7 @@ It works with no config. To change something, add a `dsh-automations` row to the
 - **The files win.** A change you make on the Automation tasks page to a task from a file is undone at the next sync. Tasks you create on the page yourself are left alone.
 - **One DSH at a time.** Two DSH processes reading the same task files would each try to manage the same tasks.
 - **A `.js` task file runs as code** inside DSH. Only use files you trust.
+- **The Default workspace** is DSH's own. In a profile without one (you deleted it), each task needs a `cwd`; `/automations` names every task that lacks one.
 - **No screen of its own.** You see the tasks on DSH's Automation tasks page and the sync result through `/automations`.
 - **Model per conversation** uses a part of DSH that is not a public API yet. If a DSH update removes it, `/automations` reports an error for each task with a `model`, and those tasks are not updated until you remove the `model` or update the plugin.
 
