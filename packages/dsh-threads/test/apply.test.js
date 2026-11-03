@@ -89,7 +89,7 @@ async function harness(options) {
     focus() {},
   }
   const slots = new Map(), writes = [], listeners = new Set()
-  const config = { getSnapshot: () => ({ status: 'ready', value: { reply: { enabled: true, files: true, web: false, maxTokens: 8192, maxRounds: 5, timeoutMs: 180000 }, maxComments: 5 }, user: {}, writable: true, revision: 7 }), subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn) }, mutate: async (ops, revision) => { writes.push({ ops, revision }); return options?.mutate ? options.mutate() : true } }
+  const config = { getSnapshot: () => ({ status: 'ready', value: { reply: { enabled: true, files: true, web: false, maxTokens: 8192, maxRounds: 5, timeoutMs: 180000 }, maxComments: 5 }, user: options?.user ?? {}, writable: true, revision: 7 }), subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn) }, mutate: async (ops, revision) => { writes.push({ ops, revision }); return options?.mutate ? options.mutate() : true } }
   page.start({
     configForms: { get: (id) => { assert.equal(id, 'dsh-threads'); return config }, whileServed: (_ids, register) => register() },
     inputTriggers: { registerSource: (src) => { calls.sources.push(src); return () => {} } },
@@ -193,6 +193,45 @@ test('disabling replies saves only staged values and keeps reply drafts', async 
   click(h.page, host.querySelector('[data-action="save"]'))
   await settle(h.page, 0)
   assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'maxTokens'], value: 2048 }, { op: 'set', path: ['reply', 'enabled'], value: false }], revision: 7 }])
+  h.page.act(() => root.unmount()); close(h)
+})
+
+test('disabling replies restores invalid drafts while preserving valid drafts', async () => {
+  const h = await harness()
+  const slot = h.slots.get('plugins.row.config')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxTokens'), '')
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxRounds'), '3')
+  assert.equal(host.querySelector('[data-action=save]').disabled, true)
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxTokens').value, '8192')
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxRounds').value, '3')
+  assert.equal(host.querySelector('[data-action=save]').disabled, false)
+  click(h.page, host.querySelector('[data-action=save]'))
+  await settle(h.page, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'maxRounds'], value: 3 }, { op: 'set', path: ['reply', 'enabled'], value: false }], revision: 7 }])
+  h.page.act(() => root.unmount()); close(h)
+})
+
+test('restoring an invalid overridden field does not unset or rewrite it', async () => {
+  const h = await harness({ user: { reply: { maxTokens: 8192 } } })
+  const slot = h.slots.get('plugins.row.config')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxTokens'), '0')
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  click(h.page, host.querySelector('[data-action=save]'))
+  await settle(h.page, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'enabled'], value: false }], revision: 7 }])
   h.page.act(() => root.unmount()); close(h)
 })
 

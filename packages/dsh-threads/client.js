@@ -307,10 +307,12 @@ ${scope} .th-settings-fields:disabled{opacity:.6}
       const maximums = { maxTokens: 131072, maxRounds: 20, timeoutMs: 3600000, maxComments: 100 }
       const config = ctx.configForms.get(PLUGIN)
       const flatten = (value) => value == null ? value : { ...value.reply, ...(Object.hasOwn(value, 'maxComments') ? { maxComments: value.maxComments } : {}) }
+      // Restored invalid drafts must not create or change a persisted override.
+      const restored = new Set()
       const adapter = {
         getSnapshot: () => { const s = config.getSnapshot(); return { ...s, value: flatten(s.value), base: flatten(s.base), user: flatten(s.user) } },
         subscribe: (fn) => config.subscribe(fn),
-        mutate: (ops, revision) => config.mutate(ops.map((op) => ({ ...op, path: op.path[0] === 'maxComments' ? op.path : ['reply', ...op.path] })), revision),
+        mutate: (ops, revision) => config.mutate(ops.filter((op) => !restored.has(op.path[0])).map((op) => ({ ...op, path: op.path[0] === 'maxComments' ? op.path : ['reply', ...op.path] })), revision),
       }
       const specs = names.map((field) => {
         if (bools.has(field)) return { field, format: (v) => v === undefined ? '' : String(v), parse: (v) => v === '' ? { kind: 'clear' } : v === 'true' || v === 'false' ? { kind: 'set', value: v === 'true' } : undefined }
@@ -326,12 +328,12 @@ ${scope} .th-settings-fields:disabled{opacity:.6}
         const field = (name) => {
           const id = 'rs-dsh-threads-setting-' + name, value = state[name], hint = bools.has(name) ? id + '-hint' : undefined
           return jsx('div', { children: [bools.has(name)
-            ? jsxs('div', { children: [jsx('label', { htmlFor: id, children: [jsx('input', { id, type: 'checkbox', checked: value.text === 'true', disabled: !state.writable || state.saving, 'aria-describedby': hint, onChange: (e) => edit(name, String(e.target.checked)) }, 'input'), t(name)] }), hint && jsx('p', { id: hint, className: 'th-settings-hint', children: t(name + 'Hint') })] }, 'input')
-            : jsx(ui.SettingsValueField, { id, label: t(name), numeric: true, text: value.text, invalid: value.invalid, invalidLabel: String(t('rangeInteger')).replace('{max}', String(maximums[name])), hint: String(t('rangeInteger')).replace('{max}', String(maximums[name])), disabled: !state.writable || state.saving, onEdit: (text) => edit(name, text) }, 'input'),
-            value.overridden && jsx('button', { type: 'button', disabled: !state.writable || state.saving, onClick: () => resetField(name), children: String(t('settingsReset')).replace('{field}', t(name)) }, 'reset')
+            ? jsxs('div', { children: [jsx('label', { htmlFor: id, children: [jsx('input', { id, type: 'checkbox', checked: value.text === 'true', disabled: !state.writable || state.saving, 'aria-describedby': hint, onChange: (e) => { if (name === 'enabled' && !e.target.checked) for (const key of ['maxTokens', 'maxRounds', 'timeoutMs']) if (state[key].invalid) { edit(key, String(adapter.getSnapshot().value[key])); restored.add(key) } edit(name, String(e.target.checked)) } }, 'input'), t(name)] }), hint && jsx('p', { id: hint, className: 'th-settings-hint', children: t(name + 'Hint') })] }, 'input')
+            : jsx(ui.SettingsValueField, { id, label: t(name), numeric: true, text: value.text, invalid: value.invalid, invalidLabel: String(t('rangeInteger')).replace('{max}', String(maximums[name])), hint: String(t('rangeInteger')).replace('{max}', String(maximums[name])), disabled: !state.writable || state.saving, onEdit: (text) => { restored.delete(name); edit(name, text) } }, 'input'),
+            value.overridden && jsx('button', { type: 'button', disabled: !state.writable || state.saving, onClick: () => { restored.delete(name); resetField(name) }, children: String(t('settingsReset')).replace('{field}', t(name)) }, 'reset')
           ] }, name)
         }
-        return jsx(ui.SettingsForm, { labels: { unavailable: t('settingsUnavailable'), readOnly: t('settingsReadOnly'), saveFailed: t('settingsFailed'), save: t('settingsSave'), saving: t('settingsSaving') }, state, onSave: save, onDiscard: discard, children: jsxs('div', { ...scope, children: [
+        return jsx(ui.SettingsForm, { labels: { unavailable: t('settingsUnavailable'), readOnly: t('settingsReadOnly'), saveFailed: t('settingsFailed'), save: t('settingsSave'), saving: t('settingsSaving') }, state, onSave: save, onDiscard: () => { restored.clear(); discard() }, children: jsxs('div', { ...scope, children: [
           jsxs('section', { className: 'th-settings-group', 'aria-labelledby': 'rs-dsh-threads-repliesGroup', children: [
             jsx('h3', { id: 'rs-dsh-threads-repliesGroup', className: 'th-settings-heading', children: t('repliesGroup') }),
             field('enabled'),
