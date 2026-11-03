@@ -29,7 +29,8 @@ const oneLine = coreOneLine()
 test('bundle id, name and inject match package.json', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(bundle.name, pkg.name)
-  assert.deepEqual([...bundle.inject].sort(), ['inputTriggers', 'locale', 'rsDshCore', 'slots', 'uiConversation'])
+  assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-settings'), 'configForms provider is declared in client metadata')
+  assert.deepEqual([...bundle.inject].sort(), ['configForms', 'inputTriggers', 'locale', 'rsDshCore', 'slots', 'uiConversation'])
 })
 
 test('row keys parse into anchors and back', () => {

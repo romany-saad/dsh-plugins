@@ -1,6 +1,6 @@
 {
   "name": "@rs-dsh/dsh-threads",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Comment on any passage of a DSH Web conversation and get a brief reply from the session's own model in a small thread next to it, without touching the main chat.",
   "license": "MIT",
   "type": "module",
@@ -52,6 +52,7 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-input-trigger",
         "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings",
         "@rs-dsh/dsh-core"
       ]
     }
@@ -60,12 +61,14 @@
     "@rs-dsh/dsh-core": "workspace:^"
   },
   "peerDependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5",
     "@deepseek-ai/dsh-llm": "^0.2.1-rc.2",
     "@deepseek-ai/dsh-session": "^0.2.1-rc.2",
     "@deepseek-ai/dsh-tool-fs-search": "^0.2.1-rc.2",
     "@deepseek-ai/dsh-tool-web": "^0.2.1-rc.2"
   },
   "devDependencies": {
+    "@deepseek-ai/schemastery": "3.18.5",
     "@deepseek-ai/cordis": "4.0.5",
     "@deepseek-ai/dsh-client-connection": "0.2.1-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.2",

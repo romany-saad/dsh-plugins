@@ -196,6 +196,10 @@ window.__ModuleLoader__.load({
       wrap: 'Wrap',
       unwrap: 'Unwrap',
       footnotes: 'Footnotes',
+      settingsSummary: 'Configure comment threads and replies', settingsUnavailable: 'Settings are unavailable.', settingsReadOnly: 'Settings are read-only.', settingsFailed: 'Could not save settings. Your changes were kept.', settingsSave: 'Save', settingsSaving: 'Saving…', settingsReset: 'Reset {field}',
+      repliesGroup: 'AI replies', replySettings: 'AI reply settings', limitsGroup: 'Limits', enabledHint: 'When off, comments remain as notes without AI replies.',
+      filesHint: 'The replier can read any file accessible to the DSH process without approval, not just files in the working directory.', webHint: 'The replier can search and fetch web pages. A malicious page could try to leak file contents through a URL.',
+      enabled: 'Enable AI replies', files: 'Allow file access', web: 'Allow web access', maxTokens: 'Maximum output tokens', maxRounds: 'Maximum model calls per reply', timeoutMs: 'Reply timeout (milliseconds)', maxComments: 'Maximum comments per thread', rangeInteger: 'Enter a whole number from 1 to {max}.',
     }
     const zh = {
       comment: '评论',
@@ -228,6 +232,10 @@ window.__ModuleLoader__.load({
       wrap: '自动换行',
       unwrap: '取消自动换行',
       footnotes: '脚注',
+      settingsSummary: '配置评论和回复', settingsUnavailable: '设置不可用。', settingsReadOnly: '设置为只读。', settingsFailed: '无法保存设置，已保留你的更改。', settingsSave: '保存', settingsSaving: '保存中…', settingsReset: '重置{field}',
+      repliesGroup: 'AI 回复', replySettings: 'AI 回复设置', limitsGroup: '限制', enabledHint: '关闭后，评论仍会保留为笔记，但不会收到 AI 回复。',
+      filesHint: '回复者无需批准即可读取 DSH 进程能访问的任何文件，不限于工作目录。', webHint: '回复者可以搜索和获取网页。恶意网页可能试图通过网址泄露文件内容。',
+      enabled: '启用 AI 回复', files: '允许访问文件', web: '允许访问网络', maxTokens: '最大输出 token 数', maxRounds: '每次回复的最大模型调用次数', timeoutMs: '回复超时（毫秒）', maxComments: '每条评论的最大留言数', rangeInteger: '请输入 1 到 {max} 之间的整数。',
     }
 
     // Everything sits under [data-rs-dsh="dsh-threads"]: the cards, the badge
@@ -270,6 +278,13 @@ ${scope} .th-card-passage{display:-webkit-box;-webkit-box-orient:vertical;-webki
 ${scope}.th-card[data-open] .th-card-passage{display:block}
 ${scope} .th-card-msg{display:block;margin-top:2px}
 ${scope} .th-card-msg b{font-weight:600}
+${scope} .th-settings-group{margin:0 0 20px}
+${scope} .th-settings-heading{margin:0 0 12px;color:var(--dsw-alias-label-primary);font:var(--dsw-font-sm-14);font-weight:600}
+${scope} .th-settings-hint{margin:4px 0 8px;color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13)}
+${scope} .th-settings-details{margin:8px 0 0}
+${scope} .th-settings-toggle{cursor:pointer;border:0;padding:0;background:none;color:var(--dsw-alias-label-primary);font:var(--dsw-font-sm-14);font-weight:600}
+${scope} .th-settings-fields{border:0;margin:12px 0 0;padding:0;min-width:0}
+${scope} .th-settings-fields:disabled{opacity:.6}
 `
 
     // ------------------------------------------------------------ plugin body
@@ -277,13 +292,55 @@ ${scope} .th-card-msg b{font-weight:600}
     function apply(ctx) {
       const core = ctx.rsDshCore
       const { React, jsx, jsxs, ui, oneLine } = core
-      const scope = core.scope(PLUGIN)
 
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-threads: dictionaries')
       const t = ctx.locale.bind(NS)
       const count = (n) => String(t('messageCount')).replace('{n}', String(n))
       ctx.effect(() => core.style(PLUGIN, STYLE(core.selector(PLUGIN))), 'dsh-threads: style')
       ctx.effect(() => core.composer.claimChipSource(SOURCE), 'dsh-threads: chip source order')
+      const scope = core.scope(PLUGIN)
+      // SettingsFormModel addresses top-level fields; adapt its view and writes to
+      // the Host's existing nested reply paths without changing the stored shape.
+      const names = ['enabled', 'files', 'web', 'maxTokens', 'maxRounds', 'timeoutMs', 'maxComments']
+      const bools = new Set(['enabled', 'files', 'web'])
+      // Browser bundles cannot import host modules; boundary tests keep these in sync.
+      const maximums = { maxTokens: 131072, maxRounds: 20, timeoutMs: 3600000, maxComments: 100 }
+      const config = ctx.configForms.get(PLUGIN)
+      const flatten = (value) => value == null ? value : { ...value.reply, ...(Object.hasOwn(value, 'maxComments') ? { maxComments: value.maxComments } : {}) }
+      const adapter = {
+        getSnapshot: () => { const s = config.getSnapshot(); return { ...s, value: flatten(s.value), base: flatten(s.base), user: flatten(s.user) } },
+        subscribe: (fn) => config.subscribe(fn),
+        mutate: (ops, revision) => config.mutate(ops.map((op) => ({ ...op, path: op.path[0] === 'maxComments' ? op.path : ['reply', ...op.path] })), revision),
+      }
+      const specs = names.map((field) => {
+        if (bools.has(field)) return { field, format: (v) => v === undefined ? '' : String(v), parse: (v) => v === '' ? { kind: 'clear' } : v === 'true' || v === 'false' ? { kind: 'set', value: v === 'true' } : undefined }
+        const base = ui.settingsNumberField(field)
+        return { ...base, parse: (text) => { const result = base.parse(text); return /^\d+$/.test(text.trim()) && result?.kind === 'set' && Number.isSafeInteger(result.value) && result.value > 0 && result.value <= maximums[field] ? result : undefined } }
+      })
+      const form = new ui.SettingsFormModel(adapter, specs)
+      const settingsStore = form.bind(() => ({ ...form.shell(), ...Object.fromEntries(names.map((name) => [name, form.field(name)])) }))
+      ctx.effect(() => () => form.dispose(), 'dsh-threads: settings form')
+      function ThreadSettings({ t, view, useThreadSettings, edit, resetField, save, discard }) {
+        const state = useThreadSettings((s) => s)
+        if (view === 'summary') return t('settingsSummary')
+        const field = (name) => {
+          const id = 'rs-dsh-threads-setting-' + name, value = state[name], hint = bools.has(name) ? id + '-hint' : undefined
+          return jsx('div', { children: [bools.has(name)
+            ? jsxs('div', { children: [jsx('label', { htmlFor: id, children: [jsx('input', { id, type: 'checkbox', checked: value.text === 'true', disabled: !state.writable || state.saving, 'aria-describedby': hint, onChange: (e) => edit(name, String(e.target.checked)) }, 'input'), t(name)] }), hint && jsx('p', { id: hint, className: 'th-settings-hint', children: t(name + 'Hint') })] }, 'input')
+            : jsx(ui.SettingsValueField, { id, label: t(name), numeric: true, text: value.text, invalid: value.invalid, invalidLabel: String(t('rangeInteger')).replace('{max}', String(maximums[name])), hint: String(t('rangeInteger')).replace('{max}', String(maximums[name])), disabled: !state.writable || state.saving, onEdit: (text) => edit(name, text) }, 'input'),
+            value.overridden && jsx('button', { type: 'button', disabled: !state.writable || state.saving, onClick: () => resetField(name), children: String(t('settingsReset')).replace('{field}', t(name)) }, 'reset')
+          ] }, name)
+        }
+        return jsx(ui.SettingsForm, { labels: { unavailable: t('settingsUnavailable'), readOnly: t('settingsReadOnly'), saveFailed: t('settingsFailed'), save: t('settingsSave'), saving: t('settingsSaving') }, state, onSave: save, onDiscard: discard, children: jsxs('div', { ...scope, children: [
+          jsxs('section', { className: 'th-settings-group', 'aria-labelledby': 'rs-dsh-threads-repliesGroup', children: [
+            jsx('h3', { id: 'rs-dsh-threads-repliesGroup', className: 'th-settings-heading', children: t('repliesGroup') }),
+            field('enabled'),
+            jsxs('details', { className: 'th-settings-details', children: [jsx('summary', { className: 'th-settings-toggle', children: t('replySettings') }), jsx('fieldset', { className: 'th-settings-fields', disabled: state.enabled.text !== 'true', children: ['files', 'web', 'maxTokens', 'maxRounds', 'timeoutMs'].map(field) })] }),
+          ] }),
+          jsxs('section', { className: 'th-settings-group', 'aria-labelledby': 'rs-dsh-threads-limitsGroup', children: [jsx('h3', { id: 'rs-dsh-threads-limitsGroup', className: 'th-settings-heading', children: t('limitsGroup') }), field('maxComments')] }),
+        ] }) })
+      }
+      ctx.effect(() => ctx.configForms.whileServed([PLUGIN], () => ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: '@rs-dsh/dsh-threads#' + PLUGIN, locale: NS, inject: () => ({ hooks: { threadSettings: settingsStore }, ...form.actions() }) }, ThreadSettings))), 'dsh-threads: settings page')
       const labels = () => ({
         code: { copyLabel: t('copy'), copiedLabel: t('copied'), toolbarLabels: { codeLabel: t('code'), wrapLabel: t('wrap'), unwrapLabel: t('unwrap') } },
         footnotes: t('footnotes'),
@@ -919,7 +976,7 @@ ${scope} .th-card-msg b{font-weight:600}
     }
 
     module.exports.name = '@rs-dsh/dsh-threads'
-    module.exports.inject = ['inputTriggers', 'locale', 'rsDshCore', 'slots', 'uiConversation']
+    module.exports.inject = ['configForms', 'inputTriggers', 'locale', 'rsDshCore', 'slots', 'uiConversation']
     module.exports.apply = apply
     // Pure helpers, exported for tests only.
     module.exports._internals = {

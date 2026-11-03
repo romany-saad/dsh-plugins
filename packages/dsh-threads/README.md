@@ -9,7 +9,7 @@ Comment on any passage of a DeepSeek Harness conversation. The passage stays hig
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.4.3
+dsh plugin --profile <name> add @rs-dsh/dsh-threads@0.5.0
 ```
 
 Then reload the DSH web page.
@@ -17,7 +17,7 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.4.3&path:packages/dsh-threads'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-threads@0.5.0&path:packages/dsh-threads'
 ```
 
 The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-threads` or `dsh-core` to the profile's own `cordis.patch.yml`.
@@ -52,7 +52,7 @@ The replier only reads. When your question needs more than the conversation, it 
 
 It cannot change files, run commands or act in the session, and the agent in the main chat does not see the thread. To have the agent act on it, use **Send to chat** (below).
 
-Each thread is its own small conversation: type a follow-up in the thread and press **Enter**. A thread holds five comments from you.
+Each thread is its own small conversation: type a follow-up in the thread and press **Enter**. By default, a thread holds five comments from you; you can change that limit under **Configure**.
 
 ### Highlights
 
@@ -76,7 +76,11 @@ Your sent message shows the thread as a card. Click it to see the whole thread.
 
 ## Configure
 
-The defaults suit most uses. To change them, add an entry with the plugin's id to the profile's `cordis.patch.yml`:
+The defaults suit most uses. To change them, open **Plugins**, choose **@rs-dsh/dsh-threads**, and select **Configure** on the dsh-threads component. Expand **AI reply settings** to adjust file and web access and reply limits. Turn off **Enable AI replies** to keep comments as notes; you can still expand the section, but its controls are disabled. The comments-per-thread limit remains available. Edit settings and press **Save**.
+
+![Threads settings on the Plugins page](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/plugin-settings.png)
+
+You can also set them in the profile’s `cordis.patch.yml`. Numeric values outside the ranges below are rejected; if an existing patch exceeds a limit, reduce it before starting the plugin:
 
 ```yaml
 - id: dsh-threads
@@ -90,12 +94,12 @@ The defaults suit most uses. To change them, add an entry with the plugin's id t
 | Option | Default | Meaning |
 |---|---|---|
 | `reply.enabled` | `true` | `false` keeps comments without AI replies. |
-| `reply.maxTokens` | `8192` | Output tokens per model call, reasoning included. |
-| `reply.maxRounds` | `5` | Model calls per reply. Every call but the last can read the session. |
-| `reply.timeoutMs` | `180000` | Time limit for one reply. |
+| `reply.maxTokens` | `8192` | Output tokens per model call, reasoning included; 1–131,072. |
+| `reply.maxRounds` | `5` | Model calls per reply; 1–20. Every call but the last can read the session. |
+| `reply.timeoutMs` | `180000` | Time limit for one reply in milliseconds; 1–3,600,000 (one hour). |
 | `reply.files` | `true` | The replier can read files in the session's working directory. |
 | `reply.web` | `false` | The replier can search and fetch the web. |
-| `maxComments` | `5` | Comments from you per thread, the first one included. |
+| `maxComments` | `5` | Comments from you per thread, the first one included; 1–100. |
 
 ## Limits
 
