@@ -116,9 +116,10 @@ export function normalizeTask(raw, defaults, where, dir = process.cwd()) {
   if (!title || title.length > 120) fail(where, 'title must be 1..120 characters')
   if (typeof raw.prompt !== 'string' || raw.prompt.trim() === '') fail(where, 'prompt must be a non-empty string')
   const prompt = raw.prompt.trim()
+  // No cwd: the task works in DSH's Default workspace, resolved at sync time.
   const cwdRaw = raw.cwd ?? d.cwd
-  if (typeof cwdRaw !== 'string' || !cwdRaw) fail(where, 'cwd is required (per task or in defaults)')
-  const cwd = isAbsolute(cwdRaw) ? cwdRaw : resolve(dir, cwdRaw)
+  if (cwdRaw !== undefined && cwdRaw !== null && (typeof cwdRaw !== 'string' || !cwdRaw)) fail(where, 'cwd must be a folder path')
+  const cwd = cwdRaw ? (isAbsolute(cwdRaw) ? cwdRaw : resolve(dir, cwdRaw)) : undefined
   const tz = raw.timeZone ?? d.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const schedule = normalizeSchedule(raw.schedule ?? raw.trigger, tz, where)
   const model = normalizeModel(raw.model ?? d.model, where)
@@ -151,16 +152,22 @@ export class SourceLoader {
     this.cache = new Map() // file -> { key, value }
   }
 
+  /** Every source to scan: the configured ones, then the agent folder (may be missing). */
+  roots() {
+    const roots = this.config.sources.map((src) => ({ abs: sourcePath(src, this.config.baseDir), optional: !!this.config.usesDefaultSources }))
+    if (this.config.agentDir) roots.push({ abs: this.config.agentDir, optional: true })
+    return roots
+  }
+
   async files() {
     const out = []
-    for (const src of this.config.sources) {
-      const abs = sourcePath(src, this.config.baseDir)
+    for (const { abs, optional } of this.roots()) {
       let info
       try {
         info = await stat(abs)
       } catch (error) {
-        // The default folder ($DSH_HOME/automations) may not exist yet: no tasks.
-        if (this.config.usesDefaultSources && error?.code === 'ENOENT') continue
+        // The default folder ($DSH_HOME/automations) and the agent folder may not exist yet: no tasks.
+        if (optional && error?.code === 'ENOENT') continue
         throw new SourceError(`source "${abs}" is not readable: ${error.message}`)
       }
       if (info.isDirectory()) {
@@ -210,12 +217,14 @@ export class SourceLoader {
       const merged = { ...(this.config.defaults ?? {}), ...defaults }
       raws.forEach((raw, index) => {
         const task = normalizeTask(raw, merged, `${file}#${index}`, dirname(file))
+        task.file = file
         const prev = tasks.get(task.id)
         if (prev) fail(task.where, `duplicate task id (also in ${prev.where})`)
         tasks.set(task.id, task)
       })
     }
     for (const task of tasks.values()) {
+      if (task.cwd === undefined) continue
       try {
         task.cwd = await realpath(task.cwd)
       } catch {

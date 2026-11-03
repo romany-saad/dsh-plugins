@@ -27,6 +27,9 @@ test('the config defaults to $DSH_HOME/automations and refuses a bad sources lis
   assert.equal(cfg.statusFile, join(process.env.DSH_HOME, 'data', 'dsh-automations', 'status.json'))
   assert.equal(plugin.resolveConfig({ statusFile: false }).statusFile, undefined)
   assert.throws(() => plugin.resolveConfig({ sources: 'automations' }), /sources must be a list/)
+  // The bundled cordis.patch.yml writes the default out; a missing folder is still no tasks.
+  assert.equal(plugin.resolveConfig({ sources: ['automations'] }).usesDefaultSources, true)
+  assert.equal(plugin.resolveConfig({ sources: ['/elsewhere'] }).usesDefaultSources, false)
 })
 
 test('a sync creates each task in its own Session, then changes nothing', async () => {

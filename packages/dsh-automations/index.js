@@ -14,13 +14,14 @@
 // "save state" re-adopts instead of duplicating; any source error aborts the
 // whole sync before anything is deleted. The rules are in DEVELOPING.md.
 
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
-import { dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { STATE_VERSION, domainSpec, parseDelivery, recordOf, runsDomainSpec, timingSig } from './lib/records.js'
 import { SourceLoader, sourcePath } from './lib/source.js'
 import { derivedSessionId, errorText, hash } from './lib/util.js'
+import { registerAgentSurface } from './lib/agent.js'
 
 export const name = 'dsh-automations'
 export const inject = ['schedule', 'sessionController', 'storageDomain', 'workspaceRegistry', 'llm', 'sessionProjections']
@@ -33,7 +34,9 @@ const LOG = 'dsh-automations'
 
 /** The config with its defaults; exported for tests. */
 export function resolveConfig(config = {}) {
-  const usesDefaultSources = config.sources === undefined
+  // The bundled patch writes the default out, so ['automations'] counts as the default too.
+  const usesDefaultSources = config.sources === undefined ||
+    (Array.isArray(config.sources) && config.sources.length === 1 && config.sources[0] === 'automations')
   const cfg = {
     debounceMs: 750,
     watch: true,
@@ -49,7 +52,10 @@ export function resolveConfig(config = {}) {
     baseDir: config.baseDir || resolveDshHome(),
     sources: usesDefaultSources ? ['automations'] : config.sources,
     defaults: config.defaults ?? {},
+    tools: config.tools ?? true,
   }
+  // Where the agent tools keep the task files they write; always a source.
+  cfg.agentDir = resolve(cfg.baseDir, config.agentDir || 'automations/agent')
   if (!Array.isArray(cfg.sources) || cfg.sources.some((s) => typeof s !== 'string' || !s)) {
     throw new Error(`${LOG}: sources must be a list of paths`)
   }
@@ -543,9 +549,31 @@ export function apply(ctx, config) {
     return actions
   }
 
+  // ---- the Default workspace ---------------------------------------------------
+
+  /**
+   * The Default workspace's folder. DSH's workspace controller returns the
+   * existing default (and creates it on a first-use profile); a profile without
+   * the controller falls back to a registered workspace named default-workspace.
+   */
+  async function defaultWorkspacePath() {
+    let workspace
+    const controller = ctx.get('workspaceController')
+    if (typeof controller?.initializeDefault === 'function') {
+      try {
+        workspace = (await controller.initializeDefault(AbortSignal.timeout(10000)))?.workspace
+      } catch (error) {
+        log.warn?.(`dsh-automations: Default workspace lookup failed: ${errorText(error)}`)
+      }
+    }
+    workspace ??= (ctx.workspaceRegistry.list?.() ?? []).find((w) => basename(w.path) === 'default-workspace')
+    if (!workspace?.path) throw new Error('this profile has no Default workspace; give the task a cwd')
+    return realpath(workspace.path)
+  }
+
   // ---- full sync --------------------------------------------------------------
 
-  async function syncOnce(reason) {
+  async function syncOnce(reason, opts = {}) {
     await domainReady
     if (disposed || !domain) return lastReport
     const started = Date.now()
@@ -561,7 +589,19 @@ export function apply(ctx, config) {
       report.errors.push(`source: ${error.message}`)
       return finish(report, started, false, 'aborted: source error, nothing changed')
     }
-    if (source.tasks.size === 0 && table().size > 0 && !cfg.allowEmpty) {
+    // A task without cwd works in DSH's Default workspace.
+    let defaultPath
+    for (const task of source.tasks.values()) {
+      if (task.cwd !== undefined) continue
+      try {
+        defaultPath ??= await defaultWorkspacePath()
+        task.cwd = defaultPath
+        task.defaultCwd = true
+      } catch (error) {
+        task.cwdError = errorText(error)
+      }
+    }
+    if (source.tasks.size === 0 && table().size > 0 && !cfg.allowEmpty && !opts.allowEmpty) {
       report.errors.push('no tasks found in sources while managed tasks exist; set allowEmpty: true to remove all')
       return finish(report, started, false, 'aborted: empty source')
     }
@@ -577,6 +617,10 @@ export function apply(ctx, config) {
     for (const [, s] of table().entries()) if (s.scheduleId) catalog.owned.add(s.scheduleId)
 
     for (const task of source.tasks.values()) {
+      if (task.cwdError) {
+        report.errors.push(`${task.id}: ${task.cwdError}`)
+        continue
+      }
       const state = structuredClone(table().get(task.id) ?? { v: STATE_VERSION, taskId: task.id })
       try {
         const actions = await reconcileTask(task, state, catalog, report)
@@ -631,7 +675,7 @@ export function apply(ctx, config) {
   }
 
   /** Serialize syncs; concurrent requests coalesce into one follow-up run. */
-  function sync(reason) {
+  function sync(reason, opts) {
     if (disposed) return Promise.resolve(lastReport)
     if (running) {
       rerun = true
@@ -639,7 +683,7 @@ export function apply(ctx, config) {
     }
     running = (async () => {
       try {
-        let report = await syncOnce(reason)
+        let report = await syncOnce(reason, opts)
         while (rerun && !disposed) {
           rerun = false
           report = await syncOnce(`${reason}+coalesced`)
@@ -654,6 +698,12 @@ export function apply(ctx, config) {
       }
     })()
     return running
+  }
+
+  /** A sync that starts after this call, so it sees every file written before it. */
+  async function syncNow(reason, opts) {
+    while (running) await running.catch(() => {})
+    return sync(reason, opts)
   }
 
   // ---- triggers ----------------------------------------------------------------
@@ -695,8 +745,7 @@ export function apply(ctx, config) {
   async function rearmWatchers(files) {
     if (!cfg.watch || disposed) return
     const dirs = new Set()
-    for (const src of cfg.sources) {
-      const abs = sourcePath(src, cfg.baseDir)
+    for (const { abs } of loader.roots()) {
       try {
         dirs.add((await stat(abs)).isDirectory() ? abs : dirname(abs))
       } catch {
@@ -750,6 +799,20 @@ export function apply(ctx, config) {
       },
     }), 'dsh-automations.command')
   })
+
+  // The agent's way in: tools, a system-prompt section and the automations skill.
+  if (cfg.tools !== false) {
+    registerAgentSurface(ctx, {
+      cfg,
+      loader,
+      sync: syncNow,
+      lastReport: () => lastReport,
+      state: async () => {
+        await domainReady
+        return domain ? new Map(table().entries()) : new Map()
+      },
+    })
+  }
 
   // Initial sync once the Host is up.
   const startTimer = setTimeout(() => sync('startup'), 500)

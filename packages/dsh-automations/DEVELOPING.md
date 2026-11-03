@@ -15,9 +15,14 @@ To try a checkout, install it by path into a scratch profile: `dsh plugin --prof
 ## Files
 
 - `index.js`: the host plugin. `inject` is `schedule`, `sessionController`, `storageDomain`, `workspaceRegistry`, `llm` and `sessionProjections`; it also uses `permissionPresets` through `ctx.get`, and `commands` through `ctx.inject` for `/automations`. It holds the reconcile loop, the triggers and the fresh-run queue. `resolveConfig` and `reportText` are exported for tests.
-- `lib/source.js`: finds task files (`SourceLoader.files`), parses them (cached by mtime and size; `.js`/`.mjs` are imported with the cache key in the query, so an edit is re-imported), and normalizes each task. Any problem throws `SourceError`, which aborts the sync before anything is deleted.
+- `lib/source.js`: finds task files (`SourceLoader.files`, over `roots()`: the configured sources, then `agentDir`, which may be missing), parses them (cached by mtime and size; `.js`/`.mjs` are imported with the cache key in the query, so an edit is re-imported), and normalizes each task. Any problem throws `SourceError`, which aborts the sync before anything is deleted.
+- `lib/agent.js`: the agent surface, registered by `registerAgentSurface` unless `tools: false`: five tools (`ctx.inject(['tools'])`), a `tools/pre-execute` gate that answers `ask` for a task above `read-only`, the `rs-dsh:automations` system-prompt section (`ctx.inject(['tools', 'systemPrompt'])`), and the `automations` skill (`skills/automations.md`, `ctx.inject(['tools', 'skills'])`). For tasks, the tools never write to the Schedule directly: they write one YAML file per task in `agentDir`, then call `syncNow`, which waits out a running sync so the new file is seen. A task error in the report undoes the write (restores the old file or removes the new one) and syncs again. `inAgentDir` keeps the tools off user files. `automation_adopt` deletes the reminder only after its task has synced.
 - `lib/records.js`: the Host record signature (`timingSig`), the two storage domains, and `parseDelivery`, which reads the prompt and occurrence out of a Schedule delivery message.
 - `lib/util.js`: canonical JSON hashing, derived Session ids, `SourceError`, `errorText`.
+
+## The Default workspace
+
+A task without `cwd` is left `undefined` by the loader. `syncOnce` fills it in with `defaultWorkspacePath()`: `workspaceController.initializeDefault` (through `ctx.get`, not `inject`) returns the existing default, and creates one only on a first-use profile, as DSH's own startup does. Without the controller, it falls back to a registered workspace whose folder is named `default-workspace`. When neither exists, only those tasks report an error; the others sync.
 
 ## Reconcile, per task
 
@@ -51,4 +56,5 @@ Taken from a scratch `DSH_HOME` with `@deepseek-ai/dsh-web-app` and `@deepseek-a
 
 - `docs/images/automation-tasks.png`: the Automation tasks page with the tasks and one open.
 - `docs/images/command-menu.png`: `/automations` in the message box's command menu.
+- `docs/images/agent-upsert.png`: a conversation where the agent creates a twice-weekly channel digest with `automation_upsert`, and its reply.
 - `docs/images/command-result.png`: its result row in a conversation. A command runs only in a conversation that already exists; on a blank new Session, DSH's composer does not submit it.

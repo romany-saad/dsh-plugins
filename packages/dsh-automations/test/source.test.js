@@ -50,11 +50,31 @@ test('a task takes the defaults under its own fields; a relative cwd resolves ag
   assert.equal(task.enabled, true)
 })
 
+test('a task without cwd is left for the Default workspace', async () => {
+  const task = normalizeTask({ id: 'a', prompt: 'p', schedule: { daily: '09:00' } }, {}, 'f#0')
+  assert.equal(task.cwd, undefined)
+  const dir = await tempDir()
+  await writeFile(join(dir, 'a.json'), JSON.stringify({ id: 'a', prompt: 'p', schedule: { every: '1h' } }))
+  const { tasks } = await new SourceLoader({ sources: [dir] }).load()
+  assert.equal(tasks.get('a').cwd, undefined)
+  assert.equal(tasks.get('a').file, join(dir, 'a.json'))
+})
+
+test('the agent folder is an optional extra source', async () => {
+  const dir = await tempDir()
+  const agentDir = join(dir, 'agent')
+  const loader = new SourceLoader({ sources: [join(dir, 'user')], usesDefaultSources: true, agentDir })
+  assert.equal((await loader.load()).tasks.size, 0, 'both folders missing: no tasks')
+  await mkdir(agentDir)
+  await writeFile(join(agentDir, 'x.yaml'), 'id: x\nprompt: p\nschedule: { daily: "09:00" }\n')
+  assert.deepEqual([...(await loader.load()).tasks.keys()], ['x'])
+})
+
 test('a bad task names its file, index and id', () => {
   const ok = { id: 'a', prompt: 'p', cwd: '/', schedule: { daily: '09:00' } }
   assert.throws(() => normalizeTask({ ...ok, id: 'bad id' }, {}, 'f#3'), /^Error: f#3: task id/)
   assert.throws(() => normalizeTask({ ...ok, prompt: '' }, {}, 'f#3'), /f#3 \[a\]: prompt/)
-  assert.throws(() => normalizeTask({ ...ok, cwd: undefined }, {}, 'f#3'), /cwd is required/)
+  assert.throws(() => normalizeTask({ ...ok, cwd: 42 }, {}, 'f#3'), /cwd must be a folder path/)
   assert.throws(() => normalizeTask({ ...ok, session: 'sometimes' }, {}, 'f#3'), /session must be/)
   assert.throws(() => normalizeTask({ ...ok, title: 'x'.repeat(121) }, {}, 'f#3'), /title must be/)
 })
