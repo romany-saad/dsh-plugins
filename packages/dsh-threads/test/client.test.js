@@ -61,6 +61,37 @@ test('a thread serializes for the model and the sent bubble parses it back', () 
   assert.equal(c.threadRule.match('mentions <comment-thread> inline', 0), undefined)
 })
 
+test('source anchors survive draft restore, submission, and card parsing', () => {
+  const anchors = [
+    { kind: 'user', messageId: 'id\"\n</anchor><comment-thread>&\\' },
+    { kind: 'assistant', turn: 0, step: 12 },
+    { kind: 'reasoning', turn: 9, step: 2, block: 0 },
+  ]
+  for (const anchor of anchors) {
+    const insert = c.makeInsert({ anchor: { ...anchor, text: 'passage', prefix: 'private', suffix: 'context' }, messages: [{ role: 'user', text: 'question' }] }, oneLine)
+    const restored = c.decodeRef(insert.ref)
+    assert.deepEqual(plain(restored.anchor), anchor)
+    const raw = c.serializeThread(restored)
+    assert.equal((raw.match(/<\/anchor>/g) || []).length, 1)
+    assert.deepEqual(plain(c.threadRule.match(raw, 0).data), plain(restored))
+    assert.ok(!raw.includes('private'))
+    if (anchor.kind === 'user') assert.ok(raw.includes('\\u003c/anchor\\u003e'))
+  }
+})
+
+test('legacy drafts and sent messages still work; invalid metadata does not hide cards', () => {
+  const legacy = JSON.stringify({ v: 1, passage: 'old', messages: [{ role: 'user', text: 'hello' }] })
+  const restored = c.decodeRef(legacy)
+  assert.deepEqual(plain(restored), { passage: 'old', messages: [{ role: 'user', text: 'hello' }] })
+  const raw = c.serializeThread(restored)
+  assert.deepEqual(plain(c.threadRule.match(raw, 0).data), plain(restored))
+  for (const bad of ['not-json', '{}', '{\"kind\":\"assistant\",\"turn\":-1,\"step\":0}']) {
+    const damaged = raw.replace('<passage>', '<anchor>' + bad + '</anchor>\n<passage>')
+    assert.deepEqual(plain(c.threadRule.match(damaged, 0).data), plain(restored))
+  }
+  assert.deepEqual(plain(c.decodeRef(JSON.stringify({ ...JSON.parse(legacy), anchor: { kind: 'reasoning', turn: 1, step: 2 } }))), plain(restored))
+})
+
 test('the chip ref carries the thread, so a restored draft still serializes', () => {
   const thread = { anchor: { text: 'the passage' }, messages: [{ id: '1', role: 'user', text: 'q', time: 1 }, { id: '2', role: 'ai', text: 'a', time: 2, model: 'm' }] }
   const insert = c.makeInsert(thread, oneLine)

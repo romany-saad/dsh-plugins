@@ -101,6 +101,7 @@ The chip reuses dsh-quote's approach. It is an `inputTriggers` source with a cod
 ```
 <comment-thread>
 (A side thread: …)
+<anchor>{"kind":"assistant","turn":1,"step":1}</anchor>
 <passage>
 …
 </passage>
@@ -109,7 +110,9 @@ The chip reuses dsh-quote's approach. It is an `inputTriggers` source with a cod
 </comment-thread>
 ```
 
-A user-text rule and a `conversation.user.text.node` entry render that block as a card. `escapeTags` keeps a passage from closing a tag early.
+The optional anchor holds the source message ID or assistant turn, step and reasoning block; older drafts and sent blocks without it remain readable. JSON angle brackets are escaped. A user-text rule and a `conversation.user.text.node` entry render that block as a card. `escapeTags` keeps a passage from closing a tag early.
+
+The host half registers one system-prompt section, `plugin:dsh-threads/comment-thread` (`THREAD_PROMPT` in `index.js`, order 9050), through an optional `systemPrompt` inject. It tells the agent what each tag means, that replies are unverified context, and what to do when no request accompanies the block. It is static text, so it adds a fixed prefix to every request while the plugin is on and does not break prompt caching between requests. The one-line intro stays inside each block: it is cheap, keeps the block self-describing in exports and in hosts without the section, and the card parser expects it.
 
 ## The rs-dsh core
 

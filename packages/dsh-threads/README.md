@@ -62,7 +62,7 @@ Commented passages stay highlighted, with a speech-bubble badge in the margin th
 
 ### Send to chat
 
-**Send to chat** puts the thread in the message box as a chip. Add your instruction and send: the agent receives the passage, your comments and the replies.
+**Send to chat** puts the thread in the message box as a chip. Add your instruction and send: the agent receives the passage, its source message or turn, your comments and the replies. Older saved drafts may not include the source reference.
 
 ![A thread chip in the message box above the instruction "Make the TTL configurable."](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-threads/docs/images/composer-chip.png)
 

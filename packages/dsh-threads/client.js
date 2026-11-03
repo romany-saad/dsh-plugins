@@ -81,11 +81,26 @@ window.__ModuleLoader__.load({
       return best
     }
 
+    // Only the source identity belongs in the sent metadata, not selection context.
+    function sourceAnchor(anchor) {
+      if (!anchor || typeof anchor !== 'object') return undefined
+      if (anchor.kind === 'user' && typeof anchor.messageId === 'string' && anchor.messageId !== '') {
+        return { kind: 'user', messageId: anchor.messageId }
+      }
+      const count = (n) => Number.isSafeInteger(n) && n >= 0
+      if ((anchor.kind === 'assistant' || anchor.kind === 'reasoning') && count(anchor.turn) && count(anchor.step)) {
+        if (anchor.kind === 'reasoning') return count(anchor.block) ? { kind: 'reasoning', turn: anchor.turn, step: anchor.step, block: anchor.block } : undefined
+        return { kind: 'assistant', turn: anchor.turn, step: anchor.step }
+      }
+      return undefined
+    }
+
     // The chip's ref carries the thread itself, so a reloaded draft still serializes.
     function encodeRef(thread) {
       return JSON.stringify({
         v: 1,
         passage: thread.anchor.text,
+        anchor: sourceAnchor(thread.anchor),
         messages: thread.messages.map((m) => ({ role: m.role, text: m.text })),
       })
     }
@@ -97,6 +112,7 @@ window.__ModuleLoader__.load({
       }
       return {
         passage: value.passage,
+        ...(sourceAnchor(value.anchor) ? { anchor: sourceAnchor(value.anchor) } : {}),
         messages: value.messages.filter((m) => m && (m.role === 'user' || m.role === 'ai') && typeof m.text === 'string'),
       }
     }
@@ -108,7 +124,10 @@ window.__ModuleLoader__.load({
 
     /** Model form of one thread. Must stay in sync with THREAD_BLOCK below. */
     function serializeThread(thread) {
-      let out = '<comment-thread>\n' + THREAD_INTRO + '\n<passage>\n' + escapeTags(thread.passage) + '\n</passage>\n'
+      const anchor = sourceAnchor(thread.anchor)
+      // JSON string escapes plus escaped angle brackets prevent metadata from closing its tag.
+      const metadata = anchor ? '<anchor>' + JSON.stringify(anchor).replace(/</g, '\\u003c').replace(/>/g, '\\u003e') + '</anchor>\n' : ''
+      let out = '<comment-thread>\n' + THREAD_INTRO + '\n' + metadata + '<passage>\n' + escapeTags(thread.passage) + '\n</passage>\n'
       for (const m of thread.messages) {
         const tag = m.role === 'user' ? 'comment' : 'reply'
         out += '<' + tag + '>' + escapeTags(m.text) + '</' + tag + '>\n'
@@ -116,7 +135,7 @@ window.__ModuleLoader__.load({
       return out + '</comment-thread>'
     }
 
-    const THREAD_BLOCK = /<comment-thread>\n\(A side thread: [^\n]*\)\n<passage>\n([\s\S]*?)\n<\/passage>\n((?:<(?:comment|reply)>[\s\S]*?<\/(?:comment|reply)>\n)*)<\/comment-thread>\n?/g
+    const THREAD_BLOCK = /<comment-thread>\n\(A side thread: [^\n]*\)\n(?:<anchor>([^\n]*?)<\/anchor>\n)?<passage>\n([\s\S]*?)\n<\/passage>\n((?:<(?:comment|reply)>[\s\S]*?<\/(?:comment|reply)>\n)*)<\/comment-thread>\n?/g
     const THREAD_ITEM = /<(comment|reply)>([\s\S]*?)<\/\1>\n/g
 
     /** userText rule: nearest <comment-thread> block at or after `from`. */
@@ -129,10 +148,12 @@ window.__ModuleLoader__.load({
         if (m === null) return undefined
         const messages = []
         THREAD_ITEM.lastIndex = 0
-        for (let item = THREAD_ITEM.exec(m[2]); item !== null; item = THREAD_ITEM.exec(m[2])) {
+        for (let item = THREAD_ITEM.exec(m[3]); item !== null; item = THREAD_ITEM.exec(m[3])) {
           messages.push({ role: item[1] === 'comment' ? 'user' : 'ai', text: unescapeTags(item[2]) })
         }
-        return { id: SOURCE, start: m.index, end: m.index + m[0].length, data: { passage: unescapeTags(m[1]), messages } }
+        let anchor
+        try { if (m[1] !== undefined) anchor = sourceAnchor(JSON.parse(m[1])) } catch {}
+        return { id: SOURCE, start: m.index, end: m.index + m[0].length, data: { passage: unescapeTags(m[2]), ...(anchor ? { anchor } : {}), messages } }
       },
     }
 
