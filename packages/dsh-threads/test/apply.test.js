@@ -4,6 +4,8 @@
 // routes are a fake fetch; the browser half is under test.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createRequire } from 'node:module'
+const require = createRequire(new URL('../../dsh-core/test/dom.mjs', import.meta.url))
 import { createPage, fakePrimitives, selectText, settle, typeInto, press, click, toolbarButtons, popover } from '../../dsh-core/test/dom.mjs'
 
 const CORE = new URL('../../dsh-core/client.js', import.meta.url)
@@ -63,7 +65,13 @@ async function harness(options) {
   const probe = createPage({ bundles: [CORE] })
   const names = probe.modules[0].exports._internals.UI_EXPORTS
   probe.close()
-  const page = createPage({ bundles: [CORE, THREADS], primitives: fakePrimitives(names) })
+  const primitives = fakePrimitives(names)
+  // Match DSH's presence-based override detection, including undefined keys.
+  const FormModel = primitives.SettingsFormModel
+  primitives.SettingsFormModel = class extends FormModel {
+    field(field) { const result = super.field(field); if (!this.staged.has(field)) result.overridden = Object.hasOwn(this.scope.getSnapshot().user ?? {}, field); return result }
+  }
+  const page = createPage({ bundles: [CORE, THREADS], primitives })
   page.document.body.innerHTML = CHAT
   page.window.requestAnimationFrame = (fn) => setTimeout(fn, 0)
   page.window.cancelAnimationFrame = (id) => clearTimeout(id)
@@ -80,18 +88,170 @@ async function harness(options) {
     notify() {},
     focus() {},
   }
+  const slots = new Map(), writes = [], listeners = new Set()
+  const config = { getSnapshot: () => ({ status: 'ready', value: { reply: { enabled: true, files: true, web: false, maxTokens: 8192, maxRounds: 5, timeoutMs: 180000 }, maxComments: 5 }, user: options?.user ?? {}, writable: true, revision: 7 }), subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn) }, mutate: async (ops, revision) => { writes.push({ ops, revision }); return options?.mutate ? options.mutate() : true } }
   page.start({
+    configForms: { get: (id) => { assert.equal(id, 'dsh-threads'); return config }, whileServed: (_ids, register) => register() },
     inputTriggers: { registerSource: (src) => { calls.sources.push(src); return () => {} } },
     uiConversation: { userText: { register: () => () => {} } },
-    slots: { inject: (_n, make) => make(), register: () => () => {} },
+    slots: { inject: (_n, make) => make(), register: (desc, component) => { slots.set(desc.name, { desc, component }); return () => slots.delete(desc.name) } },
     sessions: { scope: (id) => (id === 's1' ? { id } : undefined) },
     conversation: { input: { for: () => input } },
   })
   await settle(page, 30)
-  return { page, server, highlights, calls }
+  return { page, server, highlights, calls, slots, writes, listeners }
 }
 
 const close = (h) => { h.page.dispose(); h.page.close() }
+
+test('settings stage validated edits and save nested reply paths atomically', async () => {
+  const h = await harness()
+  const slot = h.slots.get('plugins.row.config')
+  assert.equal(slot.desc.key, '@rs-dsh/dsh-threads#dsh-threads')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  assert.equal(host.querySelectorAll('button').length, 2, 'no reset buttons without user overrides')
+  const groups = [...host.querySelectorAll('section[aria-labelledby]')]
+  assert.deepEqual(groups.map((section) => section.querySelector('h3').textContent), ['repliesGroup', 'limitsGroup'])
+  for (const [section, names] of groups.map((section, i) => [section, [['enabled', 'files', 'web', 'maxTokens', 'maxRounds', 'timeoutMs'], ['maxComments']][i]])) {
+    assert.equal(section.getAttribute('aria-labelledby'), section.querySelector('h3').id)
+    for (const name of names) assert.ok(section.querySelector('#rs-dsh-threads-setting-' + name), name + ' is in the expected group')
+  }
+  const details = host.querySelector('details.th-settings-details')
+  const toggle = details.querySelector('summary')
+  const fields = details.querySelector('fieldset')
+  assert.equal(toggle.textContent, 'replySettings')
+  assert.equal(details.open, false)
+  assert.equal(fields.contains(host.querySelector('#rs-dsh-threads-setting-maxComments')), false)
+  click(h.page, toggle)
+  assert.equal(details.open, true)
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxTokens'), '2345')
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  assert.equal(details.open, true, 'disclosure remains open when replies are disabled')
+  assert.equal(fields.disabled, true)
+  for (const name of ['files', 'web', 'maxTokens', 'maxRounds', 'timeoutMs']) assert.equal(host.querySelector('#rs-dsh-threads-setting-' + name).matches(':disabled'), true, name)
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxComments').matches(':disabled'), false)
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-enabled').matches(':disabled'), false)
+  click(h.page, toggle)
+  assert.equal(details.open, false, 'summary remains operable when replies are disabled')
+  click(h.page, toggle)
+  assert.equal(details.open, true)
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxTokens').value, '2345')
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  assert.equal(fields.disabled, false)
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxTokens').value, '2345')
+  click(h.page, host.querySelector('[data-action="discard"]'))
+  for (const name of ['enabled', 'files', 'web']) {
+    const input = host.querySelector('#rs-dsh-threads-setting-' + name)
+    const hint = host.querySelector('#' + input.getAttribute('aria-describedby'))
+    assert.equal(hint.textContent, name + 'Hint')
+    assert.equal(host.querySelector(`label[for="${input.id}"]`).textContent, name)
+  }
+  const tokens = host.querySelector('#rs-dsh-threads-setting-maxTokens')
+  assert.equal(tokens.value, '8192')
+  for (const invalid of ['', '0', '1.5', '1e3', '9007199254740992']) {
+    typeInto(h.page, tokens, invalid)
+    assert.equal(tokens.getAttribute('aria-invalid'), 'true', `rejects ${JSON.stringify(invalid)}`)
+    assert.equal(host.querySelector('[data-action="save"]').disabled, true)
+  }
+  for (const [name, max] of Object.entries({ maxTokens: 131072, maxRounds: 20, timeoutMs: 3600000, maxComments: 100 })) {
+    const input = host.querySelector('#rs-dsh-threads-setting-' + name)
+    typeInto(h.page, input, String(max + 1))
+    assert.equal(input.getAttribute('aria-invalid'), 'true', name)
+    assert.equal(host.querySelector('[data-action="save"]').disabled, true)
+    typeInto(h.page, input, String(max))
+    assert.equal(input.getAttribute('aria-invalid'), 'false', name)
+    typeInto(h.page, input, '1')
+    assert.equal(input.getAttribute('aria-invalid'), 'false', name)
+  }
+  click(h.page, host.querySelector('[data-action="discard"]'))
+  typeInto(h.page, tokens, '2048')
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-web'))
+  assert.equal(h.writes.length, 0)
+  click(h.page, host.querySelector('[data-action="save"]'))
+  await settle(h.page, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'maxTokens'], value: 2048 }, { op: 'set', path: ['reply', 'web'], value: true }], revision: 7 }])
+  h.page.act(() => root.unmount()); close(h)
+  assert.equal(h.listeners.size, 0)
+})
+
+test('disabling replies saves only staged values and keeps reply drafts', async () => {
+  const h = await harness()
+  const slot = h.slots.get('plugins.row.config')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxTokens'), '2048')
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  click(h.page, host.querySelector('[data-action="save"]'))
+  await settle(h.page, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'maxTokens'], value: 2048 }, { op: 'set', path: ['reply', 'enabled'], value: false }], revision: 7 }])
+  h.page.act(() => root.unmount()); close(h)
+})
+
+test('disabling replies restores invalid drafts while preserving valid drafts', async () => {
+  const h = await harness()
+  const slot = h.slots.get('plugins.row.config')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxTokens'), '')
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxRounds'), '3')
+  assert.equal(host.querySelector('[data-action=save]').disabled, true)
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxTokens').value, '8192')
+  assert.equal(host.querySelector('#rs-dsh-threads-setting-maxRounds').value, '3')
+  assert.equal(host.querySelector('[data-action=save]').disabled, false)
+  click(h.page, host.querySelector('[data-action=save]'))
+  await settle(h.page, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'maxRounds'], value: 3 }, { op: 'set', path: ['reply', 'enabled'], value: false }], revision: 7 }])
+  h.page.act(() => root.unmount()); close(h)
+})
+
+test('restoring an invalid overridden field does not unset or rewrite it', async () => {
+  const h = await harness({ user: { reply: { maxTokens: 8192 } } })
+  const slot = h.slots.get('plugins.row.config')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  typeInto(h.page, host.querySelector('#rs-dsh-threads-setting-maxTokens'), '0')
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-enabled'))
+  click(h.page, host.querySelector('[data-action=save]'))
+  await settle(h.page, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes)), [{ ops: [{ op: 'set', path: ['reply', 'enabled'], value: false }], revision: 7 }])
+  h.page.act(() => root.unmount()); close(h)
+})
+
+test('settings controls cannot be edited while a save is pending', async () => {
+  let finish
+  const h = await harness({ mutate: () => new Promise((resolve) => { finish = resolve }) })
+  const slot = h.slots.get('plugins.row.config')
+  const { hooks, ...actions } = slot.desc.inject()
+  const React = h.page.services.get('rsDshCore').React
+  const useThreadSettings = (select) => select(React.useSyncExternalStore(hooks.threadSettings.subscribe, hooks.threadSettings.getSnapshot))
+  const host = h.page.document.createElement('div'); h.page.document.body.append(host)
+  const root = require('react-dom/client').createRoot(host)
+  h.page.act(() => root.render(React.createElement(slot.component, { t: (key) => key, view: 'page', useThreadSettings, ...actions })))
+  click(h.page, host.querySelector('#rs-dsh-threads-setting-web'))
+  click(h.page, host.querySelector('[data-action="save"]'))
+  for (const input of host.querySelectorAll('input')) assert.equal(input.disabled, true)
+  await h.page.act(async () => { finish(true) })
+  for (const input of host.querySelectorAll('input')) assert.equal(input.disabled, false)
+  h.page.act(() => root.unmount()); close(h)
+})
 
 async function selectIn(h, id, from, to) {
   selectText(h.page, h.page.document.getElementById(id).firstChild, from, to)

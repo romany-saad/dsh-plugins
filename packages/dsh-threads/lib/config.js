@@ -12,14 +12,16 @@ export const DEFAULT_CONFIG = {
   maxComments: 5, //      comments from you per thread, the first one included
 }
 
+export const MAX_CONFIG = { maxTokens: 131072, maxRounds: 20, timeoutMs: 3600000, maxComments: 100 }
+
 const fail = (path, want, got) => {
   throw new Error(`dsh-threads: ${path} must be ${want}, got ${JSON.stringify(got)}`)
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
-function positive(value, path) {
-  if (!Number.isSafeInteger(value) || value < 1) fail(path, 'a whole number of at least 1', value)
+function positive(value, path, max) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > max) fail(path, `a whole number from 1 to ${max}`, value)
   return value
 }
 
@@ -38,9 +40,7 @@ export function resolveConfig(config = {}) {
     }
   }
   for (const k of ['enabled', 'files', 'web']) if (typeof reply[k] !== 'boolean') fail('reply.' + k, 'true or false', reply[k])
-  positive(reply.maxTokens, 'reply.maxTokens')
-  positive(reply.maxRounds, 'reply.maxRounds')
-  positive(reply.timeoutMs, 'reply.timeoutMs')
-  const maxComments = positive(config.maxComments ?? DEFAULT_CONFIG.maxComments, 'maxComments')
+  for (const key of ['maxTokens', 'maxRounds', 'timeoutMs']) positive(reply[key], 'reply.' + key, MAX_CONFIG[key])
+  const maxComments = positive(config.maxComments ?? DEFAULT_CONFIG.maxComments, 'maxComments', MAX_CONFIG.maxComments)
   return { reply, maxComments }
 }

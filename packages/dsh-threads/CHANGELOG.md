@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- Configure reply behavior and thread limits from the Threads component on the Plugins page. Numeric settings have upper bounds; existing profile overrides above them must be reduced.
+- Threads sent to chat include their source message or turn reference so the agent can identify where the passage came from.
+- The agent is told how to read a sent thread: which parts are your words, which come from the side assistant, and what to do when you send a thread without a request.
+
 ## 0.4.3
 
 - **Declares the DSH versions it supports.** `engines.dsh` is `>=0.2.1-rc.2 <0.3.0-0`, the DSH 0.2 line it is tested with. DSH checks it before installing, and plugin markets show it as the version's compatibility. Nothing else changes.
