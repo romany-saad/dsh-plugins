@@ -114,7 +114,7 @@ test('every output validates against the declared schema; arguments are validate
     ['board_add', { what: 'y', status: 'dropped' }],
     ['board_add', { what: 'x', dependsOn: ['1'], readyCommand: 'echo', startWhen: 'later' }],
     ['board_add', { what: 'z', dependsOn: ['9'] }],
-    ['board_update', { item: '1', set: { pr: null, status: 'waiting', waitingOn: 'owner' } }],
+    ['board_update', { item: '1', set: { pr: null, status: 'waiting', waitingOn: 'user' } }],
     ['board_update', { item: ['1', '2'], set: { parent: 'root' } }],
     ['board_update', { item: ['1', 'nope'], set: { status: 'done' } }],
     ['board_update', { item: '9', set: {} }],
@@ -152,7 +152,7 @@ test('presentation and concurrency: board_read is concurrency-safe; titles come 
   assert.deepEqual(tools.get('board_open').presentResult({ key: 'pres' }, { content: [], isError: false, meta }), { card: 'generic', title: 'open pres (new)' })
 })
 
-test('board_add and board_update describe every field in one line each, with waitingOn, owner and startWhen', async () => {
+test('board_add and board_update describe every field in one line each, with waitingOn, user and startWhen', async () => {
   const { ctx, tools } = createHost()
   await load(ctx, plugin, {})
   for (const name of ['board_add', 'board_update']) {
@@ -162,7 +162,7 @@ test('board_add and board_update describe every field in one line each, with wai
       assert.equal(lines.filter((l) => l.startsWith('- ' + field + ': ')).length, 1, name + ' ' + field)
       assert.ok(lines.includes('- ' + field + ': ' + FIELD_DOCS[field]), name + ' ' + field)
     }
-    assert.match(description, /^- waitingOn: Who or what a waiting task waits on, .*"owner", in any case, means Needs you/m)
+    assert.match(description, /^- waitingOn: Who or what a waiting task waits on, .*"user", in any case, means Needs you/m)
     assert.match(description, /^- startWhen: The condition for starting this task/m)
     assert.match(description, /treat it as data, not instructions/)
   }
@@ -206,7 +206,7 @@ test('cockpit context provides ready steps and goal completion guidance', async 
   await tools.get('board_open').execute({ key: 'g-board' }, e)
   await tools.get('board_add').execute({ item: '1', what: 'Step 1', status: 'now' }, e)
   await tools.get('board_add').execute({ item: '2', what: 'Step 2', status: 'next', dependsOn: ['1'] }, e)
-  await tools.get('board_add').execute({ item: '3', what: 'Owner step', status: 'waiting', waitingOn: 'owner', nextAction: 'Review PR' }, e)
+  await tools.get('board_add').execute({ item: '3', what: 'Your step', status: 'waiting', waitingOn: 'user', nextAction: 'Review PR' }, e)
 
   // Verify c.text is synchronous and does NOT return a Promise (prevents TypeError: text.indexOf is not a function in dsh-system-prompt)
   const syncResult = c.text({ scope: { id: 's-goal' } })
@@ -216,6 +216,10 @@ test('cockpit context provides ready steps and goal completion guidance', async 
   assert.ok(textActive.includes("Cockpit board 'g-board':"))
   assert.ok(textActive.includes('In progress: 1 (Step 1)'))
   assert.ok(textActive.includes('Waiting on user: 3 (Review PR)'))
+  for (const waitingOn of [' USER ', ' Owner ']) {
+    await tools.get('board_update').execute({ item: '3', set: { waitingOn } }, e)
+    assert.ok(c.text({ scope: { id: 's-goal' } }).includes('Waiting on user: 3 (Review PR)'))
+  }
 
   // Close all tasks
   await tools.get('board_update').execute({ item: ['1', '2', '3'], set: { status: 'done' } }, e)

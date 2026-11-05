@@ -2,13 +2,52 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { PROCESS_PATH } from '../lib/process.js'
+import { PROCESS_PATH, PROCESS_FORMAT, defaultCodec } from '../lib/process.js'
+import { TOOL_SPECS } from '../lib/tools.js'
 import { exec, setup, tempHome } from './helpers.mjs'
 
 const freshExec = async (sessionId = 's1') => {
   const dir = await tempHome()
   return { agent: { session: { id: sessionId }, workingDirectory: dir }, cwd: dir, signal: new AbortController().signal }
 }
+
+test('board_process schema advertises user rather than legacy owner', () => {
+  const stage = TOOL_SPECS.board_process.parameters.stages.items.properties
+  assert.deepEqual(stage.who.enum, ['agent', 'user', 'CI', 'subagent'])
+  assert.match(stage.readyCommand.description, /who is user/)
+})
+
+test('board_process: legacy maps and proposals normalize actors to user on read and save', async () => {
+  const { tools } = await setup()
+  const e = await freshExec('legacy-process')
+  const draft = {
+    kinds: ['feature'],
+    stages: [{ id: 'approve', exitCheck: 'approved', skills: [], who: 'owner', readyCommand: 'review {item}' }],
+    sources: [],
+  }
+  const path = join(e.cwd, PROCESS_PATH)
+  await mkdir(join(e.cwd, '.dsh/cockpit'), { recursive: true })
+  const initial = defaultCodec.stringify({ ...draft, format: PROCESS_FORMAT, version: 1, revision: 1 })
+  await writeFile(path, initial)
+
+  const read = await tools.board_process({ action: 'read' }, e)
+  assert.equal(read.ok, true)
+  assert.equal(read.map.stages[0].who, 'user')
+  assert.equal(await readFile(path, 'utf8'), initial)
+
+  const prop = await tools.board_process({ action: 'propose', map: draft }, e)
+  assert.equal(prop.ok, true)
+  assert.equal(prop.proposal.current.stages[0].who, 'user')
+  assert.equal(prop.proposal.next.stages[0].who, 'user')
+  assert.deepEqual(prop.diff, ['No functional changes'])
+  const saved = await tools.board_process({ action: 'save', proposal: prop.proposal, approved: true }, e)
+  assert.equal(saved.ok, true)
+  assert.equal(saved.map.stages[0].who, 'user')
+  assert.equal(defaultCodec.parse(await readFile(path, 'utf8')).stages[0].who, 'user')
+  const readBack = await tools.board_process({ action: 'read' }, e)
+  assert.equal(readBack.map.stages[0].who, 'user')
+  assert.equal(readBack.map.revision, 2)
+})
 
 test('board_process: read when file is absent returns exists: false, map: null', async () => {
   const { tools } = await setup()
@@ -28,7 +67,7 @@ test('board_process: propose validates draft without saving to disk', async () =
     stages: [
       { id: 'design', exitCheck: 'spec approved', skills: ['cockpit-refine'], who: 'agent' },
       { id: 'build', exitCheck: 'tests green', skills: ['dsh-plugin-dev'], who: 'agent' },
-      { id: 'merge', exitCheck: 'PR merged', skills: [], who: 'owner', readyCommand: 'gh pr merge' },
+      { id: 'merge', exitCheck: 'PR merged', skills: [], who: 'user', readyCommand: 'gh pr merge' },
     ],
     sources: [
       { path: 'CONTRIBUTING.md', hash: 'sha256:' + 'a'.repeat(64) },
@@ -57,7 +96,7 @@ test('board_process: save requires approved: true, saves YAML and bumps revision
       kinds: ['feature'],
       stages: [
         { id: 'spec', exitCheck: 'done', skills: [], who: 'agent' },
-        { id: 'ship', exitCheck: 'released', skills: [], who: 'owner' },
+        { id: 'ship', exitCheck: 'released', skills: [], who: 'user' },
       ],
       sources: [
         { path: 'README.md', hash: 'sha256:' + '0'.repeat(64) },
@@ -211,7 +250,7 @@ test('diffProcess: propose computes stage addition, modification and reordering 
     kinds: ['feature', 'release'],
     stages: [
       { id: 'spec', exitCheck: 'spec done', skills: ['refine'], who: 'agent' },
-      { id: 'security-review', exitCheck: 'audit clean', skills: ['audit-tool'], who: 'owner', readyCommand: 'audit' },
+      { id: 'security-review', exitCheck: 'audit clean', skills: ['audit-tool'], who: 'user', readyCommand: 'audit' },
       { id: 'build', exitCheck: 'tests & linter pass', skills: [], who: 'agent' },
     ],
     sources: [{ path: 'README.md', hash: 'sha256:' + '1'.repeat(64) }],
@@ -234,7 +273,7 @@ test('adopt: adopts new process revision into open items, leaving done stages al
     stages: [
       { id: 'spec', exitCheck: 'spec done', skills: [], who: 'agent' },
       { id: 'build', exitCheck: 'tests pass', skills: [], who: 'agent' },
-      { id: 'pr', exitCheck: 'merged', skills: [], who: 'owner' },
+      { id: 'pr', exitCheck: 'merged', skills: [], who: 'user' },
     ],
     sources: [{ path: 'README.md', hash: 'sha256:' + '1'.repeat(64) }],
   }
@@ -279,8 +318,8 @@ test('adopt: adopts new process revision into open items, leaving done stages al
     stages: [
       { id: 'spec', exitCheck: 'spec done', skills: [], who: 'agent' },
       { id: 'build', exitCheck: 'tests pass', skills: [], who: 'agent' },
-      { id: 'security-review', exitCheck: 'clean', skills: [], who: 'owner' },
-      { id: 'pr', exitCheck: 'merged', skills: [], who: 'owner' },
+      { id: 'security-review', exitCheck: 'clean', skills: [], who: 'user' },
+      { id: 'pr', exitCheck: 'merged', skills: [], who: 'user' },
     ],
     sources: [{ path: 'README.md', hash: 'sha256:' + '1'.repeat(64) }],
   }

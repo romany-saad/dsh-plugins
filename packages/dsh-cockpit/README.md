@@ -20,10 +20,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.4
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.5
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.4&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.5&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -62,7 +62,9 @@ This is guidance in the agent's instructions, not automatic tracking: check the 
 - **Open a board** with a key, such as `bosla-883`, and optionally the parent ticket. The session stays bound to it, also after a resume.
 - **Add steps**, each with what it is and its issue or PR. `parent` puts a step under another; `dependsOn` lists steps that come first, so a step shows as blocked until they are done or dropped. Both must name steps already on the board: the agent adds a step first, then links others to it.
 - **Update a step** as the work moves: `next`, `now`, `waiting`, `done` or `dropped`, and a next action.
-- **Needs you:** a step with `waitingOn: owner` shows in the "Needs you" list and on the strip, with its next action, and its `readyCommand` to copy when it has one.
+- **Needs you:** a step with `waitingOn: user` shows in the "Needs you" list and on the strip, with its next action, and its `readyCommand` to copy when it has one.
+
+Use `user` when a step needs your action, and a name or specific role such as `reviewer` for someone else. Process-map stages likewise use `who: user` for your actions. Existing boards and process maps using the older `owner` value still work; no manual migration is needed.
 
 ## Inbox
 

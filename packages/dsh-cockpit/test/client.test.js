@@ -74,7 +74,7 @@ const live = {
     key: 'sim-883', parent: PARENT, revision: 25, updatedAt: '2026-10-25T07:51:00Z',
     tasks: [
       { item: '883', what: 'effort', status: 'now', issue: '#883' },
-      { item: '1', what: 'Profile and guard', status: 'waiting', why: 'CI still running.', issue: '#884', pr: '#892', waitingOn: 'owner', nextAction: 'Owner: once CI is green, merge PR #892 by hand.', readyCommand: 'gh pr merge 892 --squash', parent: '883' },
+      { item: '1', what: 'Profile and guard', status: 'waiting', why: 'CI still running.', issue: '#884', pr: '#892', waitingOn: 'user', nextAction: 'You: once CI is green, merge PR #892 by hand.', readyCommand: 'gh pr merge 892 --squash', parent: '883' },
       { item: '2', what: 'Log reader', status: 'done', issue: '#888', pr: '#889', provider: 'claude', model: 'claude-opus-5-5', effort: 'high', parent: '883' },
       { item: '5', what: 'Live checks and docs', status: 'next', why: 'Needs item 1 merged.', issue: 'romany-saad/dsh-plugins#1', nextAction: 'Hub: start once #892 merges.', parent: '883', dependsOn: ['1', '2', 'release notes'] },
       { item: '6b', what: 'Board rule in Bosla', status: 'waiting', waitingOn: 'release', startWhen: 'dsh-cockpit 0.1 released', parent: '883', dependsOn: ['5'], readyCommand: 'git worktree add x -b y' },
@@ -141,17 +141,23 @@ test('header: key and parent left, revision and time right; the drift line only 
   assert.equal(exports.headerMeta({ key: 'k' }, at.getTime()), '', 'a fallback file without revision or updatedAt')
 })
 
-test('Needs you: only waitingOn owner, with the ask as written, Open PR and the command', () => {
+test('Needs you: only waitingOn user, with the ask as written, Open PR and the command', () => {
   const out = render(live)
   const at = out.indexOf('Needs you')
   assert.ok(at >= 0 && at < out.indexOf('Log reader'), out)
-  for (const s of ['#884 Profile and guard', 'Owner: once CI is green, merge PR #892 by hand.', 'Open PR #892', 'gh pr merge 892 --squash', 'Copy']) assert.ok(out.slice(at).includes(s), s)
-  assert.equal(out.split('Owner: once CI is green').length, 2, 'the ask shows once, in the card')
+  for (const s of ['#884 Profile and guard', 'You: once CI is green, merge PR #892 by hand.', 'Open PR #892', 'gh pr merge 892 --squash', 'Copy']) assert.ok(out.slice(at).includes(s), s)
+  assert.equal(out.split('You: once CI is green').length, 2, 'the ask shows once, in the card')
   assert.ok(out.includes('Needs you · see top'))
   const none = { ...live, board: { ...live.board, tasks: live.board.tasks.map((t) => ({ ...t, waitingOn: t.item === '1' ? undefined : t.waitingOn })) } }
   assert.ok(!render(none).includes('Needs you'), 'no guess from nextAction')
   const open = nodes(live).find((n) => cls(n) === 'dshc-open')
   assert.equal(open.props.href, 'https://github.com/Romany-Saad/resturants-app/pull/892')
+})
+
+test('legacy owner waits render identically to canonical user waits', () => {
+  const legacy = { ...live, board: { ...live.board, tasks: live.board.tasks.map((task) => task.waitingOn === 'user' ? { ...task, waitingOn: ' Owner ' } : task) } }
+  assert.equal(render(legacy), render(live))
+  assert.equal(strip(legacy).m.line, strip(live).m.line)
 })
 
 test('Needs you: no id column; the step id is in the title\'s tooltip, and the ask and command span the card', () => {
@@ -215,7 +221,7 @@ test('rows: no "Next:" label; Waiting on <who>; Start when; blocked by short ref
   assert.ok(!out.includes('Next:'))
   assert.ok(out.includes('Hub: start once #892 merges.'))
   assert.ok(out.includes('Waiting on release'))
-  assert.ok(!out.includes('Owner: Owner'))
+  assert.ok(!out.includes('You: You:'))
   assert.ok(out.includes('Blocked by #884 (waiting)'))
   assert.ok(out.includes('Blocked by dsh-plugins#1 (next)'), 'a cross-repo blocker is short too')
   const at = out.indexOf('Board data problems')
@@ -432,8 +438,8 @@ const withTasks = (view, fn) => ({ ...view, board: { ...view.board, tasks: fn(vi
 test('the strip, needs you: "⚠ Needs you: <action> · Copy command · Board ›", copying the ready command', () => {
   const { m, tree } = strip(live)
   assert.equal(m.kind, 'needs you')
-  assert.equal(m.line, '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. · Copy command · Board ›')
-  assert.equal(textOf(tree), 'Needs you: Owner: once CI is green, merge PR #892 by hand.Copy command·Board ›', 'the action as written, no key or count')
+  assert.equal(m.line, '⚠ Needs you: You: once CI is green, merge PR #892 by hand. · Copy command · Board ›')
+  assert.equal(textOf(tree), 'Needs you: You: once CI is green, merge PR #892 by hand.Copy command·Board ›', 'the action as written, no key or count')
   const all = expand(tree)
   const copy = all.find((n) => n.type === 'button' && n.props['data-copy-state'] === 'idle')
   assert.equal(copy.props['aria-label'], 'Copy command for #884 Profile and guard')
@@ -504,7 +510,7 @@ test('the strip at narrow widths: the action or focus first, then the count, the
   const calm = withTasks(live, (ts) => ts.map((t) => (t.item === '1' ? { ...t, status: 'done', waitingOn: undefined } : t)))
   const bar = (view) => expand(strip(view).tree).find((n) => n.props.className === 'dshc-strip')
   assert.equal(bar(calm).props.title, "sim-883 · 2 of 5 done · 1 dropped · dsh-plugins#1 blocked by 'release notes' (not on the board)")
-  assert.equal(bar(live).props.title, '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. (#884 Profile and guard) · 1 of 5 done · 1 dropped')
+  assert.equal(bar(live).props.title, '⚠ Needs you: You: once CI is green, merge PR #892 by hand. (#884 Profile and guard) · 1 of 5 done · 1 dropped')
   // Below 460 px: the continuous fill instead of the segments, no "· 1 dropped", and no bar beside a needs-you action.
   const all = expand(strip(calm).tree)
   assert.ok(all.some((n) => n.props.className === 'dshc-barbox dshc-alt'))
@@ -599,7 +605,7 @@ test('the strip opens the Board tab: the strip at its focus row, a segment at it
   const all = expand(tree)
   const bar = all.find((n) => n.props.role === 'button' && n.props.className === 'dshc-strip')
   assert.equal(bar.props.tabIndex, 0, 'keyboard reachable')
-  assert.equal(bar.props['aria-label'], '⚠ Needs you: Owner: once CI is green, merge PR #892 by hand. · Copy command · Board ›')
+  assert.equal(bar.props['aria-label'], '⚠ Needs you: You: once CI is green, merge PR #892 by hand. · Copy command · Board ›')
   bar.props.onClick({ stopPropagation() {} })
   const seg = all.find((n) => n.props['data-item'] === '5' && 'data-segment' in n.props)
   let stopped = false
