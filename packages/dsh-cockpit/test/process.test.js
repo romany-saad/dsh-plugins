@@ -48,6 +48,37 @@ test('proposal mutation, invalid file, and invalid drafts never write', async ()
   assert.equal(f.writes(), 0)
 })
 
+test('legacy owner actors normalize without mutating input; canonical actors stay unchanged', () => {
+  for (const who of ['agent', 'user', 'owner', 'CI', 'subagent']) {
+    const map = { ...draft(), format: PROCESS_FORMAT, version: 1, revision: 1 }
+    map.stages[0].who = who
+    const normalized = validateProcess(map)
+    assert.equal(normalized.stages[0].who, who === 'owner' ? 'user' : who)
+    assert.equal(map.stages[0].who, who)
+    assert.notEqual(normalized.stages[0], map.stages[0])
+  }
+})
+
+test('legacy persisted and proposed actors read as user and save canonically', async () => {
+  const legacy = draft()
+  legacy.stages[0].who = 'owner'
+  const initial = codec.stringify({ ...legacy, format: PROCESS_FORMAT, version: 1, revision: 1 })
+  const f = fixture(initial)
+  assert.equal((await f.store.read()).stages[0].who, 'user')
+  assert.equal(f.content(), initial)
+  assert.equal(f.writes(), 0)
+
+  const p = await f.store.propose(legacy)
+  assert.equal(p.current.stages[0].who, 'user')
+  assert.equal(p.next.stages[0].who, 'user')
+  assert.equal(legacy.stages[0].who, 'owner')
+  assert.deepEqual(p.diff, ['No functional changes'])
+  const saved = await f.store.save(p, { approved: true })
+  assert.equal(saved.stages[0].who, 'user')
+  assert.equal(codec.parse(f.content()).stages[0].who, 'user')
+  assert.equal((await f.store.read()).revision, 2)
+})
+
 test('schema rejects unknown fields, invalid references, duplicate ids and unsafe sources', () => {
   const valid = { ...draft(), format: PROCESS_FORMAT, version: 1, revision: 1 }
   assert.deepEqual(validateProcess(valid), valid)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0-rc.5
+
+- **Your actions use `user`, not a project-ownership title.** Tool descriptions, the board schema and process-stage actors now use `user`. Tasks with `waitingOn: user` appear in **Needs you**, in the progress strip and in the agent’s per-turn context. Names and specific roles remain free-form waiting targets.
+- **Existing data still works.** Board waits using `owner` remain a case-insensitive, whitespace-tolerant legacy alias. Process maps using `who: owner` are read as `who: user` without rewriting the file; the next approved save uses the new value.
+
 ## 0.6.0-rc.4
 
 - **The agent is told about board problems.** When the board has a flag (the same PR or issue on two tasks, an unknown parent or dependency, a parent loop), the per-turn context now lists it under "Board problems", up to five lines and then "and N more", until it is fixed. The context reads the board file on every turn, so a mistake made outside the session shows too. Before, the flags came back in a write's result and nothing asked the agent to look at them, so a duplicate PR went unnoticed.

@@ -126,11 +126,11 @@
         },
         "waitingOn": {
           "type": "string",
-          "description": "Who or what a waiting task waits on. 'owner', in any case, puts the task in Needs you."
+          "description": "Who or what a waiting task waits on. 'user', in any case, puts the task in Needs you."
         },
         "readyCommand": {
           "type": "string",
-          "description": "The command the owner runs. Stored and shown, never run."
+          "description": "The command the user runs. Stored and shown, never run."
         },
         "startWhen": {
           "type": "string",

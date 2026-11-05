@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { resolveConfig } from './lib/config.js'
-import { problems } from './lib/rows.js'
+import { problems, waitsOnUser } from './lib/rows.js'
 import { presentation } from './lib/present.js'
 import { registerRoutes } from './lib/route.js'
 import { createStore } from './lib/store.js'
@@ -96,7 +96,7 @@ export function apply(ctx, rawConfig) {
       return s === 'done' || s === 'dropped'
     })))
     const inProgress = tasks.filter((t) => t.status === 'now')
-    const needsYou = tasks.filter((t) => t.status === 'waiting' && t.waitingOn?.toLowerCase() === 'owner')
+    const needsYou = tasks.filter((t) => t.status === 'waiting' && waitsOnUser(t))
     const allClosed = tasks.length > 0 && tasks.every((t) => t.status === 'done' || t.status === 'dropped')
     const lines = [`Cockpit board '${key}':`]
     lines.push(...problemLines(tasks))

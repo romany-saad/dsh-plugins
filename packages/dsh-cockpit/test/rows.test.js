@@ -3,21 +3,32 @@ import assert from 'node:assert/strict'
 import { SEGMENT_MAX, blockedText, boardFlags, firstByItem, stripTitle, boardRows, boardSegments, driftState, driftWords, modelText, needsYou, notes, prText, progressText, refUrl, reportedText, rowCells, shortRef, stripModel, stripText, titleParts, titleText } from '../lib/rows.js'
 import { t } from './helpers.mjs'
 
-test('needsYou: waitingOn owner, any case and spacing, open tasks only', () => {
+test('needsYou: waitingOn user, any case and spacing, open tasks only', () => {
   const tasks = [
-    t('1', 'waiting', 'a', { waitingOn: ' Owner ' }),
-    t('2', 'waiting', 'b', { waitingOn: 'CI', nextAction: 'Owner: merge.' }),
-    t('3', 'done', 'c', { waitingOn: 'owner' }),
-    t('4', 'now', 'd', { waitingOn: 'OWNER' }),
-    t('5', 'dropped', 'e', { waitingOn: 'owner' }),
+    t('1', 'waiting', 'a', { waitingOn: ' User ' }),
+    t('2', 'waiting', 'b', { waitingOn: 'CI', nextAction: 'You: merge.' }),
+    t('3', 'done', 'c', { waitingOn: 'user' }),
+    t('4', 'now', 'd', { waitingOn: 'USER' }),
+    t('5', 'dropped', 'e', { waitingOn: 'user' }),
   ]
   assert.deepEqual(needsYou(tasks).map((x) => x.item), ['1', '4'])
 })
 
+test('legacy owner alias still matches user across row and strip models', () => {
+  for (const waitingOn of ['user', ' USER ', 'owner', ' Owner ']) {
+    const task = t('1', 'waiting', 'Review', { waitingOn, nextAction: 'Review PR', readyCommand: 'review' })
+    assert.deepEqual(needsYou([task]), [task])
+    const row = boardRows({ tasks: [task] })[0]
+    assert.equal(row.needsYou, true)
+    assert.ok(!rowCells(row).detail.some((d) => d.key === 'Waiting on'))
+    assert.match(stripText(stripModel({ key: 'review', tasks: [task] })), /Needs you/)
+  }
+})
+
 test('needsYou ignores nextAction: no guess when no task sets waitingOn', () => {
   const tasks = [
-    t('1', 'waiting', 'a', { nextAction: 'Owner: once CI is green, merge.' }),
-    t('2', 'next', 'b', { nextAction: 'Owner: decide.' }),
+    t('1', 'waiting', 'a', { nextAction: 'You: once CI is green, merge.' }),
+    t('2', 'next', 'b', { nextAction: 'You: decide.' }),
   ]
   assert.deepEqual(needsYou(tasks), [])
   assert.equal(boardRows({ tasks }).some((r) => r.needsYou), false)
@@ -91,11 +102,11 @@ test('dropped blocks nothing and is never ready', () => {
 test('a parent shows its children\'s progress, dropped apart, needs-you by the same rule', () => {
   const rows = boardRows({ tasks: [
     t('883', 'now', 'effort'),
-    t('1', 'waiting', 'a', { parent: '883', waitingOn: 'owner' }),
+    t('1', 'waiting', 'a', { parent: '883', waitingOn: 'user' }),
     t('2', 'done', 'b', { parent: '883' }),
     t('3', 'done', 'c', { parent: '883' }),
     t('4', 'next', 'd', { parent: '2' }),
-    t('5', 'dropped', 'e', { parent: '883', waitingOn: 'owner' }),
+    t('5', 'dropped', 'e', { parent: '883', waitingOn: 'user' }),
   ] })
   assert.deepEqual(rows[0].progress, { done: 2, dropped: 1, total: 4, needsYou: 1 })
   assert.equal(progressText(rows[0].progress), '2 of 4 done · 1 dropped · 1 needs you')
@@ -223,14 +234,14 @@ test('prText: "PR #n" from a short, full or URL reference; "PR" otherwise', () =
 
 test('rowCells: nextAction shows as written with no "Next:" label; others are labelled once', () => {
   const rows = boardRows({ tasks: [
-    t('1', 'next', 'a', { nextAction: 'Owner: merge #892.', why: 'W' }),
+    t('1', 'next', 'a', { nextAction: 'You: merge #892.', why: 'W' }),
     t('2', 'waiting', 'b', { waitingOn: 'CI', nextAction: 'N' }),
     t('3', 'waiting', 'c', { startWhen: 'after 0.1 ships' }),
     t('4', 'next', 'd', { why: 'Because.' }),
-    t('5', 'waiting', 'e', { waitingOn: 'owner', nextAction: 'merge it', readyCommand: 'gh pr merge 5' }),
+    t('5', 'waiting', 'e', { waitingOn: 'user', nextAction: 'merge it', readyCommand: 'gh pr merge 5' }),
   ] })
   const c = rows.map((r) => rowCells(r))
-  assert.equal(c[0].line, 'Owner: merge #892.')
+  assert.equal(c[0].line, 'You: merge #892.')
   assert.ok(!c.some((x) => /Next:/.test(x.line ?? '')))
   assert.deepEqual(c[0].detail, [{ key: 'Reason', value: 'W', mono: false }])
   assert.equal(c[1].line, 'Waiting on CI')
@@ -271,7 +282,7 @@ test('boardSegments: one per child of the parent row, a kind per shape, tooltips
     t('1', 'done', 'a', { parent: 'r' }),
     t('2', 'now', 'b', { parent: 'r', model: 'opus', effort: 'high' }),
     t('3', 'waiting', 'c', { parent: 'r', waitingOn: 'CI' }),
-    t('4', 'waiting', 'd', { parent: 'r', waitingOn: 'owner' }),
+    t('4', 'waiting', 'd', { parent: 'r', waitingOn: 'user' }),
     t('5', 'next', 'e', { parent: 'r', dependsOn: ['1'] }),
     t('6', 'next', 'f', { parent: 'r', dependsOn: ['3', 'ghost'] }),
     t('7', 'dropped', 'g', { parent: 'r' }),
@@ -340,7 +351,7 @@ test('stripModel: whole-board leaf counts, and the focus in order: needs you, bl
   assert.equal(stripModel(two).focus, '2 in progress: #885, #886')
   const idle = { ...board, tasks: [tasks[0], tasks[1], tasks[5]] }
   assert.equal(stripModel(idle).focus, undefined, 'the parent row itself is not a focus')
-  const owner = { ...board, tasks: tasks.map((x) => (x.item === '3' ? { ...x, waitingOn: 'owner', nextAction: 'merge PR #902', readyCommand: 'gh pr merge 902' } : x)) }
+  const owner = { ...board, tasks: tasks.map((x) => (x.item === '3' ? { ...x, waitingOn: 'user', nextAction: 'merge PR #902', readyCommand: 'gh pr merge 902' } : x)) }
   const n = stripModel(owner)
   assert.deepEqual([n.kind, n.item, n.command], ['needs you', '3', 'gh pr merge 902'])
   assert.equal(stripText(n), '⚠ Needs you: merge PR #902 · Copy command · Board ›')

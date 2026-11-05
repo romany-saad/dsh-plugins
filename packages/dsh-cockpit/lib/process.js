@@ -82,7 +82,7 @@ export function validateProcess(map) {
     ids.add(stage.id)
     text(stage.exitCheck, 'stage.exitCheck')
     strings(stage.skills, 'stage.skills')
-    if (!['agent', 'owner', 'CI', 'subagent'].includes(stage.who)) fail('invalid stage.who')
+    if (!['agent', 'user', 'owner', 'CI', 'subagent'].includes(stage.who)) fail('invalid stage.who')
     for (const key of ['readyCommand', 'when', 'skipIf']) if (stage[key] !== undefined) text(stage[key], 'stage.' + key)
     if (stage.kinds !== undefined) {
       strings(stage.kinds, 'stage.kinds')
@@ -113,7 +113,10 @@ export function validateProcess(map) {
       }
     }
   }
-  return JSON.parse(JSON.stringify(map))
+  const normalized = JSON.parse(JSON.stringify(map))
+  // Legacy maps remain readable; proposals and subsequent writes use user.
+  for (const stage of normalized.stages) if (stage.who === 'owner') stage.who = 'user'
+  return normalized
 }
 
 /** Compute human-readable diff between current and next process map. */

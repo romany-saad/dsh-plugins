@@ -163,11 +163,11 @@ export function problems(tasks, flags = boardFlags(tasks)) {
   return out
 }
 
-/** waitingOn is "owner", ignoring case and surrounding space (decision 20, Q4). */
-export const waitsOnOwner = (task) => text(task.waitingOn)?.toLowerCase() === 'owner'
+/** waitingOn is "user", ignoring case and space; "owner" is a legacy alias. */
+export const waitsOnUser = (task) => ['user', 'owner'].includes(text(task.waitingOn)?.toLowerCase())
 
-/** The open tasks (not done, not dropped) whose waitingOn is the owner. Nothing else is guessed. */
-export const needsYou = (tasks) => tasks.filter((t) => !closed(t.status) && waitsOnOwner(t))
+/** The open tasks (not done, not dropped) whose waitingOn is the user. Nothing else is guessed. */
+export const needsYou = (tasks) => tasks.filter((t) => !closed(t.status) && waitsOnUser(t))
 
 /** nextAction, why and startWhen, present and each text once, in that order. */
 export function notes(task) {
@@ -235,7 +235,7 @@ export function titleText(task) {
 }
 
 /** Project a flow and its immediate children into one unit per stage or ordinary child.
- * The first materialized child supplies the stage status and owner wait; skipped
+ * The first materialized child supplies the stage status and user wait; skipped
  * stages are excluded. Other children remain ordinary work. No board is mutated.
  */
 export function flowUnits(task, children) {
@@ -399,7 +399,7 @@ const DETAIL_KEY = { next: 'Next', why: 'Reason', 'start when': 'Start when' }
  * - indent: 16 px steps in the title cell below the parent row; elbow from depth 2;
  * - pr: "PR #892", linked by prUrl when there is one;
  * - line: the one meta line of an open row not in Needs you: "Waiting on CI"
- *   on a row waiting on someone other than the owner, else its first note
+ *   on a row waiting on someone other than the user, else its first note
  *   (nextAction as written, "Start when: …", "Reason: …");
  * - blockedBy, ready, needsYou; problems: each flag's text, in place;
  * - reported: the drift tag ("reported: done") and its note;
@@ -411,7 +411,7 @@ const DETAIL_KEY = { next: 'Next', why: 'Reason', 'start when': 'Start when' }
  */
 export function rowCells(row, flags = []) {
   const parent = Boolean(row.progress) && row.depth === 0
-  const other = row.waitingOn && row.waitingOn.toLowerCase() !== 'owner' ? row.waitingOn : undefined
+  const other = row.waitingOn && !waitsOnUser(row) ? row.waitingOn : undefined
   const waitsOn = row.status === 'waiting' && other ? other : undefined
   const open = !row.closed && !row.needsYou
   const line = open && waitsOn ? 'Waiting on ' + waitsOn
@@ -613,7 +613,7 @@ export function driftWords(state) {
 /**
  * The strip: whole-board leaf segments and counts, including standalone
  * top-level tasks without double-counting parent containers, and one focus.
- * - 'needs you' when an open task waits on the owner: text "Needs you: <its
+ * - 'needs you' when an open task waits on the user: text "Needs you: <its
  *   nextAction as written, else its title>", its readyCommand for Copy and
  *   its item; with two or more, "2 need you", no command, the first item.
  * - else 'normal', with focus, in tree order, the first present of: a task
