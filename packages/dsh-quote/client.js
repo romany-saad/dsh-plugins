@@ -22,7 +22,12 @@ window.__ModuleLoader__.load({
     'use strict'
     const module = { exports: {} }
 
-    const SOURCE = 'quote'
+    const SOURCE = 'quote' // chip source name; saved drafts carry it, so it stays
+    // User-text rule id, node id and conversation.user.text.node slot key. Not
+    // 'quote': DSH 0.2.2 ships @deepseek-ai/dsh-message-quotes, which owns that id
+    // for Markdown blockquotes (a duplicate rule id throws; a duplicate slot key
+    // would replace DSH's renderer).
+    const NODE = 'rs-dsh-quote'
     const NS = 'dsh-quote'
     const PLUGIN = 'dsh-quote'
     const MAX_QUOTE = 20000
@@ -67,14 +72,14 @@ window.__ModuleLoader__.load({
 
     /** userText rule: nearest <quote> block at or after `from`. */
     const quoteRule = {
-      id: SOURCE,
+      id: NODE,
       order: 15,
       match(text, from) {
         QUOTE_BLOCK.lastIndex = from
         const m = QUOTE_BLOCK.exec(text)
         if (m === null) return undefined
         return {
-          id: SOURCE,
+          id: NODE,
           start: m.index,
           end: m.index + m[0].length,
           data: { text: unescapeTags(m[1]), note: m[2] === undefined ? '' : unescapeTags(m[2]) },
@@ -295,7 +300,7 @@ ${scope} .q-note{display:block;margin-top:2px;color:var(--dsw-alias-label-primar
       }
       ctx.slots.inject('conversation.user.text.node', () => ctx.slots.register({
         name: 'conversation.user.text.node',
-        key: SOURCE,
+        key: NODE,
         priority: 100,
       }, QuoteCard))
 

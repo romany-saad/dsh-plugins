@@ -7,7 +7,7 @@ Quote passages from a DeepSeek Harness conversation into your next message, each
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.3.3
+dsh plugin --profile <name> add @rs-dsh/dsh-quote@0.3.4
 ```
 
 Then reload the DSH web page.
@@ -15,14 +15,16 @@ Then reload the DSH web page.
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.3.3&path:packages/dsh-quote'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-quote@0.3.4&path:packages/dsh-quote'
 ```
 
 The package adds itself, and the shared [rs-dsh core](https://github.com/romany-saad/dsh-plugins/tree/main/packages/dsh-core) it is drawn with, to the profile. Do not also add `dsh-quote` or `dsh-core` to the profile's own `cordis.patch.yml`.
 
 ## Requirements
 
-- DSH 0.2.1-rc.2 or later. It is tested with 0.2.1-rc.2.
+- DSH 0.2.1-rc.2 or later. It is tested with 0.2.1-rc.2 and 0.2.2-rc.1.
+
+From DSH 0.2.2, DSH has its own **Quote text** button, which puts the passage into the message as a plain Markdown quote. dsh-quote's **Quote** sits next to it and adds the note, the hover card and the editable chip. Use either one.
 - A profile with the web GUI (`@deepseek-ai/dsh-web-app`), such as `web`. The plugin works in the web GUI only.
 
 ## Use

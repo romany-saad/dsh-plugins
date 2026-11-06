@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- **Works with DSH 0.2.2-rc.1.** DSH 0.2.2 adds its own quoting (a **Quote text** button that inserts a Markdown blockquote), which took the name dsh-quote used for its sent-message cards, so the plugin failed to start (`web boot: 1 entry did not activate`). It now uses its own name. Both buttons work side by side, and quotes you sent before still show as cards.
+
 ## 0.3.3
 
 - **Declares the DSH versions it supports.** `engines.dsh` is `>=0.2.1-rc.2 <0.3.0-0`, the DSH 0.2 line it is tested with. DSH checks it before installing, and plugin markets show it as the version's compatibility. Nothing else changes.
