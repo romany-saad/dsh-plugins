@@ -23,7 +23,11 @@ The plugin uses DSH extension points only and never edits nodes the host renders
 | Open the edit box when a chip is clicked | The source's `openReference`, which DSH calls on a chip click. |
 | Full quote in the hover card | `input.state.getSnapshot().occurrences`, indexed by the hovered chip's position among quote chips. |
 | Highlight quoted passages until send | A CSS custom highlight (`dsh-quote-pending`) over the selection's range, kept per session while `input.state.subscribe` shows a quote chip with the same passage in `occurrences`. See "Pending highlight" below. |
-| Quote cards in the sent message | A `uiConversation.userText` rule that finds `<quote>` blocks, and a `conversation.user.text.node` slot entry (key `quote`) that renders them. |
+| Quote cards in the sent message | A `uiConversation.userText` rule that finds `<quote>` blocks, and a `conversation.user.text.node` slot entry that renders them. The rule id, node id and slot key are `rs-dsh-quote`. |
+
+### Names shared with DSH
+
+DSH 0.2.2 ships `@deepseek-ai/dsh-message-quotes`, which registers the user-text rule `quote` (Markdown blockquotes) and the `conversation.user.text.node` key `quote`. A duplicate rule id throws, which made `apply` fail and the web boot report the entry as `failed`; a duplicate slot key would replace DSH's renderer. So the rule, its nodes and the slot key use `rs-dsh-quote` (`NODE` in `client.js`). The chip source name stays `quote`: it lives in the `@` trigger's namespace, does not collide, and is saved with every draft, so renaming it would orphan drafts. The node id is never stored, so sent messages need no migration.
 
 ### The chip's ref
 

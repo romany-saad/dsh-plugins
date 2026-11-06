@@ -71,8 +71,9 @@ async function quoteSelection(h, note) {
 test('apply registers the chip source, user-text rule, node slot and the Quote button', async () => {
   const h = harness()
   assert.equal(h.calls.sources[0].name, 'quote')
-  assert.equal(h.calls.rules[0].id, 'quote')
-  assert.equal(h.calls.slots[0].desc.key, 'quote')
+  // DSH's built-in dsh-message-quotes owns rule id and node key 'quote'.
+  assert.equal(h.calls.rules[0].id, 'rs-dsh-quote')
+  assert.equal(h.calls.slots[0].desc.key, 'rs-dsh-quote', 'the node slot key is the rule id')
   selectText(h.page, h.page.document.getElementById('p').firstChild, 2, 16)
   await settle(h.page, 160)
   assert.deepEqual(toolbarButtons(h.page).map((b) => b.getAttribute('data-plugin')), ['dsh-quote'])
