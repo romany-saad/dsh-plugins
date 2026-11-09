@@ -17,6 +17,7 @@ To try a checkout, install it by path into a scratch profile: `dsh plugin --prof
 - `index.js`: the host plugin. `inject` is `schedule`, `sessionController`, `storageDomain`, `workspaceRegistry`, `llm` and `sessionProjections`; it also uses `permissionPresets` through `ctx.get`, and `commands` through `ctx.inject` for `/automations`. It holds the reconcile loop, the triggers and the fresh-run queue. `resolveConfig` and `reportText` are exported for tests.
 - `lib/source.js`: finds task files (`SourceLoader.files`, over `roots()`: the configured sources, then `agentDir`, which may be missing), parses them (cached by mtime and size; `.js`/`.mjs` are imported with the cache key in the query, so an edit is re-imported), and normalizes each task. Any problem throws `SourceError`, which aborts the sync before anything is deleted.
 - `lib/agent.js`: the agent surface, registered by `registerAgentSurface` unless `tools: false`: five tools (`ctx.inject(['tools'])`), a `tools/pre-execute` gate that answers `ask` for a task above `read-only`, the `rs-dsh:automations` system-prompt section (`ctx.inject(['tools', 'systemPrompt'])`), and the `automations` skill (`skills/automations.md`, `ctx.inject(['tools', 'skills'])`). For tasks, the tools never write to the Schedule directly: they write one YAML file per task in `agentDir`, then call `syncNow`, which waits out a running sync so the new file is seen. A task error in the report undoes the write (restores the old file or removes the new one) and syncs again. `inAgentDir` keeps the tools off user files. `automation_adopt` deletes the reminder only after its task has synced.
+- `lib/intro.js`: `introPrompt` builds the welcome message (one paragraph: the task's title, schedule and file, what to say, no task prompt) and `describeSchedule` puts a normalized schedule in words.
 - `lib/records.js`: the Host record signature (`timingSig`), the two storage domains, and `parseDelivery`, which reads the prompt and occurrence out of a Schedule delivery message.
 - `lib/util.js`: canonical JSON hashing, derived Session ids, `SourceError`, `errorText`.
 
@@ -45,6 +46,14 @@ For `session: fresh`, the delivery is queued in the `automation_sync_runs` domai
 ## Names kept from dsh-plugin-automation-sync
 
 The storage domains (`automation_sync`, `automation_sync_runs`) and the Session id seed (`dsh-automation-sync:`) keep the old plugin's names, so a profile that switches keeps its state and Sessions. Changing them would orphan every existing task's Session and schedule.
+
+## The introduction
+
+A task conversation is created empty. DSH's `sessionListMetadata` projection keeps a session `blank` until its first `turn/start`, and the Web UI's `createInWorkspace` gives a new conversation the first non-archived blank session whose folder matches. So a task's conversation (and a `fresh` task's anchor, which never runs a turn until its first delivery, because `agent-loop` appends `turn/start` before the `agent/pre-step` hook that rejects the step) would be handed out, title and all.
+
+`introduce` runs after `reconcileTask` succeeds, so the schedule exists and a persistent task's model and permission are applied. State `introduced: false` is set only when `ensureSession` creates a Session; a state row without the field (an older version) is never introduced. It sends `sessionController.prompt` with the request id `dsh-automations:intro:<sessionId>`, which DSH treats as idempotent, and first skips a Session that already has a user message. Success sets `introduced: true`; a failure of `prompt` itself (admission) is logged and leaves `false`, so the next sync retries. `prompt` only queues the message, so a failed model call (no API key) is a failed turn in the conversation, not an error here: the state is already `true` and it is not retried. Seen in a scratch profile with no key. A disabled task waits until it is enabled. The title is set with `sessionController.rename`, a `user`-source title, which DSH's title service never overwrites, so the welcome message does not retitle the conversation.
+
+A fresh task's anchor takes the default model and permission for the welcome, since those are applied to run Sessions only; the prompt tells the model to call no tools. The `agent/pre-step` hook drops only `schedule`-source messages, so the welcome is not diverted.
 
 ## Triggers
 

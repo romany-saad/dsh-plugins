@@ -104,3 +104,31 @@ test('the loader refuses a cwd that does not exist and a source it cannot read',
   const { tasks } = await new SourceLoader({ sources: [join(dir, 'nope')], usesDefaultSources: true }).load()
   assert.equal(tasks.size, 0)
 })
+
+test('promptFile reads the prompt from a file, relative to the task file', async () => {
+  const dir = await tempDir()
+  await mkdir(join(dir, 'prompts'))
+  await writeFile(join(dir, 'prompts', 'digest.md'), '\n  Summarize the day.\n\n')
+  await writeFile(join(dir, 'a.yaml'), `tasks:\n  - id: one\n    cwd: ${dir}\n    promptFile: ./prompts/digest.md\n    schedule: { daily: "09:00" }\n`)
+  const loader = new SourceLoader({ sources: [dir] })
+  const { tasks } = await loader.load()
+  assert.equal(tasks.get('one').prompt, 'Summarize the day.')
+  assert.equal(tasks.get('one').promptFile, join(dir, 'prompts', 'digest.md'))
+  assert.deepEqual([...loader.promptFiles], [join(dir, 'prompts', 'digest.md')])
+
+  await writeFile(join(dir, 'prompts', 'digest.md'), 'Changed.')
+  assert.equal((await loader.load()).tasks.get('one').prompt, 'Changed.')
+})
+
+test('promptFile is refused with prompt, when missing, when empty and when not a path', async () => {
+  const dir = await tempDir()
+  const ok = { id: 'a', schedule: { daily: '09:00' } }
+  await writeFile(join(dir, 'empty.md'), '  \n')
+  assert.throws(() => normalizeTask({ ...ok, prompt: 'p', promptFile: 'x.md' }, {}, 'f#0', dir), /either prompt or promptFile/)
+  assert.throws(() => normalizeTask({ ...ok, promptFile: 'nope.md' }, {}, 'f#0', dir), /f#0 \[a\]: promptFile ".*nope.md" is not readable/)
+  assert.throws(() => normalizeTask({ ...ok, promptFile: 'empty.md' }, {}, 'f#0', dir), /is empty/)
+  assert.throws(() => normalizeTask({ ...ok, promptFile: 42 }, {}, 'f#0', dir), /promptFile must be a file path/)
+  const deps = new Set()
+  assert.throws(() => normalizeTask({ ...ok, promptFile: 'nope.md' }, {}, 'f#0', dir, deps))
+  assert.deepEqual([...deps], [join(dir, 'nope.md')])
+})
