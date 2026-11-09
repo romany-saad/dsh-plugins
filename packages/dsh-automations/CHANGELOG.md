@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-rc.2
+
+- **A welcome message in each new task conversation.** The plugin creates a task's conversation empty, and DSH reuses an empty conversation for the next new conversation in that folder, so you got it with the task's title. The conversation now starts with a short message to the model (two sentences; the task's prompt is not in it), which answers with the task's name, when it runs, which file defines it, and a suggestion to pin the conversation. It is sent once per new task, after the task synced. If DSH cannot accept the message, that is logged and retried at the next sync; if the model call itself fails (no API key, say), the conversation shows a failed turn and nothing is retried. Existing tasks are not changed. It costs one model call per new task; `intro: false` turns it off. For a `fresh` task it goes to the task's own conversation, not to a run.
+- **The README now says** that a task's conversation is restored when you archive it while the task is enabled.
+- **`promptFile`.** A task can read its prompt from a file (`promptFile: ./prompts/digest.md`, relative to the task file) instead of writing it inline. Saving the prompt file re-syncs the task. A missing or empty file, or giving both `prompt` and `promptFile`, is an error that names the task.
+
 ## 0.2.0-rc.1
 
 - **Agents can create and manage tasks.** The new tools `automation_list`, `automation_upsert`, `automation_remove`, `automation_sync` and `automation_adopt` let the agent work with tasks. Each task it creates is its own YAML file in `$DSH_HOME/automations/agent/` (`agentDir`), so the files stay the source of truth. A task DSH refuses is undone. The tools never change files you wrote. Before, an agent asked to "use the automation plugin" had no way to find it and fell back to a reminder in the current conversation.

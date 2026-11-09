@@ -21,6 +21,7 @@ import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { STATE_VERSION, domainSpec, parseDelivery, recordOf, runsDomainSpec, timingSig } from './lib/records.js'
 import { SourceLoader, sourcePath } from './lib/source.js'
 import { derivedSessionId, errorText, hash } from './lib/util.js'
+import { introPrompt } from './lib/intro.js'
 import { registerAgentSurface } from './lib/agent.js'
 
 export const name = 'dsh-automations'
@@ -44,6 +45,7 @@ export function resolveConfig(config = {}) {
     syncOnScheduleChange: true,
     sessionTitlePrefix: '⏱ ',
     archiveRemovedSessions: false,
+    intro: true,
     allowEmpty: false,
     keepRunSessions: 10,
     runRetryMs: 30000,
@@ -395,6 +397,38 @@ export function apply(ctx, config) {
     return false
   }
 
+  // ---- the introduction -------------------------------------------------------
+  //
+  // A new task conversation holds no message, which DSH counts as blank and
+  // hands to the next new session in the folder, with the task's title. The
+  // welcome is a real prompt, so the conversation starts a turn and stays the
+  // task's. It is sent once, after the task synced (so a persistent task's model
+  // and permission are in place and its schedule exists). The request id makes a retry or a
+  // crash harmless, and a conversation that already has a user message (an
+  // older task, a re-adopted one) gets none. A failure never fails the sync;
+  // the next sync tries again.
+
+  async function introduce(task, state, actions) {
+    if (state.introduced !== false || !task.enabled || !state.sessionId) return
+    const sessionId = state.sessionId
+    try {
+      const { events } = await ctx.sessionController.inspect(sessionId)
+      if (!events.some((e) => e.type === 'user/message')) {
+        await ctx.sessionController.prompt({
+          requestId: `dsh-automations:intro:${sessionId}`,
+          sessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text: introPrompt(task, { sessionTitlePrefix: cfg.sessionTitlePrefix || '' }) }],
+        }, new AbortController().signal)
+        actions.push('introduced')
+      }
+      state.introduced = true
+      await putState(state)
+    } catch (error) {
+      log.warn?.(`dsh-automations: could not introduce ${task.id}: ${errorText(error)}`)
+    }
+  }
+
   // ---- reconcile one task ---------------------------------------------------
 
   async function reconcileTask(task, state, catalog, report) {
@@ -422,7 +456,8 @@ export function apply(ctx, config) {
         actions.push('moved to new session')
         state.scheduleId = undefined
       }
-      await save({ sessionId, sessionKey, modelKey: null, permission: null, scheduleId: state.scheduleId, timingSig: undefined, scheduleHash: undefined })
+      // introduced: false asks for the welcome message once the task has synced.
+      await save({ sessionId, sessionKey, modelKey: null, permission: null, scheduleId: state.scheduleId, timingSig: undefined, scheduleHash: undefined, introduced: cfg.intro === false })
       if (created) actions.push('session created')
     }
     const sessionId = state.sessionId
@@ -581,8 +616,11 @@ export function apply(ctx, config) {
 
     let source
     try {
-      const fp = await sourceFingerprint()
+      let fp = await sourceFingerprint()
+      const before = [...loader.promptFiles].sort().join('|')
       source = await loader.load()
+      // A new or removed promptFile changes what is watched and compared.
+      if ([...loader.promptFiles].sort().join('|') !== before) fp = await sourceFingerprint()
       fingerprint = fp.value
       rearmWatchers(fp.files).catch(() => {})
     } catch (error) {
@@ -624,6 +662,7 @@ export function apply(ctx, config) {
       const state = structuredClone(table().get(task.id) ?? { v: STATE_VERSION, taskId: task.id })
       try {
         const actions = await reconcileTask(task, state, catalog, report)
+        await introduce(task, state, actions)
         if (actions.length) report.changed.push(`${task.id}: ${actions.join(', ')}`)
         else report.unchanged++
       } catch (error) {
@@ -732,7 +771,9 @@ export function apply(ctx, config) {
   let fingerprint
   async function sourceFingerprint() {
     const files = await loader.files()
-    const parts = await Promise.all(files.map(async (f) => {
+    // The prompt files the last load read count too: editing one changes its task.
+    const watched = [...files, ...[...loader.promptFiles].filter((f) => !files.includes(f)).sort()]
+    const parts = await Promise.all(watched.map(async (f) => {
       try {
         const s = await stat(f)
         return `${f}:${s.mtimeMs}:${s.size}`
@@ -740,7 +781,7 @@ export function apply(ctx, config) {
         return `${f}:missing`
       }
     }))
-    return { files, value: parts.join('|') }
+    return { files: watched, value: parts.join('|') }
   }
   async function rearmWatchers(files) {
     if (!cfg.watch || disposed) return

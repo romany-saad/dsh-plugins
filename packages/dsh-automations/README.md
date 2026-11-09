@@ -7,13 +7,13 @@ Keep your [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) au
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.2.0-rc.1
+dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.2.0-rc.2
 ```
 
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.2.0-rc.1&path:packages/dsh-automations'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.2.0-rc.2&path:packages/dsh-automations'
 ```
 
 Restart DSH after installing.
@@ -51,7 +51,8 @@ Each task has:
 | Field | Required | What it is |
 |---|---|---|
 | `id` | yes | The task's identity: letters, digits, `.`, `_` and `-`, up to 100 characters. Renaming it makes a new task. |
-| `prompt` | yes | The message the task sends when it runs. |
+| `prompt` | yes, or `promptFile` | The message the task sends when it runs. |
+| `promptFile` | no | A file to read the prompt from, instead of `prompt`; give one of the two. A relative path is read from the task file's folder. The file is read when the task file is synced, and saving it syncs the task, so edit the prompt in its own file. It must not be empty. |
 | `schedule` | yes | When it runs; see below. |
 | `cwd` | no | The folder it works in. A relative path is read from the task file's folder. Leave it out for a task that needs no project folder, such as a digest: it works in DSH's **Default workspace**. |
 | `title` | no | The name on the Automation tasks page, up to 120 characters. Defaults to the id. |
@@ -122,6 +123,10 @@ Each task runs in a conversation of its own, titled `⏱ <title>`. With `session
 
 With `session: fresh`, every run starts a new conversation that holds only the task's prompt, titled `⏱ <title> · <date and time>`. The newest 10 run conversations are kept and older ones are archived. The task's own conversation stays, so the Automation tasks page still lists and edits it, but nothing runs in it.
 
+**A welcome message.** When the plugin creates a task's conversation, it starts it with a two-sentence message to the model, which answers you in a few lines: the task's name, when it runs, where its runs appear, which file defines it, and a suggestion to pin the conversation. The message carries the task's title, schedule and file, and none of its prompt. The conversation then has a message of its own. Without one, DSH treats it as an empty conversation and gives it to the next new conversation you start in that folder, with the task's title. This costs one model call per new task. A `persistent` task's welcome uses the task's own model and permission; a `fresh` task's conversation never runs the task, so its welcome uses your default model. It is sent once. If DSH cannot accept the message, the sync still succeeds and the next sync tries again. If it accepts the message but the model call then fails (no API key or model configured, for example), the conversation shows a failed turn and the welcome is not sent again; configure a model before you add tasks, or set `intro: false`. Tasks that already existed are left alone.
+
+**Archiving.** A task's conversation is kept visible: if you archive it, the next sync restores it, as long as the task is enabled. To get rid of it, disable or delete the task. (Run conversations of a `fresh` task are not restored; the plugin archives them itself after the newest 10.)
+
 ## Configure
 
 It works with no config. To change something, add a `dsh-automations` row to the profile's `cordis.patch.yml`. A row with the same id replaces the whole config, so put every setting you change in that one row:
@@ -144,6 +149,7 @@ It works with no config. To change something, add a `dsh-automations` row to the
 | `defaults` | none | Task fields for every file; a file's own `defaults` override them. |
 | `allowEmpty` | `false` | `true` lets a sync with no tasks delete every task. |
 | `archiveRemovedSessions` | `false` | `true` also archives the conversation of a task you delete. |
+| `intro` | `true` | Start each new task conversation with a welcome message from the model. `false` leaves it empty. |
 | `sessionTitlePrefix` | `⏱ ` | Put in front of each task's conversation title. `false` leaves titles alone. |
 | `keepRunSessions` | `10` | How many run conversations a `fresh` task keeps. |
 | `watch` | `true` | Sync when a task file changes. |

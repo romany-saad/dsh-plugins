@@ -1,6 +1,7 @@
 // Task sources: read every task file, normalize each task, refuse the whole
 // set on any error so a sync never deletes what it could not read.
 
+import { readFileSync } from 'node:fs'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -105,8 +106,35 @@ export function normalizeModel(raw, where) {
   fail(where, 'model must be "provider/model" or { provider, model, reasoningEffort? }')
 }
 
-/** One task, normalized; a relative cwd resolves against dir, its file's folder. */
-export function normalizeTask(raw, defaults, where, dir = process.cwd()) {
+/**
+ * The prompt text: inline `prompt`, or the contents of `promptFile` (a relative
+ * path resolves against dir, the task file's folder). The file's path goes into
+ * `deps` before it is read, so a missing file is still watched.
+ */
+function readPrompt(raw, where, dir, deps) {
+  if (raw.promptFile !== undefined && raw.prompt !== undefined) fail(where, 'give either prompt or promptFile, not both')
+  if (raw.promptFile === undefined) {
+    if (typeof raw.prompt !== 'string' || raw.prompt.trim() === '') fail(where, 'prompt must be a non-empty string')
+    return { prompt: raw.prompt.trim() }
+  }
+  if (typeof raw.promptFile !== 'string' || raw.promptFile.trim() === '') fail(where, 'promptFile must be a file path')
+  const promptFile = isAbsolute(raw.promptFile) ? raw.promptFile : resolve(dir, raw.promptFile)
+  deps?.add(promptFile)
+  let text
+  try {
+    text = readFileSync(promptFile, 'utf8')
+  } catch (error) {
+    fail(where, `promptFile "${promptFile}" is not readable: ${error.message}`)
+  }
+  if (text.trim() === '') fail(where, `promptFile "${promptFile}" is empty`)
+  return { prompt: text.trim(), promptFile }
+}
+
+/**
+ * One task, normalized; a relative cwd or promptFile resolves against dir, its
+ * file's folder. A promptFile's path is added to deps (a Set), when given.
+ */
+export function normalizeTask(raw, defaults, where, dir = process.cwd(), deps) {
   if (!raw || typeof raw !== 'object') fail(where, 'task must be an object')
   const d = { ...defaults, ...(raw.defaults ?? {}) }
   const id = raw.id
@@ -114,8 +142,7 @@ export function normalizeTask(raw, defaults, where, dir = process.cwd()) {
   where = `${where} [${id}]`
   const title = String(raw.title ?? raw.name ?? id).trim()
   if (!title || title.length > 120) fail(where, 'title must be 1..120 characters')
-  if (typeof raw.prompt !== 'string' || raw.prompt.trim() === '') fail(where, 'prompt must be a non-empty string')
-  const prompt = raw.prompt.trim()
+  const { prompt, promptFile } = readPrompt(raw, where, dir, deps)
   // No cwd: the task works in DSH's Default workspace, resolved at sync time.
   const cwdRaw = raw.cwd ?? d.cwd
   if (cwdRaw !== undefined && cwdRaw !== null && (typeof cwdRaw !== 'string' || !cwdRaw)) fail(where, 'cwd must be a folder path')
@@ -131,7 +158,7 @@ export function normalizeTask(raw, defaults, where, dir = process.cwd()) {
   if (typeof enabled !== 'boolean') fail(where, 'enabled must be a boolean')
   let session = raw.session ?? (raw.freshSession === true ? 'fresh' : undefined) ?? d.session ?? 'persistent'
   if (session !== 'fresh' && session !== 'persistent') fail(where, 'session must be "fresh" or "persistent"')
-  return { id, title, prompt, cwd, schedule, model, permission, agentPreset, enabled, session, timeZone: tz, where }
+  return { id, title, prompt, promptFile, cwd, schedule, model, permission, agentPreset, enabled, session, timeZone: tz, where }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +177,8 @@ export class SourceLoader {
   constructor(config) {
     this.config = config
     this.cache = new Map() // file -> { key, value }
+    /** The promptFile paths the last load read (or tried to), so a change to one re-syncs. */
+    this.promptFiles = new Set()
   }
 
   /** Every source to scan: the configured ones, then the agent folder (may be missing). */
@@ -212,11 +241,20 @@ export class SourceLoader {
   async load() {
     const files = await this.files()
     const tasks = new Map()
+    const deps = new Set()
+    try {
+      return await this.loadFiles(files, tasks, deps)
+    } finally {
+      this.promptFiles = deps
+    }
+  }
+
+  async loadFiles(files, tasks, deps) {
     for (const file of files) {
       const { tasks: raws, defaults } = tasksOf(await this.readFileValue(file))
       const merged = { ...(this.config.defaults ?? {}), ...defaults }
       raws.forEach((raw, index) => {
-        const task = normalizeTask(raw, merged, `${file}#${index}`, dirname(file))
+        const task = normalizeTask(raw, merged, `${file}#${index}`, dirname(file), deps)
         task.file = file
         const prev = tasks.get(task.id)
         if (prev) fail(task.where, `duplicate task id (also in ${prev.where})`)

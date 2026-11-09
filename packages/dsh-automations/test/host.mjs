@@ -79,18 +79,28 @@ function createStorageDomain() {
 function createSessions() {
   const sessions = new Map() // id -> { cwd, title, permission }
   const selections = []
+  const prompts = []
   return {
     sessions,
     selections,
     agents: { selectForNextRequest: (agent, selection) => selections.push([agent.id, selection]) },
+    prompts,
     async inspect(sessionId) {
       const s = sessions.get(sessionId)
       if (!s) throw new Error(`session ${sessionId} not found`)
-      return { meta: { cwd: s.cwd }, events: [] }
+      return { meta: { cwd: s.cwd }, events: s.events ?? [] }
     },
     async create({ workspaceId, sessionId }) {
-      sessions.set(sessionId, { cwd: workspaceId, title: undefined, permission: undefined })
+      sessions.set(sessionId, { cwd: workspaceId, title: undefined, permission: undefined, events: [] })
       return { sessionId }
+    },
+    async prompt({ requestId, sessionId, content }) {
+      if (this.promptError) throw this.promptError
+      const s = sessions.get(sessionId)
+      if (s.events.some((e) => e.data.source.rpcId === requestId)) return { accepted: true }
+      prompts.push({ requestId, sessionId, text: content[0].text })
+      s.events.push({ type: 'user/message', data: { source: { kind: 'user', rpcId: requestId } } })
+      return { accepted: true }
     },
     async rename({ sessionId, title }) {
       sessions.get(sessionId).title = title
