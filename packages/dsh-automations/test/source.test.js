@@ -5,17 +5,18 @@ import { join } from 'node:path'
 import { SourceLoader, normalizeModel, normalizeSchedule, normalizeTask } from '../lib/source.js'
 import { tempDir } from './host.mjs'
 
-test('each schedule kind normalizes to the Host input', () => {
-  assert.deepEqual(normalizeSchedule({ cron: ' 30  8 * * 1-5 ' }, 'UTC', 'w').create, { cron: { expression: '30 8 * * 1-5', time_zone: 'UTC' } })
-  assert.deepEqual(normalizeSchedule('0 9 * * *', 'UTC', 'w').create, { cron: { expression: '0 9 * * *', time_zone: 'UTC' } })
-  assert.deepEqual(normalizeSchedule({ daily: '9:00' }, 'UTC', 'w').create, { daily: { time: '09:00:00', time_zone: 'UTC' } })
+test('each schedule kind normalizes to the Schedule\'s typed timing', () => {
+  const timing = (raw) => normalizeSchedule(raw, 'UTC', 'w').timing
+  assert.deepEqual(timing({ cron: ' 30  8 * * 1-5 ' }), { kind: 'cron', cron: { expression: '30 8 * * 1-5', time_zone: 'UTC' } })
+  assert.deepEqual(timing('0 9 * * *'), { kind: 'cron', cron: { expression: '0 9 * * *', time_zone: 'UTC' } })
+  assert.deepEqual(timing({ daily: '9:00' }), { kind: 'daily', daily: { time: '09:00:00', time_zone: 'UTC' } })
   assert.deepEqual(
-    normalizeSchedule({ weekly: { time: '08:30', weekdays: ['thu', 'mon', 'Mon'] }, timeZone: 'Africa/Cairo' }, 'UTC', 'w').create,
-    { weekly: { time: '08:30:00', time_zone: 'Africa/Cairo', weekdays: [1, 4] } },
+    timing({ weekly: { time: '08:30', weekdays: ['thu', 'mon', 'Mon'] }, timeZone: 'Africa/Cairo' }),
+    { kind: 'weekly', weekly: { time: '08:30:00', time_zone: 'Africa/Cairo', weekdays: [1, 4] } },
   )
-  assert.deepEqual(normalizeSchedule({ every: '15m' }, 'UTC', 'w').create, { every_seconds: 900 })
-  assert.deepEqual(normalizeSchedule({ every: '2h' }, 'UTC', 'w').create, { every_seconds: 7200 })
-  assert.deepEqual(normalizeSchedule({ at: '2026-12-01T09:00:00+02:00' }, 'UTC', 'w').create, { at: '2026-12-01T09:00:00+02:00' })
+  assert.deepEqual(timing({ every: '15m' }), { kind: 'every', every_seconds: 900 })
+  assert.deepEqual(timing({ every: '2h' }), { kind: 'every', every_seconds: 7200 })
+  assert.deepEqual(timing({ at: '2026-12-01T09:00:00+02:00' }), { kind: 'at', at: '2026-12-01T09:00:00+02:00' })
 })
 
 test('a schedule needs exactly one kind', () => {

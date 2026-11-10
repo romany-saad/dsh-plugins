@@ -9,6 +9,8 @@ import { stringify as toYaml } from 'yaml'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { TASK_ID_RE, normalizeTask } from './source.js'
 import { SourceError, errorText } from './util.js'
+import { deleteTask, sessionOf } from './schedule.js'
+import { inspectSession } from './sessions.js'
 
 export const TOOL_NAMES = ['automation_list', 'automation_upsert', 'automation_remove', 'automation_sync', 'automation_adopt']
 const SKILL_BODY = readFileSync(new URL('../skills/automations.md', import.meta.url), 'utf8')
@@ -225,7 +227,7 @@ export function createBodies({ ctx, cfg, loader, sync, lastReport, state }) {
         }
       })
       const reminders = catalog.filter((e) => !owned.has(e.id) && e.status === 'active').map((e) => ({
-        scheduleId: e.id, title: e.title ?? null, kind: e.kind, sessionId: e.sessionId, nextRunAt: e.scheduledAt ?? null, prompt: e.prompt,
+        scheduleId: e.id, title: e.title ?? null, kind: e.kind, sessionId: sessionOf(e) ?? null, nextRunAt: e.scheduledAt ?? null, prompt: e.prompt,
       }))
       return { ok: true, agentDir: cfg.agentDir, tasks: list, reminders, ...(error ? { sourceError: error } : {}), lastSync: summary(report) }
     },
@@ -266,10 +268,11 @@ export function createBodies({ ctx, cfg, loader, sync, lastReport, state }) {
         return { ok: false, code: 'already_a_task', message: 'that schedule already belongs to an automation task' }
       }
       if (entry.status !== 'active') return { ok: false, code: 'finished', message: 'that reminder has finished; create the task with automation_upsert' }
-      let cwd = args.cwd
-      if (cwd === undefined) {
+      let cwd = args.cwd ?? entry.target?.create?.cwd
+      const reminderSession = sessionOf(entry)
+      if (cwd === undefined && reminderSession !== undefined) {
         try {
-          cwd = (await ctx.sessionController.inspect(entry.sessionId)).meta?.cwd
+          cwd = (await inspectSession(ctx, reminderSession))?.cwd
         } catch {}
       }
       const timing = scheduleOfRecord(entry)
@@ -280,7 +283,7 @@ export function createBodies({ ctx, cfg, loader, sync, lastReport, state }) {
       const written = await writeAndSync(task)
       if (!written.ok) return written
       try {
-        await ctx.schedule.delete({ sessionId: entry.sessionId, id: entry.id })
+        await deleteTask(ctx.schedule, entry.id)
       } catch (error) {
         return { ...written, ok: false, code: 'reminder_not_deleted', message: 'the task was created, but the reminder could not be deleted, so both would run: ' + errorText(error) }
       }

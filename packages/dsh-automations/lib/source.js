@@ -54,7 +54,7 @@ function parseWeekdays(value, where) {
   return [...new Set(days)].sort((a, b) => a - b)
 }
 
-/** Normalize a schedule declaration into {create, change, sig}. */
+/** Normalize a schedule declaration into the Schedule's typed timing ({ kind, <selector> }) and a spec for hashing and text. */
 export function normalizeSchedule(raw, defaultTz, where) {
   if (typeof raw === 'string') raw = { cron: raw }
   if (!raw || typeof raw !== 'object') fail(where, 'schedule is required')
@@ -66,25 +66,25 @@ export function normalizeSchedule(raw, defaultTz, where) {
     case 'cron': {
       const expression = String(raw.cron).trim().replace(/\s+/g, ' ')
       const cron = { expression, time_zone: tz }
-      return { kind, create: { cron }, change: { kind, cron }, spec: { kind, expression, tz } }
+      return { kind, timing: { kind, cron }, spec: { kind, expression, tz } }
     }
     case 'daily': {
       const daily = { time: normalizeTime(raw.daily, where), time_zone: tz }
-      return { kind, create: { daily }, change: { kind, daily }, spec: { kind, ...daily } }
+      return { kind, timing: { kind, daily }, spec: { kind, ...daily } }
     }
     case 'weekly': {
       const w = typeof raw.weekly === 'object' ? raw.weekly : { time: raw.weekly, weekdays: raw.weekdays ?? raw.days }
       const weekly = { time: normalizeTime(w.time, where), time_zone: tz, weekdays: parseWeekdays(w.weekdays ?? w.days, where) }
-      return { kind, create: { weekly }, change: { kind, weekly }, spec: { kind, ...weekly } }
+      return { kind, timing: { kind, weekly }, spec: { kind, ...weekly } }
     }
     case 'every': {
       const every_seconds = parseDuration(raw.every, where)
-      return { kind, create: { every_seconds }, change: { kind, every_seconds }, spec: { kind, every_seconds } }
+      return { kind, timing: { kind, every_seconds }, spec: { kind, every_seconds } }
     }
     case 'at': {
       const at = raw.at instanceof Date ? raw.at.toISOString() : raw.at
       if (typeof at !== 'string' && (typeof at !== 'object' || at === null)) fail(where, 'at must be an ISO date-time')
-      return { kind, create: { at }, change: { kind, at }, spec: { kind, at } }
+      return { kind, timing: { kind, at }, spec: { kind, at } }
     }
   }
 }

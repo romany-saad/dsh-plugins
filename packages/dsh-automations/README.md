@@ -7,21 +7,21 @@ Keep your [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) au
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.2.0-rc.2
+dsh plugin --profile <name> add @rs-dsh/dsh-automations@0.2.0-rc.3
 ```
 
 To install from this repository instead, pinned to the release tag:
 
 ```sh
-dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.2.0-rc.2&path:packages/dsh-automations'
+dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-automations@0.2.0-rc.3&path:packages/dsh-automations'
 ```
 
 Restart DSH after installing.
 
 ## Requirements
 
-- DSH 0.2.1-rc.2 or later. It is tested with 0.2.1-rc.2.
-- A profile with the Schedule (`@deepseek-ai/dsh-schedule`), which the `web` profile has. To see and edit tasks on the **Automation tasks** page, the profile also needs `@deepseek-ai/dsh-experimental-schedule-bundle`.
+- DSH 0.2.2-rc.1 or later. It is tested with 0.2.2-rc.1. DSH 0.2.2 changed how plugins talk to the Schedule, so on DSH 0.2.1 stay on the previous release, 0.2.0-rc.2.
+- A profile with the Schedule (`@deepseek-ai/dsh-schedule`), which the `web` profile has. Its **Automation tasks** page, where you see and edit tasks, is part of `@deepseek-ai/dsh-web-app`.
 
 ## Use
 
@@ -111,9 +111,9 @@ The result shows in the conversation as a command line, not as a message to the 
 | `cwd` or `agentPreset` | The task moves to a new conversation. |
 | `enabled: false` | The task leaves the Schedule. Its conversation stays. |
 | you delete the task | The task leaves the Schedule. |
-| you edit or delete the task on the Automation tasks page | The next sync puts it back as the file says. |
+| you edit, pause or delete the task on the Automation tasks page | The next sync puts it back as the file says. |
 | a file has a mistake | Nothing changes until you fix it. `/automations` names the file, the task and the problem. |
-| DSH refuses a task, for example a bad cron | The task keeps its last good schedule, and the error shows until you change that task. |
+| DSH refuses a task, for example a bad cron | The task keeps its last good schedule, and the error shows until you change that task. After an upgrade of this plugin, a refused task is tried once more. |
 
 If the files hold no tasks at all, the plugin refuses to delete every task, so an empty or moved folder does not wipe your Schedule. Set `allowEmpty: true` to allow it.
 

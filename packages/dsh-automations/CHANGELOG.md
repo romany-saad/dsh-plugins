@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-rc.3
+
+- **Works with DSH 0.2.2-rc.1, and needs it.** DSH 0.2.2-rc.1 changed how plugins create, change and read Schedule tasks, and how they read and steer conversations. 0.2.0-rc.2 still used the old forms, so every sync failed for every task. Depending on the task, the error was `invalid_rule: timing must contain exactly kind and its matching selector.` or `ctx.sessionController.inspect is not a function`. Tasks already on the Schedule kept running, but changes to their files no longer reached it. `engines.dsh` is now `>=0.2.2-rc.1 <0.3.0-0`.
+- **Stuck tasks recover on their own.** A refusal is remembered so that an unchanged task is not sent again, so the failed tasks stayed failed. A refusal recorded by an earlier version is now retried, and a task whose schedule already matches its file clears its error. No duplicate tasks are created: each one takes over the schedule it already had.
+- **No more "[SCHEDULE CHANGE]" messages in task conversations.** DSH 0.2.2 tells a task's conversation about each change to its schedule, with a message the model reads in its next run. The plugin's own syncs caused those messages. Its changes now come from the task's own conversation, which DSH doesn't notify. A change you make on the Automation tasks page is still announced.
+- **A task paused on the Automation tasks page is resumed** at the next sync, because its file says it runs. Before, a paused task stayed paused.
+- **Requirements:** the Automation tasks page is part of `@deepseek-ai/dsh-web-app` in DSH 0.2.2, so the experimental schedule bundle is no longer needed.
+
 ## 0.2.0-rc.2
 
 - **A welcome message in each new task conversation.** The plugin creates a task's conversation empty, and DSH reuses an empty conversation for the next new conversation in that folder, so you got it with the task's title. The conversation now starts with a short message to the model (two sentences; the task's prompt is not in it), which answers with the task's name, when it runs, which file defines it, and a suggestion to pin the conversation. It is sent once per new task, after the task synced. If DSH cannot accept the message, that is logged and retried at the next sync; if the model call itself fails (no API key, say), the conversation shows a failed turn and nothing is retried. Existing tasks are not changed. It costs one model call per new task; `intro: false` turns it off. For a `fresh` task it goes to the task's own conversation, not to a run.

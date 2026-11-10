@@ -52,9 +52,9 @@ test('a new task conversation starts with the intro, once, so it is not blank', 
   assert.equal(h.sessionController.prompts.length, 2)
   const catalog = await h.schedule.catalog()
   for (const entry of catalog) {
-    const mine = h.sessionController.prompts.filter((p) => p.sessionId === entry.sessionId)
+    const mine = h.sessionController.prompts.filter((p) => p.sessionId === entry.target.sessionId)
     assert.equal(mine.length, 1)
-    assert.equal(mine[0].requestId, `dsh-automations:intro:${entry.sessionId}`)
+    assert.equal(mine[0].requestId, `dsh-automations:intro:${entry.target.sessionId}`)
     assert.match(mine[0].text, /scheduled task/)
   }
   assert.match(h.sessionController.prompts.find((p) => /Audit/.test(p.text)).text, /nothing runs in this one/)
@@ -71,7 +71,7 @@ test('the intro is sent after the schedule exists, and a task that fails to sync
   const catalog = await h.schedule.catalog()
   assert.deepEqual(catalog.map((e) => e.title), ['Daily digest'])
   // 'bad' was never scheduled, so its conversation was not introduced either.
-  assert.deepEqual(h.sessionController.prompts.map((p) => p.sessionId), [catalog[0].sessionId])
+  assert.deepEqual(h.sessionController.prompts.map((p) => p.sessionId), [catalog[0].target.sessionId])
   await h.fork.dispose()
 })
 

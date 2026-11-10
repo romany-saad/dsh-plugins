@@ -1,51 +1,26 @@
 // A real cordis Context with in-memory stand-ins for the Host services the
-// plugin injects: schedule, sessionController, storageDomain,
-// workspaceRegistry, llm, sessionProjections, permissionPresets and commands.
+// plugin injects: sessionController, sessionQuery, storageDomain, workspaceRegistry, llm,
+// sessionProjections, permissionPresets and commands. The Schedule is DSH's
+// own ScheduleService from the pinned @deepseek-ai/dsh-schedule, so a change in
+// its API fails these tests instead of a user's sync.
 import { Context, Service } from '@deepseek-ai/cordis'
+import ScheduleService from '@deepseek-ai/dsh-schedule'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 export const tempDir = (prefix = 'dsh-automations-') => mkdtemp(join(tmpdir(), prefix))
 
-function createSchedule() {
-  const records = new Map() // id -> { sessionId, status, record }
-  let next = 1
-  const fromInput = (input) => {
-    if (input.cron) return { kind: 'cron', expression: input.cron.expression, timeZone: input.cron.time_zone }
-    if (input.daily) return { kind: 'daily', time: input.daily.time, timeZone: input.daily.time_zone }
-    if (input.weekly) return { kind: 'weekly', time: input.weekly.time, timeZone: input.weekly.time_zone, weekdays: input.weekly.weekdays }
-    if (input.every_seconds) return { kind: 'every', everySeconds: input.every_seconds }
-    if (input.at) return { kind: 'at', scheduledAt: input.at }
-    throw Object.assign(new Error('no timing'), { code: 'invalid_rule' })
+/** DSH's Schedule, recording each create and edit, so a test can tell a no-op sync from a write. */
+class RecordingSchedule extends ScheduleService {
+  calls = []
+  create(request, ...rest) {
+    this.calls.push(['create', request.target?.sessionId, request.title])
+    return super.create(request, ...rest)
   }
-  const timingOfChange = (change) => fromInput(change)
-  return {
-    records,
-    calls: [],
-    async create(sessionId, input) {
-      this.calls.push(['create', sessionId, input.title])
-      if (input.cron && input.cron.expression.split(' ').length !== 5) {
-        throw Object.assign(new Error('bad cron'), { code: 'invalid_rule' })
-      }
-      const record = { id: `sch-${next++}`, title: input.title, prompt: input.prompt, ...fromInput(input) }
-      records.set(record.id, { sessionId, status: 'active', record })
-      return record
-    },
-    async catalog() {
-      return [...records.values()].map((r) => ({ ...r.record, sessionId: r.sessionId, status: r.status }))
-    },
-    async update({ id, title, prompt, change }) {
-      this.calls.push(['update', id, title])
-      const entry = records.get(id)
-      if (!entry) return { code: 'schedule_not_found', message: 'gone' }
-      entry.record = { ...entry.record, title, prompt, ...(change ? timingOfChange(change) : {}) }
-      return { record: entry.record, updated: true }
-    },
-    async delete({ id }) {
-      this.calls.push(['delete', id])
-      records.delete(id)
-    },
+  edit(request, ...rest) {
+    this.calls.push([request.action === 'delete' ? 'delete' : 'update', request.id])
+    return super.edit(request, ...rest)
   }
 }
 
@@ -83,13 +58,7 @@ function createSessions() {
   return {
     sessions,
     selections,
-    agents: { selectForNextRequest: (agent, selection) => selections.push([agent.id, selection]) },
     prompts,
-    async inspect(sessionId) {
-      const s = sessions.get(sessionId)
-      if (!s) throw new Error(`session ${sessionId} not found`)
-      return { meta: { cwd: s.cwd }, events: s.events ?? [] }
-    },
     async create({ workspaceId, sessionId }) {
       sessions.set(sessionId, { cwd: workspaceId, title: undefined, permission: undefined, events: [] })
       return { sessionId }
@@ -106,7 +75,8 @@ function createSessions() {
       sessions.get(sessionId).title = title
     },
     async resolveAgent(sessionId) {
-      return { agent: { id: sessionId, session: sessions.get(sessionId) } }
+      const model = { select: (selection) => void selections.push([sessionId, selection]) }
+      return { agent: { id: sessionId, session: sessions.get(sessionId), model } }
     },
   }
 }
@@ -137,9 +107,25 @@ function registries(ctx) {
 export function createHost({ defaultWorkspace } = {}) {
   const ctx = new Context()
   const agent = registries(ctx)
-  const schedule = createSchedule()
   const storageDomain = createStorageDomain()
   const sessionController = createSessions()
+  // Messages the Schedule put straight into a live agent, per Session.
+  const liveAgents = new Map() // sessionId -> injected messages
+  const liveAgent = (sessionId) => ({
+    status: 'running',
+    session: { ...sessionController.sessions.get(sessionId), header: { id: sessionId } },
+    options: {},
+    inject: (message) => void liveAgents.get(sessionId).push(message),
+  })
+  // A handle on the running Schedule service.
+  const schedule = {
+    get calls() {
+      return ctx.get('schedule').calls
+    },
+    create: (...args) => ctx.get('schedule').create(...args),
+    edit: (...args) => ctx.get('schedule').edit(...args),
+    catalog: () => ctx.get('schedule').catalog(),
+  }
   const archived = []
   const workspaceRegistry = {
     archivedSessionIds: [],
@@ -160,9 +146,25 @@ export function createHost({ defaultWorkspace } = {}) {
   ctx.plugin({
     name: 'host',
     apply(c) {
-      c.provide('schedule', schedule)
+      // What the Schedule itself needs; a stored Session is one the controller stand-in knows.
+      // A Session listed in liveAgents is live: the Schedule sends its change notices there.
+      c.provide('agents', {
+        get: (sessionId) => (liveAgents.has(sessionId) ? liveAgent(sessionId) : undefined),
+      })
+      c.provide('sessions', { flush: async () => true })
+      c.provide('sessionPersistence', {
+        stat: async (id) => (sessionController.sessions.has(id) ? { header: {} } : undefined),
+      })
       c.provide('storageDomain', storageDomain)
       c.provide('sessionController', sessionController)
+      // ctx.sessionQuery.observeSession, as DSH's session query reads a stored Session.
+      c.provide('sessionQuery', {
+        async observeSession(sessionId) {
+          const s = sessionController.sessions.get(sessionId)
+          if (!s) throw Object.assign(new Error(`session ${sessionId} not found`), { code: 'SESSION_QUERY_SESSION_NOT_FOUND' })
+          return { header: { id: sessionId, cwd: s.cwd }, events: s.events ?? [], [Symbol.dispose]() {} }
+        },
+      })
       c.provide('workspaceRegistry', workspaceRegistry)
       c.provide('llm', { resolveCallConfig: async (sel) => sel })
       c.provide('sessionProjections', { stateOf: () => undefined })
@@ -175,6 +177,7 @@ export function createHost({ defaultWorkspace } = {}) {
       })
     },
   })
+  ctx.plugin(RecordingSchedule, {})
   const run = async (input = '') => {
     // The commands inject resolves a tick after the plugin's fork settles.
     for (let i = 0; !commands.has('automations') && i < 100; i++) await new Promise((r) => setTimeout(r, 5))
@@ -187,7 +190,7 @@ export function createHost({ defaultWorkspace } = {}) {
     if (gate.kind !== 'allow') return { gate }
     return agent.tools.get(name).execute(args, { name, arguments: args, signal: new AbortController().signal })
   }
-  return { ctx, schedule, storageDomain, sessionController, workspaceRegistry, archived, commands, run, call, ...agent }
+  return { ctx, schedule, storageDomain, sessionController, workspaceRegistry, archived, commands, run, call, liveAgents, ...agent }
 }
 
 /** Config for tests: no watcher, no poll, no status file, no Schedule-change trigger. */

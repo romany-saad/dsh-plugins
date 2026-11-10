@@ -73,12 +73,12 @@ test('automation_upsert writes a read-only YAML task, syncs it into the Default 
   const [entry] = await h.schedule.catalog()
   assert.deepEqual(entry.weekdays, [2, 5])
   assert.equal(entry.timeZone, 'Africa/Cairo')
-  assert.equal(h.sessionController.sessions.get(entry.sessionId).cwd, h.defaultWorkspace)
+  assert.equal(h.sessionController.sessions.get(entry.target.sessionId).cwd, h.defaultWorkspace)
 
   const list = await h.call('automation_list')
   assert.equal(list.tasks.length, 1)
   assert.equal(list.tasks[0].agentOwned, true)
-  assert.equal(list.tasks[0].sessionId, entry.sessionId)
+  assert.equal(list.tasks[0].sessionId, entry.target.sessionId)
   assert.deepEqual(list.reminders, [])
 
   // Same id again: replaced in place, not a second task.
@@ -147,10 +147,11 @@ test('more than read-only asks the user first; read-only does not', async () => 
 test('automation_adopt turns a reminder into a task and deletes the reminder', async () => {
   const h = await setup()
   h.sessionController.sessions.set('session-chat', { cwd: h.defaultWorkspace })
-  const reminder = await h.schedule.create('session-chat', {
+  const reminder = await h.schedule.create({
     title: 'Summarize Slack channel updates',
     prompt: 'Summarize the channel.',
-    weekly: { time: '09:00:00', time_zone: 'Africa/Cairo', weekdays: [2, 5] },
+    timing: { kind: 'weekly', weekly: { time: '09:00:00', time_zone: 'Africa/Cairo', weekdays: [2, 5] } },
+    target: { kind: 'session', sessionId: 'session-chat' },
   })
   const list = await h.call('automation_list')
   assert.deepEqual(list.reminders.map((r) => r.scheduleId), [reminder.id])

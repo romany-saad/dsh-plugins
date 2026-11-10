@@ -39,8 +39,8 @@ test('a sync creates each task in its own Session, then changes nothing', async 
   assert.match(first.text, /2 changed, 0 removed, 0 unchanged, 0 errors/)
   const catalog = await h.schedule.catalog()
   assert.equal(catalog.length, 2)
-  assert.notEqual(catalog[0].sessionId, catalog[1].sessionId)
-  const session = h.sessionController.sessions.get(catalog.find((e) => e.title === 'Hourly').sessionId)
+  assert.notEqual(catalog[0].target.sessionId, catalog[1].target.sessionId)
+  const session = h.sessionController.sessions.get(catalog.find((e) => e.title === 'Hourly').target.sessionId)
   assert.equal(session.title, '⏱ Hourly')
   assert.equal(session.permission, 'read-only')
 
@@ -60,7 +60,7 @@ test('a changed schedule is updated in place, keeping its id', async () => {
   assert.match(report.text, /digest: schedule updated/)
   const [after] = await h.schedule.catalog()
   assert.equal(after.id, before.id)
-  assert.equal(after.time, '10:30:00')
+  assert.equal(after.time, '10:30:00.000')
   assert.equal(after.prompt, 'Summarize more')
   await h.fork.dispose()
 })
@@ -71,7 +71,7 @@ test('a renamed task retitles its Session', async () => {
   await h.write([{ ...digest, title: 'Morning digest' }])
   assert.match((await h.run()).text, /digest: session retitled, schedule updated/)
   const [entry] = await h.schedule.catalog()
-  assert.equal(h.sessionController.sessions.get(entry.sessionId).title, '⏱ Morning digest')
+  assert.equal(h.sessionController.sessions.get(entry.target.sessionId).title, '⏱ Morning digest')
   await h.fork.dispose()
 })
 
@@ -79,10 +79,96 @@ test('an edit made in the Schedule page is reverted to the file', async () => {
   const h = await setup([digest])
   await h.run()
   const [entry] = await h.schedule.catalog()
-  h.schedule.records.get(entry.id).record.title = 'Edited in the UI'
-  await h.run()
+  await h.schedule.edit({ id: entry.id, action: 'update', patch: { title: 'Edited in the UI', timing: { kind: 'daily', daily: { time: '11:00:00', time_zone: 'UTC' } } } })
+  assert.match((await h.run()).text, /digest: schedule updated/)
   const [after] = await h.schedule.catalog()
+  assert.equal(after.id, entry.id)
   assert.equal(after.title, 'Daily digest')
+  assert.equal(after.time, '09:00:00.000')
+  await h.fork.dispose()
+})
+
+test('the plugin\'s own Schedule writes send no change notice into the task conversation', async () => {
+  const h = await setup([digest])
+  await h.run()
+  const [entry] = await h.schedule.catalog()
+  const sessionId = entry.target.sessionId
+  h.liveAgents.set(sessionId, [])
+  // An update, then a delete and a create (enabled: false, then true again).
+  await h.write([{ ...digest, schedule: { daily: '10:30' } }])
+  assert.match((await h.run()).text, /digest: schedule updated/)
+  await h.write([{ ...digest, enabled: false }])
+  await h.run()
+  await h.write([digest])
+  assert.match((await h.run()).text, /digest: schedule created/)
+  await new Promise((r) => setTimeout(r, 20)) // notices are queued behind the write
+  assert.deepEqual(h.liveAgents.get(sessionId), [])
+
+  // A change someone else makes, on the Schedule page, still reaches the conversation.
+  const [now] = await h.schedule.catalog()
+  await h.schedule.edit({ id: now.id, action: 'update', patch: { title: 'Edited in the UI' } })
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(h.liveAgents.get(sessionId).length, 1)
+  assert.match(h.liveAgents.get(sessionId)[0].content[0].text, /^\[SCHEDULE CHANGE\]/)
+  await h.fork.dispose()
+})
+
+test('a task paused on the Schedule page is resumed, because its file says it runs', async () => {
+  const h = await setup([digest])
+  await h.run()
+  const [entry] = await h.schedule.catalog()
+  await h.schedule.edit({ id: entry.id, action: 'update', patch: { active: false } })
+  assert.equal((await h.schedule.catalog())[0].status, 'paused')
+  assert.match((await h.run()).text, /digest: schedule resumed/)
+  assert.equal((await h.schedule.catalog())[0].status, 'active')
+  await h.fork.dispose()
+})
+
+test('a task deleted on the Schedule page is created again', async () => {
+  const h = await setup([digest])
+  await h.run()
+  const [entry] = await h.schedule.catalog()
+  await h.schedule.edit({ id: entry.id, action: 'delete' })
+  assert.match((await h.run()).text, /digest: schedule was missing, schedule created/)
+  assert.equal((await h.schedule.catalog()).length, 1)
+  await h.fork.dispose()
+})
+
+test('a schedule that already exists for the task is adopted, not duplicated', async () => {
+  // The state lost its schedule id (a crash after create, or a sync that failed before it was saved).
+  const h = await setup([digest])
+  await h.run()
+  const state = h.storageDomain.domains.get('automation_sync').get('tasks')
+  const row = structuredClone(state.get('digest'))
+  delete row.scheduleId
+  state.set('digest', row)
+  h.schedule.calls.length = 0
+  const report = await h.run()
+  assert.match(report.text, /digest: adopted existing schedule/)
+  assert.equal((await h.schedule.catalog()).length, 1)
+  assert.deepEqual(h.schedule.calls.filter(([op]) => op === 'create'), [])
+  await h.fork.dispose()
+})
+
+test('a refusal cached by an older version is retried; an unchanged task in step with the Schedule clears it', async () => {
+  // 0.2.0-rc.2 talked to DSH 0.2.2's Schedule in the old shape and cached every task as refused.
+  const h = await setup([digest, { ...digest, id: 'other', title: 'Other' }])
+  await h.run()
+  const state = h.storageDomain.domains.get('automation_sync').get('tasks')
+  const scheduleHash = state.get('digest').scheduleHash
+  const stale = { hash: scheduleHash, message: 'invalid_rule: timing must contain exactly kind and its matching selector.' }
+  // digest: its schedule is gone and the old refusal blocked creating it again.
+  const [digestEntry] = (await h.schedule.catalog()).filter((e) => e.title === 'Daily digest')
+  await h.schedule.edit({ id: digestEntry.id, action: 'delete' })
+  state.set('digest', { ...state.get('digest'), error: stale })
+  // other: its schedule still matches the file, with the same stale refusal on record.
+  state.set('other', { ...state.get('other'), error: stale })
+  const report = await h.run()
+  assert.match(report.text, /0 errors/)
+  assert.match(report.text, /digest: schedule was missing, schedule created/)
+  assert.equal(state.get('digest').error, undefined)
+  assert.equal(state.get('other').error, undefined)
+  assert.equal((await h.schedule.catalog()).length, 2)
   await h.fork.dispose()
 })
 
@@ -142,7 +228,7 @@ test('a model is selected for the task Session only', async () => {
   const h = await setup([{ ...digest, model: { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' } }])
   await h.run()
   const [entry] = await h.schedule.catalog()
-  assert.deepEqual(h.sessionController.selections, [[entry.sessionId, { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' }]])
+  assert.deepEqual(h.sessionController.selections, [[entry.target.sessionId, { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' }]])
   await h.fork.dispose()
 })
 

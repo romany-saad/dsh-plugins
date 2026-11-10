@@ -17,11 +17,6 @@ export function timingSig(record) {
   }
 }
 
-/** Strip catalog-only members so the value equals the stored ScheduleRecord. */
-export function recordOf(entry) {
-  const { sessionId: _s, status: _st, lastDelivery: _l, ...record } = entry
-  return record
-}
 
 // ---------------------------------------------------------------------------
 // Persistent applied state
