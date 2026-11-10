@@ -18,20 +18,26 @@ import { mkdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { STATE_VERSION, domainSpec, parseDelivery, recordOf, runsDomainSpec, timingSig } from './lib/records.js'
+import { STATE_VERSION, domainSpec, parseDelivery, runsDomainSpec, timingSig } from './lib/records.js'
+import { createTask, deleteTask, isEnded, sessionOf, updateTask } from './lib/schedule.js'
+import { hasRequest, hasUserMessage, inspectSession, selectSessionModel as selectModelFor } from './lib/sessions.js'
 import { SourceLoader, sourcePath } from './lib/source.js'
 import { derivedSessionId, errorText, hash } from './lib/util.js'
 import { introPrompt } from './lib/intro.js'
 import { registerAgentSurface } from './lib/agent.js'
 
 export const name = 'dsh-automations'
-export const inject = ['schedule', 'sessionController', 'storageDomain', 'workspaceRegistry', 'llm', 'sessionProjections']
+export const inject = ['schedule', 'sessionController', 'sessionQuery', 'storageDomain', 'workspaceRegistry', 'llm', 'sessionProjections']
 
 const INPUT_ERROR_CODES = new Set([
   'invalid_prompt', 'invalid_selector', 'invalid_rule', 'invalid_time_zone',
   'not_future', 'time_out_of_range', 'frequency_too_high', 'subagent_session',
 ])
 const LOG = 'dsh-automations'
+// Bumped when the plugin starts talking to the Schedule differently. A refusal
+// cached under another value was the plugin's fault, not the task's, so the
+// task is tried again without waiting for its file to change.
+export const SCHEDULE_API = 2
 
 /** The config with its defaults; exported for tests. */
 export function resolveConfig(config = {}) {
@@ -120,15 +126,8 @@ export function apply(ctx, config) {
 
   // ---- side-effect helpers --------------------------------------------------
 
-  async function sessionExists(sessionId) {
-    try {
-      const inspection = await ctx.sessionController.inspect(sessionId)
-      return inspection.meta
-    } catch (error) {
-      if (/not found/i.test(String(error?.message))) return undefined
-      throw error
-    }
-  }
+  /** The Session's folder and events, or undefined when it does not exist. */
+  const sessionExists = (sessionId) => inspectSession(ctx, sessionId)
 
   async function ensureSession(task, sessionKey) {
     const sessionId = derivedSessionId(task.id, sessionKey)
@@ -181,20 +180,12 @@ export function apply(ctx, config) {
   const sameSelection = (a, b) => !!a && !!b && a.provider === b.provider && a.model === b.model &&
     String(a.reasoningEffort ?? '') === String(b.reasoningEffort ?? '')
 
-  /**
-   * Select a model for one Session only. The public `selectModel` Remote also
-   * rewrites the profile's global default model, which must not happen here,
-   * so the controller's Session-local selection is used directly.
-   */
+  /** Select a model for one Session only, when it is not already the one in effect. */
   function selectSessionModel(agent, selection) {
-    const internals = ctx.sessionController.agents
-    if (typeof internals?.selectForNextRequest !== 'function') {
-      throw new Error('this DSH version exposes no Session-local model selection')
-    }
     const state = ctx.sessionProjections.stateOf(agent.session, 'modelSelection')
     const effective = state ? (state.pending ?? state.lastUsed) : undefined
     if (sameSelection(effective, selection)) return false
-    internals.selectForNextRequest(agent, selection)
+    selectModelFor(agent, selection)
     return true
   }
 
@@ -320,11 +311,7 @@ export function apply(ctx, config) {
     try {
       // 1. The run's Session (deterministic id: a retry finds the same one).
       const meta = await sessionExists(runSessionId)
-      let started = false
-      if (meta) {
-        const inspection = await ctx.sessionController.inspect(runSessionId)
-        started = inspection.events.some((e) => e.type === 'user/message' && e.data?.source?.rpcId === runId)
-      }
+      const started = !!meta && hasRequest(meta.events, runId)
       if (!started) {
         if (!meta) {
           const workspace = (await ctx.workspaceRegistry.resolveByPath(task.cwd)) ?? (await ctx.workspaceRegistry.create(task.cwd))
@@ -412,8 +399,9 @@ export function apply(ctx, config) {
     if (state.introduced !== false || !task.enabled || !state.sessionId) return
     const sessionId = state.sessionId
     try {
-      const { events } = await ctx.sessionController.inspect(sessionId)
-      if (!events.some((e) => e.type === 'user/message')) {
+      const meta = await sessionExists(sessionId)
+      if (!meta) return // not readable yet; the next sync tries again
+      if (!hasUserMessage(meta.events)) {
         await ctx.sessionController.prompt({
           requestId: `dsh-automations:intro:${sessionId}`,
           sessionId,
@@ -452,7 +440,7 @@ export function apply(ctx, config) {
       const previousSession = state.sessionId
       const { sessionId, created } = await ensureSession(task, sessionKey)
       if (previousSession && previousSession !== sessionId && state.scheduleId) {
-        await ctx.schedule.delete({ sessionId: previousSession, id: state.scheduleId })
+        await deleteTask(ctx.schedule, state.scheduleId, previousSession)
         actions.push('moved to new session')
         state.scheduleId = undefined
       }
@@ -497,11 +485,11 @@ export function apply(ctx, config) {
 
     // 3. Schedule.
     let entry = state.scheduleId ? catalog.byId.get(state.scheduleId) : undefined
-    if (entry && entry.sessionId !== sessionId) entry = undefined
+    if (entry && sessionOf(entry) !== sessionId) entry = undefined
 
     if (!task.enabled) {
       if (entry) {
-        await ctx.schedule.delete({ sessionId, id: entry.id })
+        await deleteTask(ctx.schedule, entry.id, sessionId)
         actions.push('disabled (schedule deleted)')
       }
       if (state.scheduleId || state.scheduleHash !== scheduleHash) {
@@ -519,15 +507,20 @@ export function apply(ctx, config) {
       }
     }
 
+    // A refusal is remembered against the declaration, so an unchanged task is not sent again.
+    const rejected = () => state.error?.hash === scheduleHash && state.error.api === SCHEDULE_API
+    const remember = async (error) => {
+      if (INPUT_ERROR_CODES.has(error?.code)) await save({ error: { hash: scheduleHash, api: SCHEDULE_API, message: errorText(error) } })
+    }
     const create = async () => {
-      if (state.error?.hash === scheduleHash) throw Object.assign(new Error(state.error.message), { cached: true })
+      if (rejected()) throw Object.assign(new Error(state.error.message), { cached: true })
       try {
-        const record = await ctx.schedule.create(sessionId, { title: task.title, prompt: task.prompt, ...task.schedule.create })
+        const record = await createTask(ctx.schedule, sessionId, { title: task.title, prompt: task.prompt, timing: task.schedule.timing })
         catalog.owned.add(record.id)
         await save({ scheduleId: record.id, timingSig: timingSig(record), scheduleHash, error: undefined })
         actions.push('schedule created')
       } catch (error) {
-        if (INPUT_ERROR_CODES.has(error?.code)) await save({ error: { hash: scheduleHash, message: errorText(error) } })
+        await remember(error)
         throw error
       }
     }
@@ -538,10 +531,10 @@ export function apply(ctx, config) {
       return actions
     }
 
-    if (entry.status === 'inactive') {
+    if (isEnded(entry)) {
       // A finished one-shot stays finished unless its declaration changed.
       if (state.scheduleHash === scheduleHash) return actions
-      await ctx.schedule.delete({ sessionId, id: entry.id })
+      await deleteTask(ctx.schedule, entry.id, sessionId)
       await save({ scheduleId: undefined, timingSig: undefined })
       await create()
       return actions
@@ -550,35 +543,45 @@ export function apply(ctx, config) {
     const timingDrift = state.timingSig !== timingSig(entry)
     const contentDrift = entry.title !== task.title || entry.prompt !== task.prompt
     const declarationChanged = state.scheduleHash !== scheduleHash
-    if (!timingDrift && !contentDrift && !declarationChanged) return actions
+    // A task paused on the Automation tasks page is resumed: the file says it runs.
+    const paused = entry.status === 'paused'
+    if (!timingDrift && !contentDrift && !declarationChanged && !paused) {
+      // In step with the file; a refusal left over from an earlier sync no longer applies.
+      if (state.error) await save({ error: undefined })
+      return actions
+    }
+    if (rejected()) throw Object.assign(new Error(state.error.message), { cached: true })
 
-    let expected = recordOf(entry)
+    const patch = {
+      title: task.title,
+      prompt: task.prompt,
+      ...(timingDrift || declarationChanged ? { timing: task.schedule.timing } : {}),
+      ...(paused ? { active: true } : {}),
+    }
+    let expectedUpdatedAt = entry.updatedAt
     for (let attempt = 0; attempt < 3; attempt++) {
-      const result = await ctx.schedule.update({
-        sessionId,
-        id: entry.id,
-        expected,
-        title: task.title,
-        prompt: task.prompt,
-        ...(timingDrift || declarationChanged ? { change: task.schedule.change } : {}),
-      })
-      if ('record' in result) {
-        await save({ timingSig: timingSig(result.record), scheduleHash, error: undefined })
-        if (result.updated) actions.push('schedule updated')
+      let result
+      try {
+        result = await updateTask(ctx.schedule, { id: entry.id, sessionId, expectedUpdatedAt, patch })
+      } catch (error) {
+        await remember(error)
+        throw error
+      }
+      if (result.entry) {
+        await save({ timingSig: timingSig(result.entry), scheduleHash, error: undefined })
+        actions.push(paused ? 'schedule resumed' : 'schedule updated')
         return actions
       }
       if (result.code === 'schedule_conflict') {
         const fresh = (await ctx.schedule.catalog()).find((e) => e.id === entry.id)
         if (!fresh) break
-        expected = recordOf(fresh)
+        expectedUpdatedAt = fresh.updatedAt
         continue
       }
-      if (result.code === 'schedule_ended' || result.code === 'schedule_not_found') break
-      if (INPUT_ERROR_CODES.has(result.code)) await save({ error: { hash: scheduleHash, message: `${result.code}: ${result.message}` } })
-      throw Object.assign(new Error(result.message ?? result.code), { code: result.code })
+      break // schedule_not_found
     }
     // Could not update in place: replace the schedule.
-    await ctx.schedule.delete({ sessionId, id: entry.id }).catch(() => {})
+    await deleteTask(ctx.schedule, entry.id, sessionId).catch(() => {})
     await save({ scheduleId: undefined, timingSig: undefined })
     await create()
     return actions
@@ -648,9 +651,11 @@ export function apply(ctx, config) {
     const catalog = { byId: new Map(), bySession: new Map(), owned: new Set() }
     for (const e of entries) {
       catalog.byId.set(e.id, e)
-      const list = catalog.bySession.get(e.sessionId) ?? []
+      const sessionId = sessionOf(e)
+      if (sessionId === undefined) continue
+      const list = catalog.bySession.get(sessionId) ?? []
       list.push(e)
-      catalog.bySession.set(e.sessionId, list)
+      catalog.bySession.set(sessionId, list)
     }
     for (const [, s] of table().entries()) if (s.scheduleId) catalog.owned.add(s.scheduleId)
 
@@ -674,8 +679,8 @@ export function apply(ctx, config) {
     for (const [taskId, state] of [...table().entries()]) {
       if (source.tasks.has(taskId)) continue
       try {
-        if (state.scheduleId && catalog.byId.get(state.scheduleId)?.sessionId === state.sessionId) {
-          await ctx.schedule.delete({ sessionId: state.sessionId, id: state.scheduleId })
+        if (state.scheduleId && sessionOf(catalog.byId.get(state.scheduleId)) === state.sessionId) {
+          await deleteTask(ctx.schedule, state.scheduleId, state.sessionId)
         }
         if (cfg.archiveRemovedSessions && state.sessionId) {
           await ctx.workspaceRegistry.archiveSession(state.sessionId, { stopActivity: true }).catch(() => {})
