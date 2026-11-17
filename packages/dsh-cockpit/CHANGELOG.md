@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0-rc.6
+
+- **Show or hide Needs you.** The **Needs you** title at the top of the Board tab is now a button: **Hide** folds the cards into one line with the count, **Show** opens them again. The choice is kept in this browser, across reloads and boards. A hidden section still shows its count, so a step that needs you stays in sight, and the rows and the strip still mark it.
+- **A graph view.** A **List | Graph** switch above the steps. The graph draws each step as a node with its status mark: a parent above its children (solid lines) and a step above the steps that depend on it (dashed). It fits the tab's width, wrapping a wide layer onto more rows, so it never scrolls sideways. Click a node to go back to the list at that row. The choice is kept in this browser.
+- **The whole-board bar shows the board's state and lines up with the group bars.** The **Whole board** summary moved from the header into the first card above the sections, drawn like a parent's header, so its bar starts and ends where every group bar does at any width. Under it, a key counts each state present (done, in progress, needs you, waiting, ready, blocked, dropped). When a bar is too narrow or too long for its segments (above 24), it is no longer only a done fill: it shows one run per state, in proportion, each at least 2 px. This applies to the strip's narrow bar too.
+
 ## 0.6.0-rc.5
 
 - **Your actions use `user`, not a project-ownership title.** Tool descriptions, the board schema and process-stage actors now use `user`. Tasks with `waitingOn: user` appear in **Needs you**, in the progress strip and in the agent’s per-turn context. Names and specific roles remain free-form waiting targets.
