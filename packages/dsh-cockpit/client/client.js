@@ -1008,7 +1008,144 @@ const halfFill = (width) => Math.floor(wholePx(width) / 2)
 /** The done part of the continuous fill, in whole pixels: done of open (not dropped) tasks. */
 const fillWidth = (width, done, open) => (open > 0 ? Math.round((wholePx(width) * Math.min(done, open)) / open) : wholePx(width))
 
-return { SEG_MIN, SEG_HEIGHT, SEG_GAP, SEG_RADIUS, wholePx, segmentsNeed, segmentsFit, segmentWidths, segmentRadius, halfFill, fillWidth }
+/** The order of a stacked bar's runs: settled work first, then what moves, what waits, what is left. */
+const RUN_ORDER = ['done', 'now', 'needs you', 'waiting', 'ready', 'blocked', 'dropped']
+
+/**
+ * The continuous bar as runs, one per kind present, in RUN_ORDER, each as
+ * wide as its share of the segments, so a bar too narrow for its segments
+ * still shows the board's state, not only what is done. In whole pixels once
+ * measured: with the 1 px gaps they fill wholePx(width) exactly, the leftover
+ * by largest remainder, and every run keeps at least 2 px when there is room.
+ * Unmeasured (width 0): pct, a percentage, instead.
+ * @param {{kind: string}[]} segments
+ * @returns {{kind: string, count: number, width?: number, pct?: number}[]}
+ */
+function stackRuns(segments, width) {
+  const counts = new Map()
+  for (const s of segments) counts.set(s.kind, (counts.get(s.kind) || 0) + 1)
+  const kinds = RUN_ORDER.filter((k) => counts.get(k)).concat([...counts.keys()].filter((k) => !RUN_ORDER.includes(k)))
+  const n = segments.length
+  const px = wholePx(width)
+  if (!n) return []
+  if (!px) return kinds.map((kind) => ({ kind, count: counts.get(kind), pct: (counts.get(kind) / n) * 100 }))
+  const room = Math.max(0, px - (kinds.length - 1) * SEG_GAP)
+  const exact = kinds.map((k) => (room * counts.get(k)) / n)
+  const widths = exact.map(Math.floor)
+  let left = room - widths.reduce((a, b) => a + b, 0)
+  exact.map((x, i) => [x - widths[i], i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).forEach(([, i]) => { if (left > 0) { widths[i]++; left-- } })
+  const MIN = 2
+  if (room >= MIN * kinds.length) {
+    for (let i = 0; i < widths.length; i++) {
+      while (widths[i] < MIN) {
+        let big = 0
+        for (let j = 1; j < widths.length; j++) if (widths[j] > widths[big]) big = j
+        widths[big]--
+        widths[i]++
+      }
+    }
+  }
+  return kinds.map((kind, i) => ({ kind, count: counts.get(kind), width: widths[i] }))
+}
+
+return { SEG_MIN, SEG_HEIGHT, SEG_GAP, SEG_RADIUS, wholePx, segmentsNeed, segmentsFit, segmentWidths, segmentRadius, halfFill, fillWidth, RUN_ORDER, stackRuns }
+})(),
+"./graph.js": (() => {
+// The Board tab's graph view: a layered layout of the board's tasks, in whole
+// pixels, that fills the width it is given (no sideways scroll in a narrow
+// sidebar). Import-free: client/build.mjs inlines it into the browser bundle.
+//
+// Edges: a parent above each child ('parent'), a dependency above each task
+// that depends on it ('depends'). A task's layer is the longest path to it
+// over both; a cycle (a hand-edited file) is cut at the number of tasks. A
+// layer wider than the columns that fit wraps onto further rows, each row
+// centred. Within a layer, tasks sit under the tasks they come from
+// (barycentre of their x), else in board order.
+
+const GRAPH_NODE_MIN = 132
+const GRAPH_NODE_H = 44
+const GRAPH_GAP_X = 12
+const GRAPH_GAP_Y = 28
+const GRAPH_WRAP_GAP = 12
+
+/**
+ * @param {{item: string, parent?: string, dependsOn?: string[]}[]} nodes in board (tree) order
+ * @param {{width?: number}} [options] the room, in px
+ * @returns {{nodes: {item: string, x: number, y: number, w: number, h: number, layer: number}[],
+ *   edges: {from: string, to: string, kind: 'parent'|'depends', d: string}[], width: number, height: number, cols: number}}
+ */
+function graphLayout(nodes, { width = 320 } = {}) {
+  const index = new Map()
+  nodes.forEach((n, i) => { if (!index.has(n.item)) index.set(n.item, i) })
+  const list = nodes.filter((n, i) => index.get(n.item) === i)
+  const edges = []
+  const seen = new Set()
+  const link = (from, to, kind) => {
+    const key = from + '\u0000' + to
+    if (from === to || !index.has(from) || seen.has(key)) return
+    seen.add(key)
+    edges.push({ from, to, kind })
+  }
+  for (const n of list) {
+    if (typeof n.parent === 'string') link(n.parent, n.item, 'parent')
+    for (const d of Array.isArray(n.dependsOn) ? n.dependsOn : []) link(d, n.item, 'depends')
+  }
+  const rank = new Map(list.map((n) => [n.item, 0]))
+  for (let pass = 0; pass < list.length; pass++) {
+    let changed = false
+    for (const e of edges) {
+      const r = rank.get(e.from) + 1
+      if (r > rank.get(e.to) && r < list.length) { rank.set(e.to, r); changed = true }
+    }
+    if (!changed) break
+  }
+  const w = Math.max(GRAPH_NODE_MIN, Math.floor(Number.isFinite(width) ? width : 320))
+  const cols = Math.max(1, Math.floor((w + GRAPH_GAP_X) / (GRAPH_NODE_MIN + GRAPH_GAP_X)))
+  const nodeW = Math.floor((w - (cols - 1) * GRAPH_GAP_X) / cols)
+  const incoming = new Map(list.map((n) => [n.item, []]))
+  for (const e of edges) incoming.get(e.to).push(e.from)
+  const layers = [...new Set(list.map((n) => rank.get(n.item)))].sort((a, b) => a - b)
+  const placed = new Map()
+  let y = 0
+  layers.forEach((layer, li) => {
+    const members = list.filter((n) => rank.get(n.item) === layer)
+    const centre = (n) => {
+      const xs = incoming.get(n.item).map((p) => placed.get(p)).filter(Boolean).map((p) => p.x + p.w / 2)
+      return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined
+    }
+    const keyed = members.map((n) => ({ n, c: centre(n), i: index.get(n.item) }))
+    keyed.sort((a, b) => (a.c === undefined || b.c === undefined ? a.i - b.i : a.c - b.c || a.i - b.i))
+    for (let start = 0; start < keyed.length; start += cols) {
+      const row = keyed.slice(start, start + cols)
+      const offset = Math.floor(((cols - row.length) * (nodeW + GRAPH_GAP_X)) / 2)
+      row.forEach(({ n }, k) => placed.set(n.item, { item: n.item, x: offset + k * (nodeW + GRAPH_GAP_X), y, w: nodeW, h: GRAPH_NODE_H, layer: li }))
+      y += GRAPH_NODE_H + (start + cols < keyed.length ? GRAPH_WRAP_GAP : 0)
+    }
+    if (li < layers.length - 1) y += GRAPH_GAP_Y
+  })
+  const out = list.map((n) => placed.get(n.item))
+  const drawn = edges.map((e) => {
+    const a = placed.get(e.from)
+    const b = placed.get(e.to)
+    const x1 = a.x + Math.floor(a.w / 2)
+    const x2 = b.x + Math.floor(b.w / 2)
+    let d
+    if (b.y > a.y + a.h) {
+      const y1 = a.y + a.h
+      const y2 = b.y
+      const c = Math.max(8, Math.floor((y2 - y1) / 2))
+      d = 'M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + (y1 + c) + ' ' + x2 + ' ' + (y2 - c) + ' ' + x2 + ' ' + y2
+    } else {
+      // The same row or upwards (a cut cycle): round the side of the nodes.
+      const side = Math.max(a.x + a.w, b.x + b.w) + 8
+      d = 'M' + (a.x + a.w) + ' ' + (a.y + Math.floor(a.h / 2)) + ' C' + side + ' ' + (a.y + Math.floor(a.h / 2)) + ' ' + side + ' ' + (b.y + Math.floor(b.h / 2)) + ' ' + (b.x + b.w) + ' ' + (b.y + Math.floor(b.h / 2))
+    }
+    return { ...e, d }
+  })
+  return { nodes: out, edges: drawn, width: w, height: y, cols }
+}
+
+return { GRAPH_NODE_MIN, GRAPH_NODE_H, GRAPH_GAP_X, GRAPH_GAP_Y, GRAPH_WRAP_GAP, graphLayout }
 })()
 };
 var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? __local[name] : shellRequire(name));
@@ -1024,11 +1161,12 @@ var require = (name) => (Object.prototype.hasOwnProperty.call(__local, name) ? _
 // become links, in a new tab with rel="noopener noreferrer". Nothing here
 // writes to the board or runs a command.
 const React = require('react')
-const { EMPTY_STATE, boardFlags, boardGroups, boardRows, boardSegments, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
+const { EMPTY_STATE, STATUS_MARK, boardFlags, boardGroups, boardRows, boardSegments, sectionOrder, segmentKind, driftState, driftWords, firstByItem, needsYou, problems, progressText, prText, refUrl, rowCells, shortRef, stripModel, stripText, stripTitle, titleParts } = require('../../lib/rows.js')
 const { callTitle } = require('../../lib/present.js')
 const { inboxCount, inboxOf, inboxPrompts, openInbox, shownInbox } = require('../../lib/inbox.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
-const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, wholePx } = require('./segments.js')
+const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, stackRuns, wholePx } = require('./segments.js')
+const { graphLayout } = require('./graph.js')
 const h = React.createElement
 
 /**
@@ -1125,9 +1263,44 @@ const CSS = [
   '.dshc-prob{display:grid;grid-template-columns:16px minmax(0,1fr) 20px;column-gap:8px;align-items:start;width:100%;min-height:28px;padding:4px 0;border:0;background:none;font:inherit;font-size:12px;line-height:18px;color:var(--dshc-p);text-align:left;cursor:pointer}',
   '.dshc-prob .dshc-ic{color:var(--dshc-err);display:flex;padding-top:2px}.dshc-prob .dshc-go{color:var(--dshc-t);display:flex;justify-content:center;padding-top:2px}',
   // The whole board's progress, inside the header: the count on the key's line, the bar under it.
-  '.dshc-overall{margin-top:8px}',
-  '.dshc-overall-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  // The whole board's progress: the first card of the sections, drawn as a parent's header is
+  // (same border, padding and bar box), so its bar starts and ends where every group's bar does.
+  '.dshc-overall{border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-md,8px);background:var(--dshc-l1);padding:6px 10px}',
+  '.dshc-overall-title{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;column-gap:8px;font-size:12px;line-height:18px;color:var(--dshc-s)}',
   '.dshc-overall-title strong{font-weight:500;color:var(--dshc-p)}',
+  // The overall bar's key: one swatch and count per state present, wrapping on a narrow tab.
+  '.dshc-legend{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px;font-size:11px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-legend>span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}',
+  '.dshc-legend .dshc-run{display:inline-block;flex:none;width:8px;height:8px;border-radius:2px}',
+  // Needs you, shown or hidden from its title (kept in localStorage).
+  '.dshc-nytog{display:flex;align-items:center;gap:6px;width:100%;padding:0;border:0;background:none;font:inherit;font-size:12px;font-weight:500;line-height:18px;color:var(--dshc-warn);cursor:pointer;text-align:left}',
+  '.dshc-nytog .dshc-nyn{color:var(--dshc-s);font-weight:400}',
+  '.dshc-nytog .dshc-nyx{margin-left:auto;display:inline-flex;align-items:center;gap:2px;color:var(--dshc-t);font-weight:400}',
+  '.dshc-sec[data-needs-you][data-hidden]{padding-bottom:8px}',
+  '.dshc-sec[data-needs-you]:not([data-hidden]) .dshc-nytog{margin-bottom:6px}',
+  // List | Graph, and Compact | Expanded for flows, on one bar above the sections.
+  '.dshc-vbar{gap:8px}',
+  '.dshc-vsw{display:inline-flex;border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-sm,6px);overflow:hidden}',
+  '.dshc-vsw button{height:22px;padding:0 10px;border:0;background:none;font:inherit;font-size:12px;color:var(--dshc-s);cursor:pointer}',
+  '.dshc-vsw button+button{border-left:.5px solid var(--dsw-alias-border-l3,var(--dshc-border))}',
+  '.dshc-vsw button[aria-pressed=true]{background:var(--dshc-l2);color:var(--dshc-p);font-weight:500}',
+  // The graph view: nodes in whole pixels over an SVG of their edges.
+  '.dshc-graph{padding:8px 12px 12px}',
+  '.dshc-gbox{position:relative;width:100%}',
+  '.dshc-gsvg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}',
+  '.dshc-gsvg path{fill:none;stroke:var(--dshc-mark);stroke-width:1}',
+  '.dshc-gsvg path[data-edge=depends]{stroke-dasharray:4 3;stroke:var(--dshc-s)}',
+  '.dshc-gn{position:absolute;display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:6px;align-content:center;padding:4px 8px;border:1px solid var(--dshc-border);border-radius:var(--dsw-radius-sm,6px);background:var(--dshc-l0);font:inherit;font-size:12px;line-height:16px;color:var(--dshc-p);text-align:left;cursor:pointer;overflow:hidden}',
+  '.dshc-gn:hover{border-color:var(--dshc-s)}',
+  '.dshc-gn[data-parent]{background:var(--dshc-l1);font-weight:500}',
+  '.dshc-gn[data-kind=now]{border-color:var(--dshc-info)}',
+  '.dshc-gn[data-kind="needs you"]{border-color:var(--dshc-warn-mark);box-shadow:inset 0 0 0 1px var(--dshc-warn-mark)}',
+  '.dshc-gn[data-kind=done],.dshc-gn[data-kind=dropped]{color:var(--dshc-s)}',
+  '.dshc-gn[data-kind=dropped] .dshc-gt{text-decoration:line-through}',
+  '.dshc-gn .dshc-cst{grid-row:1/3;align-self:center}',
+  '.dshc-gn .dshc-gs{grid-column:2;font-size:11px;color:var(--dshc-t);font-weight:400}',
+  '.dshc-glegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px;font-size:11px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-glegend svg{vertical-align:middle;margin-right:4px}',
   // The sections line up with the header's text and the Needs you cards (12 px in).
   '.dshc-groups{padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}',
   '.dshc-group{border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-md,8px);overflow:hidden}',
@@ -1146,7 +1319,7 @@ const CSS = [
   // The chevron column (and its gap) only takes room when the parent has details to open,
   // so the count ends where the bar does.
   '.dshc-parentrow .dshc-row{grid-template-columns:minmax(0,1fr) auto;padding:6px 10px}',
-  '.dshc-parentrow .dshc-row[data-expandable]{grid-template-columns:minmax(0,1fr) auto 20px;padding-right:8px}',
+  '.dshc-parentrow .dshc-row[data-expandable]{grid-template-columns:minmax(0,1fr) auto 20px}',
   '.dshc-parentrow .dshc-ct{font-weight:500}',
   '.dshc-parentrow .dshc-cmeta,.dshc-parentrow .dshc-detail{grid-column:1/-1}',
   '.dshc-hdcount{font-size:12px;color:var(--dshc-s);white-space:nowrap;text-align:right}',
@@ -1202,7 +1375,16 @@ const CSS = [
   // A 1 px line at a whole pixel (3 px down of 8), not center, which falls on 3.5 px.
   '.dshc-seg[data-segment=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat}',
   // The continuous bar: the same height and round ends.
-  '.dshc-fill{display:block;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;corner-shape:round;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;height:100%;background:var(--dshc-ok-mark)}',
+  // One run per state present (stackRuns), so a bar too narrow for its segments still shows the board's state.
+  '.dshc-fill{display:flex;gap:' + SEG_GAP + 'px;height:' + SEG_HEIGHT + 'px;border-radius:' + SEG_RADIUS + 'px;corner-shape:round;overflow:hidden;background:var(--dshc-border)}.dshc-fill>span{display:block;flex:none;height:100%}',
+  '.dshc-run[data-run=done]{background:var(--dshc-ok-mark)}',
+  '.dshc-run[data-run=now]{background:var(--dshc-info)}',
+  '.dshc-run[data-run="needs you"]{background:var(--dshc-warn-mark)}',
+  '.dshc-run[data-run=waiting]{background:var(--dshc-mark)}',
+  '.dshc-run[data-run=ready]{background:color-mix(in srgb,var(--dshc-ok-mark) 30%,var(--dshc-l0));box-shadow:inset 0 0 0 1px var(--dshc-ok-mark)}',
+  '.dshc-run[data-run=blocked]{background:repeating-linear-gradient(135deg,var(--dshc-mark) 0 1px,var(--dshc-l1) 1px 3px)}',
+  '.dshc-run[data-run=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat,var(--dshc-l2)}',
+  '.dshc-legend .dshc-run[data-run=dropped]{box-shadow:inset 0 0 0 1px var(--dshc-mark)}',
   // The Inbox: rough items for later, outside the tree. Its buttons fill the message box; they write nothing.
   '.dshc-inbox .dshc-sech{justify-content:space-between}',
   '.dshc-inbox-n{color:var(--dshc-t);font-weight:400}',
@@ -1414,7 +1596,7 @@ function showRow(item, root) {
 }
 
 /** The header: key, parent and time, the drift line, then the whole board's count and bar (the strip's), in one block. */
-function Header({ board, view, rows, now, overall }) {
+function Header({ board, view, rows, now }) {
   const drift = driftState(board.drift, rows)
   return h('header', { className: 'dshc-hd' },
     h('div', { className: 'dshc-hd1' },
@@ -1424,12 +1606,43 @@ function Header({ board, view, rows, now, overall }) {
       h('span', { className: 'dshc-meta' }, headerMeta(board, now))),
     showDrift(view) ? h('div', { className: 'dshc-drift', 'data-drift': drift.kind, title: drift.error }, driftLine(drift, now)) : null,
     (view.processDrift || board.processDrift) ? h('div', { className: 'dshc-drift dshc-warn', 'data-process-drift': '' }, '⚠️ ' + (view.processDrift || board.processDrift).message) : null,
-    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ((view.process || board.process).updatedAt ? ' (updated ' + whenText((view.process || board.process).updatedAt, now) + ')' : '') + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null,
-    overall && overall.total
-      ? h('section', { className: 'dshc-overall', 'aria-label': 'Whole board' },
-        h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'), h('span', null, progressText(overall))),
-        h(Bar, { bar: overall }))
-      : null)
+    (view.process || board.process) ? h('div', { className: 'dshc-process' }, 'Process: rev ' + ((view.process || board.process).revision ?? 1) + ((view.process || board.process).updatedAt ? ' (updated ' + whenText((view.process || board.process).updatedAt, now) + ')' : '') + ' · ' + ((view.process || board.process).stagesCount ?? (view.process || board.process).stages?.length ?? '') + ' stages') : null)
+}
+
+/** What each segment kind is called in the overall bar's key. */
+const KIND_WORDS = { done: 'done', now: 'in progress', 'needs you': 'needs you', waiting: 'waiting', ready: 'ready', blocked: 'blocked', dropped: 'dropped' }
+
+/**
+ * The whole board's progress, as the first card above the groups and drawn
+ * like a parent's header (the same border, padding and bar box), so its bar
+ * lines up with theirs at any width. Under the bar, a key with each state's
+ * count, so the state reads even when the bar is a continuous one.
+ */
+function Overall({ overall }) {
+  if (!overall || !overall.total) return null
+  const runs = stackRuns(overall.segments, 0)
+  const needs = runs.find((r) => r.kind === 'needs you')
+  return h('section', { className: 'dshc-overall', 'aria-label': 'Whole board', 'data-overall': '' },
+    h('div', { className: 'dshc-overall-title' }, h('strong', null, 'Whole board'),
+      h('span', { className: 'dshc-pp' }, progressText({ done: overall.done, dropped: overall.dropped, total: overall.total }),
+        needs ? [' · ', h('span', { key: 'n', className: 'dshc-need' }, needs.count + ' needs you')] : null)),
+    h(Bar, { bar: overall }),
+    runs.length > 1 ? h('div', { className: 'dshc-legend', 'data-legend': '' }, runs.map((r) => h('span', { key: r.kind, 'data-run': r.kind },
+      h('span', { className: 'dshc-run', 'data-run': r.kind, 'aria-hidden': true }), r.count + ' ' + (KIND_WORDS[r.kind] || r.kind)))) : null)
+}
+
+// ---- Persisted view choices (this browser): Needs you shown or hidden, list or graph ----
+const PREF = 'dsh-cockpit.view'
+function readPref(name, fallback) {
+  try { const v = JSON.parse(localStorage.getItem(PREF) || '{}')[name]; return v === undefined ? fallback : v } catch { return fallback }
+}
+function writePref(name, value) {
+  try { const all = JSON.parse(localStorage.getItem(PREF) || '{}'); all[name] = value; localStorage.setItem(PREF, JSON.stringify(all)) } catch {}
+}
+/** A useState kept in localStorage under PREF, shared by every board. */
+function usePref(name, fallback) {
+  const [value, setValue] = React.useState(() => readPref(name, fallback))
+  return [value, (next) => { writePref(name, next); setValue(next) }]
 }
 
 /** The title cell's text: the issue (short, linked, full in the tooltip), then what. */
@@ -1450,13 +1663,21 @@ function OpenLink({ row, parent }) {
   return h('a', { className: 'dshc-open', href: url, target: '_blank', rel: 'noopener noreferrer', title: pr ? row.pr : row.issue, onClick: stop }, label, extIcon())
 }
 
-function NeedsYou({ board, rows, byItem }) {
+/**
+ * Needs you, at the top of the tab: its title is a button that shows or hides
+ * the cards (remembered in this browser). Hidden, it stays one line with the
+ * count, so a step that needs you is never out of sight.
+ */
+function NeedsYou({ board, rows, byItem, hidden, setHidden }) {
   const mine = needsYou(board.tasks)
   if (!mine.length) return null
   const rowOf = new Map(rows.map((r) => [r.item, r]))
-  return h('section', { className: 'dshc-sec', 'data-needs-you': '', 'aria-label': 'Needs you' },
-    h('div', { className: 'dshc-sech dshc-warn' }, warnIcon(), 'Needs you'),
-    mine.map((t) => {
+  const toggle = h('button', { type: 'button', className: 'dshc-nytog', 'aria-expanded': !hidden, 'data-needs-you-toggle': '', onClick: () => setHidden && setHidden(!hidden), title: hidden ? 'Show the steps that need you' : 'Hide the steps that need you' },
+    warnIcon(), 'Needs you', h('span', { className: 'dshc-nyn' }, String(mine.length)),
+    h('span', { className: 'dshc-nyx' }, hidden ? 'Show' : 'Hide', chevIcon(!hidden)))
+  return h('section', { className: 'dshc-sec', 'data-needs-you': '', 'data-hidden': hidden ? '' : undefined, 'aria-label': 'Needs you' },
+    toggle,
+    hidden ? null : mine.map((t) => {
       const r = rowOf.get(t.item)
       const ask = typeof t.nextAction === 'string' && t.nextAction.trim() ? t.nextAction.trim() : undefined
       const command = typeof t.readyCommand === 'string' && t.readyCommand.trim() ? t.readyCommand.trim() : undefined
@@ -1730,11 +1951,67 @@ function Inbox({ board, fill }) {
     h(FillNote, { result }))
 }
 
+// ---- The graph view: the board's tasks as nodes, parents and dependencies as edges ----
+
+/** The words under a graph node: a parent's count, else its status (and who it waits on). */
+function nodeLine(row, kind) {
+  if (row.progress) return progressText({ ...row.progress, needsYou: 0 })
+  if (kind === 'waiting' && row.waitingOn) return 'waiting on ' + row.waitingOn
+  return KIND_WORDS[kind] || kind
+}
+
+const edgeKey = (kind) => h('svg', { width: 22, height: 8, 'aria-hidden': true },
+  h('path', { d: 'M1 4 H21', fill: 'none', stroke: kind === 'depends' ? 'var(--dshc-s)' : 'var(--dshc-mark)', strokeWidth: 1, strokeDasharray: kind === 'depends' ? '4 3' : undefined }))
+
+/**
+ * The graph: every task as a node, a parent above its children (solid) and a
+ * dependency above what waits for it (dashed), laid out to the tab's width in
+ * whole pixels (graphLayout), wrapping a wide layer, so it never scrolls
+ * sideways. A node's click opens the list at its row.
+ */
+function GraphView({ board, rows, byItem, onOpen }) {
+  const [ref, px] = useWholeWidth()
+  const order = sectionOrder(rows)
+  const rowOf = new Map(order.map((r) => [r.item, r]))
+  const layout = graphLayout(order.map((r) => {
+    const t = byItem.get(r.item) || {}
+    return { item: r.item, parent: typeof t.parent === 'string' ? t.parent : undefined, dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn : [] }
+  }), { width: px || 296 })
+  const hasDeps = layout.edges.some((e) => e.kind === 'depends')
+  const hasParents = layout.edges.some((e) => e.kind === 'parent')
+  return h('div', { className: 'dshc-graph', 'data-graph': '' },
+    hasDeps || hasParents ? h('div', { className: 'dshc-glegend' },
+      hasParents ? h('span', null, edgeKey('parent'), 'parent → step') : null,
+      hasDeps ? h('span', null, edgeKey('depends'), 'comes first → depends on it') : null) : null,
+    h('div', { ref, className: 'dshc-gbox', style: { height: layout.height } },
+      h('svg', { className: 'dshc-gsvg', width: layout.width, height: layout.height, 'aria-hidden': true },
+        layout.edges.map((e) => h('path', { key: e.from + '>' + e.to + ':' + e.kind, d: e.d, 'data-edge': e.kind }))),
+      layout.nodes.map((n) => {
+        const row = rowOf.get(n.item)
+        const kind = segmentKind(row)
+        const line = nodeLine(row, kind)
+        return h('button', {
+          key: n.item, type: 'button', className: 'dshc-gn', 'data-item': n.item, 'data-kind': kind, 'data-parent': row.progress ? '' : undefined,
+          style: { left: n.x, top: n.y, width: n.w, height: n.h },
+          title: row.title + ' · step ' + row.item + ' · ' + line,
+          onClick: (e) => onOpen && onOpen(n.item, e),
+        },
+        h('span', { className: 'dshc-cst', role: 'img', 'aria-label': row.status }, h(Mark, { mark: STATUS_MARK[row.status], needsYou: row.needsYou })),
+        h('span', { className: 'dshc-trunc dshc-gt' }, [titleParts(byItem.get(n.item) || {}, board.parent)].map((p) => [p.ref, p.what].filter(Boolean).join(' '))[0] || row.title),
+        h('span', { className: 'dshc-trunc dshc-gs' }, line))
+      })))
+}
+
 /** The tab's body for one view answer (pure render; exported for tests). */
 function BoardView({ view, now, fill }) {
   if (!view.key) return h(Empty, { fill })
   if (!view.board) return h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error)
   const [expandedView, setExpandedView] = React.useState(false)
+  const [needsHidden, setNeedsHidden] = usePref('needsYouHidden', false)
+  const [mode, setMode] = usePref('mode', 'list')
+  // A graph node's click: back to the list, then that row once it is drawn.
+  const [focus, setFocus] = React.useState(null)
+  React.useEffect(() => { if (focus && mode !== 'graph') { showRow(focus.item, focus.root); setFocus(null) } }, [focus, mode])
   const { board } = view
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
   const links = view.links && typeof view.links === 'object' ? view.links : {}
@@ -1749,16 +2026,22 @@ function BoardView({ view, now, fill }) {
   const overall = boardSegments(board, rows, undefined)
   const groups = boardGroups(rows)
   const hasFlow = tasks.some((t) => t.flow)
+  const graph = mode === 'graph' && rows.length > 0
+  const switcher = (value, label) => h('button', { key: value, type: 'button', 'aria-pressed': mode === value, 'data-view': value, onClick: () => setMode(value) }, label)
   return h('div', null,
-    h(Header, { board, view, rows, now, overall }),
-    h(NeedsYou, { board, rows, byItem }),
+    h(Header, { board, view, rows, now }),
+    h(NeedsYou, { board, rows, byItem, hidden: needsHidden, setHidden: setNeedsHidden }),
     h(Problems, { list }),
     h(Inbox, { board, fill }),
-    hasFlow ? h('div', { className: 'dshc-vbar' },
-      h('span', null, expandedView ? 'Expanded view (all stages shown)' : 'Compact view'),
-      h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', onClick: () => setExpandedView(!expandedView) }, expandedView ? 'Compact' : 'Expanded')) : null,
-    rows.length
-      ? h('div', { className: 'dshc-groups' }, groups.map((g) => h('section', {
+    rows.length ? h('div', { className: 'dshc-vbar', 'data-view-bar': '' },
+      h('span', { className: 'dshc-vsw', role: 'group', 'aria-label': 'Board view' }, switcher('list', 'List'), switcher('graph', 'Graph')),
+      hasFlow && !graph ? h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', title: expandedView ? 'Show stage tracks on the rows only' : 'Show every flow stage', onClick: () => setExpandedView(!expandedView) }, expandedView ? 'Compact' : 'Expanded') : null) : null,
+    graph
+      ? h('div', null,
+        h('div', { className: 'dshc-groups', style: { paddingBottom: 0 } }, h(Overall, { overall })),
+        h(GraphView, { board, rows, byItem, onOpen: (item, e) => { setFocus({ item, root: boardOf(e) }); setMode('list') } }))
+      : rows.length
+      ? h('div', { className: 'dshc-groups' }, h(Overall, { key: 'overall', overall }), groups.map((g) => h('section', {
         key: (g.standalone ? 'standalone' : 'parent:') + g.item,
         className: 'dshc-group', 'data-board-group': g.item, 'aria-label': g.title,
       },
@@ -1826,12 +2109,17 @@ function dockModel(view) {
 /** The bar's width in the strip at its widest: its segments at 10 px with 1 px gaps, between 48 and 120 px; squeezed below that, it is the continuous fill. */
 const stripBarWidth = (bar) => Math.min(120, Math.max(48, segmentsNeed(bar.segments.length)))
 
-/** The continuous fill: done of the open (not dropped) tasks, in whole pixels once measured (px). */
+/**
+ * The continuous bar: one run per state present (stackRuns), in whole pixels
+ * once measured (px), so a bar too narrow or too long for its segments still
+ * shows what is done, moving, waiting and left, not only what is done.
+ */
 function Fill({ bar, px }) {
-  const label = progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) + ' (work tasks)'
-  const open = bar.total - bar.dropped
-  const done = px ? fillWidth(px, bar.done, open) + 'px' : (open > 0 ? Math.round((bar.done / open) * 100) : 100) + '%'
-  return h('span', { role: 'img', 'aria-label': label, className: 'dshc-fill', title: label, style: px ? { width: px } : undefined }, h('span', { style: { width: done } }))
+  const runs = stackRuns(bar.segments || [], px)
+  const words = runs.map((r) => r.count + ' ' + (KIND_WORDS[r.kind] || r.kind)).join(', ')
+  const label = progressText({ done: bar.done, dropped: bar.dropped, total: bar.total }) + ' (work tasks)' + (words ? ': ' + words : '')
+  return h('span', { role: 'img', 'aria-label': label, className: 'dshc-fill', title: label, style: px ? { width: px } : undefined },
+    runs.map((r) => h('span', { key: r.kind, className: 'dshc-run', 'data-run': r.kind, style: { width: r.width !== undefined ? r.width : r.pct + '%' } })))
 }
 
 const sep = (key) => h('span', { key, className: 'dshc-sep', 'aria-hidden': true }, '·')
@@ -2017,7 +2305,7 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, BoardView, StripView, useFill, Bar, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
 
 return module.exports;
 } });

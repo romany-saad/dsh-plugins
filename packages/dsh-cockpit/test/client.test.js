@@ -10,7 +10,7 @@ import { bundle } from '../client/build.mjs'
 const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
 
 /** The bundle's exports; useState gives a row's open state (false unless open). */
-function load({ open = false, primitives, measured = 0 } = {}) {
+function load({ open = false, primitives, measured = 0, prefs } = {}) {
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
     // A bar's measured width is the only useState(0): measured gives it.
@@ -20,7 +20,9 @@ function load({ open = false, primitives, measured = 0 } = {}) {
     useMemo: (fn) => fn(),
   }
   let row
-  vm.runInNewContext(code, { window: { __ModuleLoader__: { load: (r) => { row = r } } } })
+  const store = new Map(prefs ? [['dsh-cockpit.view', JSON.stringify(prefs)]] : [])
+  const localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) }
+  vm.runInNewContext(code, { window: { __ModuleLoader__: { load: (r) => { row = r } } }, localStorage })
   const exports = row.factory((name) => {
     if (name === 'react') return React
     if (name === '@deepseek-ai/dsh-client-ui-primitives' && primitives) return primitives
@@ -190,7 +192,7 @@ test('rows: mark · title · PR columns, tree order, a mark by shape, and droppe
   const { exports } = load()
   assert.match(exports.CSS, /\.dshc-row\{display:grid;grid-template-columns:16px minmax\(0,1fr\) auto 20px;/)
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\{grid-template-columns:minmax\(0,1fr\) auto;/, 'no empty chevron column on a parent with nothing to open')
-  assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\[data-expandable\]\{grid-template-columns:minmax\(0,1fr\) auto 20px;/)
+  assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\[data-expandable\]\{grid-template-columns:minmax\(0,1fr\) auto 20px\}/, 'the same 10 px right edge as the overall card, so the bars line up')
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-cmeta,\.dshc-parentrow \.dshc-detail\{grid-column:1\/-1\}/, 'the bar spans the section')
   assert.ok(!/animation|transition/.test(exports.CSS), 'nothing moves')
   const mark = (item) => within(all, item).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
@@ -568,7 +570,7 @@ test('segment corners: square, except the first one\'s left end and the last one
   assert.match(exports.CSS, /\.dshc-seg\{flex:none;min-width:10px;height:8px;border-radius:0;/)
   assert.match(exports.CSS, /\.dshc-bar\{display:flex;gap:1px;height:8px\}/)
   // The continuous bar: the same 8 px height and round ends.
-  assert.match(exports.CSS, /\.dshc-fill\{display:block;height:8px;border-radius:4px;/)
+  assert.match(exports.CSS, /\.dshc-fill\{display:flex;gap:1px;height:8px;border-radius:4px;/)
   // No half pixel in the bar's rules: no .5 px, no 1.5 px.
   const bar = exports.CSS.split('\n').filter((l) => /dshc-(seg|bar|fill)/.test(l)).join('\n')
   assert.doesNotMatch(bar, /\d\.\d+px/)
@@ -596,7 +598,8 @@ test('segment fallback: n segments at 10 px with 1 px gaps, else one continuous 
   assert.equal(narrow.filter((n) => 'data-segment' in n.props).length, 0)
   const fill = narrow.find((n) => n.props.className === 'dshc-fill')
   assert.equal(fill.props.style.width, 53)
-  assert.equal(fill.children[0].props.style.width, '53px')
+  // All five done: one run, the whole width.
+  assert.deepEqual(expand(fill).filter((n) => n.props['data-run']).map((n) => [n.props['data-run'], n.props.style.width]), [['done', 53]])
 })
 
 test('the strip opens the Board tab: the strip at its focus row, a segment at its own row, without the click going twice', () => {
@@ -828,7 +831,99 @@ test('compact view shows stage track on flow items; stage tag shows on materiali
   assert.ok(out.includes('Verify …'))
   assert.ok(!out.includes('Docs'), 'skipped stage is not in track')
   assert.ok(out.includes('stage: build'))
-  assert.ok(out.includes('Compact view'))
+  assert.ok(nodes(view).some((n) => n.type === 'button' && textOf(n) === 'Expanded'), 'the flow toggle on the view bar')
+})
+
+// ---- Needs you toggle, graph view, the overall bar ----
+
+const J = (v) => JSON.parse(JSON.stringify(v))
+const expandAll = (root) => {
+  const flat = []
+  const walk = (n) => { if (!n || typeof n !== 'object') return; if (Array.isArray(n)) return n.forEach(walk); if (typeof n.type === 'function') return walk(n.type({ ...n.props, children: n.children.length ? n.children : n.props.children })); flat.push(n); walk(n.children) }
+  walk(root)
+  return flat
+}
+
+test('Needs you: its title shows or hides the cards and keeps the count', () => {
+  const sec = nodes(live).find((n) => 'data-needs-you' in n.props)
+  const toggle = expand(sec).find((n) => 'data-needs-you-toggle' in n.props)
+  assert.equal(toggle.type, 'button')
+  assert.equal(toggle.props['aria-expanded'], true)
+  assert.match(textOf(toggle), /^Needs you1Hide/)
+  assert.ok(expand(sec).some((n) => cls(n) === 'dshc-ni'))
+  const { exports } = load()
+  const board = live.board
+  const flat = expandAll(exports.NeedsYou({ board, rows: exports.boardRows(board), byItem: new Map(board.tasks.map((t) => [t.item, t])), hidden: true }))
+  const hidden = flat.find((n) => 'data-needs-you' in n.props)
+  assert.ok('data-hidden' in hidden.props)
+  assert.ok(!flat.some((n) => cls(n) === 'dshc-ni'), 'hidden: no cards')
+  assert.match(textOf(hidden), /Needs you1Show/, 'hidden: one line with the count and Show')
+  // The choice is kept in this browser.
+  const kept = load({ prefs: { needsYouHidden: true } }).exports
+  assert.ok(!expandAll(kept.BoardView({ view: live, now: 0 })).some((n) => cls(n) === 'dshc-ni'))
+})
+
+test('the overall bar is the first card of the sections, with a key of each state', () => {
+  const all = nodes(live)
+  const groups = all.find((n) => cls(n) === 'dshc-groups')
+  const kids = expand(groups)
+  assert.equal(cls(kids.find((n) => cls(n) === 'dshc-overall' || 'data-board-group' in n.props)), 'dshc-overall', 'before the first group')
+  assert.ok(!expand(all.find((n) => n.type === 'header')).some((n) => cls(n) === 'dshc-overall'), 'no longer in the header')
+  const overall = kids.find((n) => cls(n) === 'dshc-overall')
+  const legend = expand(overall).find((n) => 'data-legend' in n.props)
+  assert.ok(legend)
+  for (const s of ['1 done', '1 dropped', '1 needs you']) assert.ok(textOf(legend).includes(s), s + ' in ' + textOf(legend))
+})
+
+test('stackRuns: one whole-pixel run per state, in order, filling the bar exactly', () => {
+  const { exports } = load()
+  const seg = (k, n) => Array.from({ length: n }, () => ({ kind: k }))
+  const segs = [...seg('waiting', 3), ...seg('done', 10), ...seg('now', 1), ...seg('blocked', 16)]
+  const runs = exports.stackRuns(segs, 200)
+  assert.deepEqual(J(runs.map((r) => r.kind)), ['done', 'now', 'waiting', 'blocked'])
+  assert.equal(runs.reduce((a, r) => a + r.width, 0) + runs.length - 1, 200)
+  assert.ok(runs.every((r) => Number.isInteger(r.width) && r.width >= 2))
+  // Too narrow: every state still keeps 2 px.
+  assert.deepEqual(J(exports.stackRuns([...seg('done', 40), ...seg('now', 1)], 32).map((r) => r.width)), [29, 2])
+  assert.deepEqual(J(exports.stackRuns(segs, 0).map((r) => Math.round(r.pct))), [33, 3, 10, 53])
+  // A bar above 24 tasks is one fill with every state, not only done.
+  const tasks = [{ item: 'r', what: 'root', status: 'now' }, ...Array.from({ length: 25 }, (_, i) => ({ item: String(i), what: 'w' + i, status: i < 5 ? 'done' : i < 7 ? 'now' : 'next', parent: 'r' }))]
+  const board = { key: 'b', tasks }
+  const bar = exports.boardSegments(board, exports.boardRows(board), undefined)
+  assert.equal(bar.continuous, true)
+  const fill = expandAll(exports.Bar({ bar })).find((n) => cls(n) === 'dshc-fill')
+  assert.deepEqual(expandAll(fill).filter((n) => n.props['data-run']).map((n) => n.props['data-run']), ['done', 'now', 'ready'])
+  assert.match(fill.props['aria-label'], /5 done, 2 in progress, 18 ready/)
+})
+
+test('graphLayout: parents and dependencies in layers, fitted to the width in whole pixels', () => {
+  const { exports } = load()
+  const list = [
+    { item: 'p' }, { item: 'a', parent: 'p' }, { item: 'b', parent: 'p', dependsOn: ['a'] }, { item: 'c', parent: 'p' },
+    { item: 'loose' }, { item: 'x', dependsOn: ['x', 'missing'] },
+  ]
+  const g = exports.graphLayout(list, { width: 300 })
+  const at = Object.fromEntries(g.nodes.map((n) => [n.item, n]))
+  assert.equal(g.cols, 2, '300 px fits two 132 px columns')
+  assert.ok(at.p.y < at.a.y && at.a.y < at.b.y, 'parent, then child, then what depends on it')
+  assert.ok(g.nodes.every((n) => n.x >= 0 && n.x + n.w <= 300 && Number.isInteger(n.x) && Number.isInteger(n.w)))
+  assert.deepEqual(J(g.edges.map((e) => [e.from, e.to, e.kind])), [['p', 'a', 'parent'], ['p', 'b', 'parent'], ['a', 'b', 'depends'], ['p', 'c', 'parent']])
+  assert.equal(exports.graphLayout(list, { width: 140 }).cols, 1, 'a narrow tab: one column')
+  const loop = exports.graphLayout([{ item: '1', dependsOn: ['2'] }, { item: '2', dependsOn: ['1'] }], { width: 300 })
+  assert.equal(loop.nodes.length, 2, 'a cycle is cut, not looped')
+  assert.ok(Number.isFinite(loop.height))
+})
+
+test('the graph view: a List | Graph switch; a node per task with its mark; the overall bar above', () => {
+  const { exports } = load({ prefs: { mode: 'graph' } })
+  const flat = expandAll(exports.BoardView({ view: live, now: 0 }))
+  assert.deepEqual(flat.filter((n) => 'data-view' in n.props).map((n) => [n.props['data-view'], n.props['aria-pressed']]), [['list', false], ['graph', true]])
+  assert.ok(flat.some((n) => 'data-graph' in n.props))
+  const gn = flat.filter((n) => cls(n) === 'dshc-gn')
+  assert.deepEqual(gn.map((n) => n.props['data-item']).sort(), [...new Set(live.board.tasks.map((t) => t.item))].sort())
+  assert.ok(gn.every((n) => expandAll(n).some((m) => cls(m) === 'dshc-mk' || m.props.role === 'img')))
+  assert.ok(!flat.some((n) => cls(n).startsWith('dshc-li')), 'no list rows in the graph')
+  assert.ok(flat.some((n) => cls(n) === 'dshc-overall'), 'the overall bar stays above the graph')
 })
 
 test('a board_process card: its title from lib/present.js', () => {
