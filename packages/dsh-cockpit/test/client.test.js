@@ -60,6 +60,8 @@ function render(view, options) {
   return text(exports.BoardView({ view, now: Date.UTC(2026, 9, 25, 8) })).replace(/[ \t]+/g, ' ')
 }
 const cls = (n) => n.props.className || ''
+/** The CSS without the lit graph line's flow, the one motion the board allows. */
+const stillCss = (css) => css.split('\n').filter((l) => !/dshc-flow|path\[data-edge=depends\]\[data-lit\]\{animation/.test(l)).join('\n')
 const within = (all, item) => {
   const li = all.find((n) => n.type === 'li' && n.props['data-item'] === item)
   const out = []
@@ -182,7 +184,8 @@ test('rows: mark · title · PR columns, tree order, a mark by shape, and droppe
     const cells = rowOf(item).children.filter(Boolean).slice(0, 3)
     assert.deepEqual(cells.map((k) => cls(k).split(' ').pop()), ['dshc-cst', 'dshc-ct', 'dshc-cpr'], item)
     // The status word: no column, but the mark's tooltip and accessible name.
-    assert.equal(cells[0].props.title, live.board.tasks.find((t) => t.item === item).status)
+    // A next step says ready or blocked too, as its bar segment does (#5 waits on open #1).
+    assert.equal(cells[0].props.title, item === '5' ? 'next · blocked' : live.board.tasks.find((t) => t.item === item).status)
     assert.equal(cells[0].props['aria-label'], cells[0].props.title)
   }
   // The parent row is its section's header: title, then its count; no mark column.
@@ -194,9 +197,9 @@ test('rows: mark · title · PR columns, tree order, a mark by shape, and droppe
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\{grid-template-columns:minmax\(0,1fr\) auto;/, 'no empty chevron column on a parent with nothing to open')
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-row\[data-expandable\]\{grid-template-columns:minmax\(0,1fr\) auto 20px\}/, 'the same 10 px right edge as the overall card, so the bars line up')
   assert.match(exports.CSS, /\.dshc-parentrow \.dshc-cmeta,\.dshc-parentrow \.dshc-detail\{grid-column:1\/-1\}/, 'the bar spans the section')
-  assert.ok(!/animation|transition/.test(exports.CSS), 'nothing moves')
+  assert.ok(!/animation|transition/.test(stillCss(exports.CSS)), 'nothing moves')
   const mark = (item) => within(all, item).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
-  assert.deepEqual(['2', '5', '1', '6b', '7'].map(mark), ['done', 'next', 'needs-you', 'waiting', 'dropped'], 'a waiting step that needs you is marked apart')
+  assert.deepEqual(['2', '5', '1', '6b', '7'].map(mark), ['done', 'blocked', 'needs-you', 'waiting', 'dropped'], 'a waiting step that needs you is marked apart; blocked #5 as its segment')
   // One size for every mark: a 12 px circle with DSH's 1.5 px step ring.
   assert.match(exports.CSS, /\.dshc-mk\{box-sizing:border-box;[^}]*width:12px;height:12px;border-radius:50%;corner-shape:round;border:1\.5px solid/, 'round, not DSH\'s default squircle')
   assert.ok(!/\.dshc-(dot|ring|dash)\{/.test(exports.CSS), 'no smaller drawn dots left')
@@ -215,7 +218,7 @@ test('with the host\'s ui-primitives: the StateDot step for done at the marks\' 
   assert.ok(!dots.some(([s]) => s === 'ongoing'), 'never the spinner: nothing moves')
   for (const n of ['IconWarningTriangleOutlineRegular', 'IconRightUpOutlineRegular', 'IconChevronRightOutlineRegular', 'IconCopyOutlineRegular']) assert.ok(used.some(([u]) => u === n), n)
   const mark = (item) => within(all, item).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
-  assert.deepEqual(['5', '6b', '7'].map(mark), ['next', 'waiting', 'dropped'], 'the statuses with no StateDot step are drawn in its style')
+  assert.deepEqual(['5', '6b', '7'].map(mark), ['blocked', 'waiting', 'dropped'], 'the statuses with no StateDot step are drawn in its style')
 })
 
 test('rows: no "Next:" label; Waiting on <who>; Start when; blocked by short refs; problems name the reference', () => {
@@ -476,7 +479,7 @@ test('the strip: whole-board leaf segments, each with a tooltip; nothing moves',
   assert.deepEqual(stripSegs, rowSegs, 'one segment model')
   assert.ok(stripSegs.every((s) => s[2]), 'every segment has a tooltip')
   assert.equal(m.done, '1 of 5 done · 1 dropped')
-  assert.ok(!/animation|transition/.test(exports.CSS))
+  assert.ok(!/animation|transition/.test(stillCss(exports.CSS)))
   // A board without one parent row: one segment per work task (a row without children).
   const flat = { key: 'f', board: { key: 'f', tasks: [{ item: '1', what: 'a', status: 'done' }, { item: '2', what: 'b', status: 'next', dependsOn: ['1'] }] } }
   assert.deepEqual([...strip(flat).m.bar.segments.map((s) => s.kind)], ['done', 'ready'])
@@ -586,6 +589,14 @@ test('segment fallback: n segments at 10 px with 1 px gaps, else one continuous 
   assert.ok(exports.segmentsFit(10, 1) && !exports.segmentsFit(9, 1))
   assert.equal(exports.stripBarWidth({ segments: Array(5) }), 54, 'the strip asks for the room the segments need')
   assert.equal(exports.stripBarWidth({ segments: Array(24) }), 120)
+  assert.equal(exports.stripBarWidth({ segments: Array(30), continuous: true }), 72)
+  // A desktop strip: about 28 px a segment, from 120 px up to a quarter of the strip (at most 280).
+  assert.equal(exports.stripBarWidth({ segments: Array(5) }, 639), 54, 'below 640 px: as before')
+  assert.equal(exports.stripBarWidth({ segments: Array(5) }, 716), 144)
+  assert.equal(exports.stripBarWidth({ segments: Array(3) }, 920), 120)
+  assert.equal(exports.stripBarWidth({ segments: Array(24) }, 920), 230)
+  assert.equal(exports.stripBarWidth({ segments: Array(24) }, 1400), 280)
+  assert.equal(exports.stripBarWidth({ segments: Array(30), continuous: true }, 920), 230)
   const bar = { segments: [1, 2, 3, 4, 5].map((i) => ({ item: String(i), kind: 'done', tooltip: 't' })), continuous: false, done: 5, dropped: 0, total: 5 }
   const at = (measured) => expand(load({ measured }).exports.Bar({ bar }))
   // Measured wide enough: whole-pixel widths and the corner rule inline.
@@ -896,32 +907,51 @@ test('stackRuns: one whole-pixel run per state, in order, filling the bar exactl
   assert.match(fill.props['aria-label'], /5 done, 2 in progress, 18 ready/)
 })
 
-test('graphLayout: parents and dependencies in layers, fitted to the width in whole pixels', () => {
+test('graphLayout: a parent is a box holding its steps; steps sit below what they depend on; whole pixels in the width', () => {
   const { exports } = load()
   const list = [
     { item: 'p' }, { item: 'a', parent: 'p' }, { item: 'b', parent: 'p', dependsOn: ['a'] }, { item: 'c', parent: 'p' },
-    { item: 'loose' }, { item: 'x', dependsOn: ['x', 'missing'] },
+    { item: 'loose' }, { item: 'x', dependsOn: ['x', 'missing', 'b'] },
   ]
   const g = exports.graphLayout(list, { width: 300 })
   const at = Object.fromEntries(g.nodes.map((n) => [n.item, n]))
-  assert.equal(g.cols, 2, '300 px fits two 132 px columns')
-  assert.ok(at.p.y < at.a.y && at.a.y < at.b.y, 'parent, then child, then what depends on it')
-  assert.ok(g.nodes.every((n) => n.x >= 0 && n.x + n.w <= 300 && Number.isInteger(n.x) && Number.isInteger(n.w)))
-  assert.deepEqual(J(g.edges.map((e) => [e.from, e.to, e.kind])), [['p', 'a', 'parent'], ['p', 'b', 'parent'], ['a', 'b', 'depends'], ['p', 'c', 'parent']])
-  assert.equal(exports.graphLayout(list, { width: 140 }).cols, 1, 'a narrow tab: one column')
-  const loop = exports.graphLayout([{ item: '1', dependsOn: ['2'] }, { item: '2', dependsOn: ['1'] }], { width: 300 })
-  assert.equal(loop.nodes.length, 2, 'a cycle is cut, not looped')
+  assert.equal(at.p.container, true)
+  assert.ok(['a', 'b', 'c', 'loose', 'x'].every((i) => at[i].container === false))
+  const inside = (o, i) => i.x >= o.x && i.y >= o.y && i.x + i.w <= o.x + o.w && i.y + i.h <= o.y + o.h
+  assert.ok(['a', 'b', 'c'].every((i) => inside(at.p, at[i])), 'the steps are inside their parent\'s box')
+  assert.ok(!inside(at.p, at.loose) && !inside(at.p, at.x))
+  assert.equal(at.p.w, 300, 'a box takes the full width')
+  assert.ok(at.a.y < at.b.y, 'b below a, which it depends on')
+  assert.ok(at.x.y >= at.p.y + at.p.h, 'x depends on b inside p, so it sits below the whole box')
+  assert.ok(g.nodes.every((n) => n.x >= 0 && n.x + n.w <= 300 && [n.x, n.y, n.w, n.h].every(Number.isInteger)))
+  assert.deepEqual(J(g.edges.map((e) => [e.from, e.to, e.kind])), [['a', 'b', 'depends'], ['b', 'x', 'depends']], 'only dependencies are lines; no self or unknown ones')
+  assert.ok(exports.graphLayout(list, { width: 140 }).nodes.every((n) => n.x + n.w <= 140), 'a narrow tab still fits')
+  // Nested parents nest their boxes; a parent loop and a dependency cycle do not hang.
+  const deep = exports.graphLayout([{ item: 'r' }, { item: 'm', parent: 'r' }, { item: 'l', parent: 'm' }], { width: 300 })
+  const d = Object.fromEntries(deep.nodes.map((n) => [n.item, n]))
+  assert.ok(d.r.container && d.m.container && !d.l.container && inside(d.r, d.m) && inside(d.m, d.l))
+  const loop = exports.graphLayout([{ item: '1', parent: '2', dependsOn: ['2'] }, { item: '2', parent: '1', dependsOn: ['1'] }], { width: 300 })
+  assert.equal(loop.nodes.filter(Boolean).length, 2)
   assert.ok(Number.isFinite(loop.height))
 })
 
-test('the graph view: a List | Graph switch; a node per task with its mark; the overall bar above', () => {
+test('the graph view: a List | Graph switch; parents as boxes with their steps inside; the overall bar above', () => {
   const { exports } = load({ prefs: { mode: 'graph' } })
   const flat = expandAll(exports.BoardView({ view: live, now: 0 }))
   assert.deepEqual(flat.filter((n) => 'data-view' in n.props).map((n) => [n.props['data-view'], n.props['aria-pressed']]), [['list', false], ['graph', true]])
   assert.ok(flat.some((n) => 'data-graph' in n.props))
-  const gn = flat.filter((n) => cls(n) === 'dshc-gn')
-  assert.deepEqual(gn.map((n) => n.props['data-item']).sort(), [...new Set(live.board.tasks.map((t) => t.item))].sort())
-  assert.ok(gn.every((n) => expandAll(n).some((m) => cls(m) === 'dshc-mk' || m.props.role === 'img')))
+  const boxes = flat.filter((n) => cls(n) === 'dshc-gc').map((n) => n.props['data-item'])
+  const steps = flat.filter((n) => cls(n) === 'dshc-gn').map((n) => n.props['data-item'])
+  const parents = new Set(live.board.tasks.map((t) => t.parent).filter(Boolean))
+  assert.deepEqual(boxes.sort(), [...parents].sort(), 'each parent is a box')
+  assert.deepEqual([...new Set([...boxes, ...steps])].sort(), [...new Set(live.board.tasks.map((t) => t.item))].sort(), 'every task once')
+  const box = flat.find((n) => cls(n) === 'dshc-gc')
+  assert.ok(expandAll(box).some((n) => cls(n) === 'dshc-gch'), 'its header: mark, title and count')
+  assert.match(textOf(box), /of \d+ done/)
+  assert.equal(box.props.role, 'button')
+  assert.equal(box.props.tabIndex, 0)
+  assert.ok(!flat.some((n) => n.props['data-edge'] === 'parent'), 'no parent lines')
+  assert.ok(!/parent → step/.test(textOf(flat.find((n) => 'data-graph' in n.props))), 'no parent line in the key')
   assert.ok(!flat.some((n) => cls(n).startsWith('dshc-li')), 'no list rows in the graph')
   assert.ok(flat.some((n) => cls(n) === 'dshc-overall'), 'the overall bar stays above the graph')
 })
@@ -994,4 +1024,159 @@ test('the buttons ask for a send; the Add item field does not', () => {
   const click = (label, within) => all.find((n) => n.type === 'button' && textOf(n) === label && (!within || n.props.title.includes(within))).props.onClick()
   click('Refine', 'i1'); click('Refine all'); click('Clear', 'i2')
   assert.deepEqual(asked.map((a) => a[1]), [true, true, true])
+})
+
+test('a nested row: its meta lines and detail start where its title text does, not at the row edge', () => {
+  const { exports } = load()
+  assert.equal(exports.titleInset({ indent: 0, elbow: false }), 0)
+  assert.equal(exports.titleInset({ indent: 1, elbow: false }), 16)
+  assert.equal(exports.titleInset({ indent: 2, elbow: true }), 48, 'two indent steps and the elbow')
+  assert.match(exports.CSS, /\.dshc-row>\.dshc-cmeta,\.dshc-row>\.dshc-detail\{margin-left:var\(--dshc-in,0px\)\}/)
+  const view = { key: 'deep', board: { key: 'deep', tasks: [
+    { item: 'p', what: 'Parent', status: 'now' },
+    { item: 'a', what: 'Child', status: 'now', parent: 'p' },
+    { item: 'b', what: 'Grandchild', status: 'now', parent: 'a', why: 'A reason', nextAction: 'Do it' },
+  ] } }
+  const rowOf = (all, item) => within(all, item).find((n) => cls(n) === 'dshc-row')
+  const all = nodes(view, { open: true })
+  assert.equal(rowOf(all, 'b').props.style['--dshc-in'], '32px', 'the indent (16) and the elbow (16)')
+  assert.ok(within(all, 'b').some((n) => cls(n) === 'dshc-detail'), 'the detail is open and inherits the inset')
+  assert.equal(rowOf(all, 'a').props.style?.['--dshc-in'], undefined, 'a depth-1 row has no inset')
+})
+
+test('a ready row has no "ready" tag; the bar still marks it ready and a blocked row still says so', () => {
+  const view = { key: 'r', board: { key: 'r', tasks: [
+    { item: 'p', what: 'Parent', status: 'now' },
+    { item: 'a', what: 'First', status: 'done', parent: 'p' },
+    { item: 'b', what: 'Unblocked', status: 'next', parent: 'p', dependsOn: ['a'] },
+    { item: 'c', what: 'Plain next', status: 'next', parent: 'p' },
+    { item: 'd', what: 'Blocked', status: 'next', parent: 'p', dependsOn: ['e'] },
+    { item: 'e', what: 'Open work', status: 'now', parent: 'p' },
+  ] } }
+  const all = nodes(view)
+  for (const item of ['b', 'c']) assert.ok(!within(all, item).some((n) => /dshc-tag/.test(cls(n)) && textOf(n) === 'ready'), item + ': no ready tag')
+  assert.ok(!/dshc-tag-ok/.test(load().exports.CSS), 'its style is gone too')
+  assert.ok(textOf(within(all, 'd').find((n) => cls(n) === 'dshc-cmeta')).includes('Blocked by'))
+  const seg = (item) => all.find((n) => n.props['data-item'] === item && 'data-segment' in n.props)?.props['data-segment']
+  assert.deepEqual(['b', 'c', 'd'].map(seg), ['ready', 'ready', 'blocked'])
+})
+
+test('a next step\'s mark follows its bar segment: a green ring when ready, a dashed ring when blocked', () => {
+  const view = { key: 'm', board: { key: 'm', tasks: [
+    { item: 'p', what: 'Parent', status: 'now' },
+    { item: 'a', what: 'First', status: 'done', parent: 'p' },
+    { item: 'b', what: 'Unblocked', status: 'next', parent: 'p', dependsOn: ['a'] },
+    { item: 'c', what: 'Plain next', status: 'next', parent: 'p' },
+    { item: 'd', what: 'Blocked', status: 'next', parent: 'p', dependsOn: ['e'] },
+    { item: 'e', what: 'Open work', status: 'now', parent: 'p' },
+  ] } }
+  const all = nodes(view)
+  const mark = (item) => within(all, item).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
+  const seg = (item) => all.find((n) => n.props['data-item'] === item && 'data-segment' in n.props)?.props['data-segment']
+  assert.deepEqual(['b', 'c', 'd'].map(mark), ['ready', 'ready', 'blocked'])
+  assert.deepEqual(['b', 'c', 'd'].map(mark), ['b', 'c', 'd'].map(seg), 'the mark and the segment say the same')
+  const word = (item) => within(all, item).find((n) => cls(n) === 'dshc-cst').props['aria-label']
+  assert.deepEqual(['b', 'd', 'e'].map(word), ['next · ready', 'next · blocked', 'now'])
+  const { exports } = load()
+  assert.match(exports.CSS, /\.dshc-mk\[data-mark=ready\]\{border-color:var\(--dshc-ok-mark\)\}/, 'the ready segment\'s green')
+  assert.match(exports.CSS, /\.dshc-mk\[data-mark=blocked\]\{border-style:dashed;border-color:var\(--dshc-mark\)\}/, 'the blocked segment\'s dashed border')
+  // The graph's nodes draw the same marks.
+  const graph = expandAll(load({ prefs: { mode: 'graph' } }).exports.BoardView({ view, now: 0 }))
+  const gmark = (item) => expandAll(graph.find((n) => cls(n) === 'dshc-gn' && n.props['data-item'] === item)).find((n) => cls(n) === 'dshc-mk')?.props['data-mark']
+  assert.deepEqual(['b', 'd'].map(gmark), ['ready', 'blocked'])
+})
+
+test('graph hover: the node, its direct dependencies and dependants stay lit; the rest dims', () => {
+  const { exports } = load()
+  const list = [
+    { item: 'p' }, { item: 'a', parent: 'p' }, { item: 'b', parent: 'p', dependsOn: ['a'] },
+    { item: 'c', parent: 'p', dependsOn: ['b'] }, { item: 'd', dependsOn: ['c'] }, { item: 'x' },
+  ]
+  const g = exports.graphLayout(list, { width: 300 })
+  const f = exports.graphFocus(g.edges, 'b')
+  assert.deepEqual([...f.items].sort(), ['a', 'b', 'c'], 'one step each way, not d two steps on, not the parent')
+  assert.deepEqual(J(f.dependencies), ['a'])
+  assert.deepEqual(J(f.dependants), ['c'])
+  assert.deepEqual([...f.edges].sort(), ['a>b:depends', 'b>c:depends'])
+  assert.equal(exports.graphFocus(g.edges, undefined), undefined, 'nothing hovered: nothing dims')
+  assert.deepEqual([...exports.graphFocus(g.edges, 'x').items], ['x'], 'a node with no dependencies keeps only itself')
+  const { CSS } = exports
+  assert.match(CSS, /\.dshc-gbox\[data-focus\] \.dshc-gn:not\(\[data-lit\]\),\.dshc-gbox\[data-focus\] \.dshc-gc:not\(\[data-lit\]\)>\.dshc-gch\{opacity:\.3\}/, 'a step and a parent box\'s header dim alike')
+  assert.match(CSS, /\.dshc-gbox\[data-focus\] \.dshc-gsvg path:not\(\[data-lit\]\)\{opacity:\.15\}/)
+  assert.ok(!/animation|transition/.test(stillCss(CSS)), 'nothing moves')
+  // Each node takes the pointer and the keyboard focus.
+  const graph = expandAll(load({ prefs: { mode: 'graph' } }).exports.BoardView({ view: live, now: 0 }))
+  const node = graph.find((n) => cls(n) === 'dshc-gn')
+  for (const k of ['onPointerEnter', 'onPointerLeave', 'onFocus', 'onBlur']) assert.equal(typeof node.props[k], 'function', k)
+  assert.ok(!graph.some((n) => n.props['data-focus'] !== undefined), 'nothing hovered at first')
+})
+
+test('graph pin: a click keeps a step\'s links lit after the pointer leaves; a double-click opens the list', () => {
+  // A stub React whose useState keeps its value across renders, so a click's state shows on the next render.
+  const store = []
+  let at = 0
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useState: (init) => { const i = at++; if (!(i in store)) store[i] = typeof init === 'function' ? init() : init; return [store[i], (v) => { store[i] = typeof v === 'function' ? v(store[i]) : v }] },
+    useRef: (v) => ({ current: v }), useEffect: () => {}, useLayoutEffect: () => {}, useMemo: (fn) => fn(),
+  }
+  let row
+  vm.runInNewContext(code, { window: { __ModuleLoader__: { load: (r) => { row = r } } }, localStorage: { getItem: () => null, setItem() {} } })
+  const ex = row.factory((name) => { if (name === 'react') return React; throw new Error(name) })
+  const board = { key: 'g', tasks: [
+    { item: 'a', what: 'A', status: 'done' }, { item: 'b', what: 'B', status: 'now', dependsOn: ['a'] },
+    { item: 'c', what: 'C', status: 'next', dependsOn: ['b'] }, { item: 'x', what: 'X', status: 'next' },
+  ] }
+  const rows = ex.boardRows(board)
+  const byItem = new Map(board.tasks.map((t) => [t.item, t]))
+  const opened = []
+  const render = () => { at = 0; return expandAll(ex.GraphView({ board, rows, byItem, onOpen: (i) => opened.push(i) })) }
+  const node = (all, item) => all.find((n) => cls(n) === 'dshc-gn' && n.props['data-item'] === item)
+  const litOf = (all) => all.filter((n) => cls(n) === 'dshc-gn' && n.props['data-lit']).map((n) => n.props['data-item'] + ':' + n.props['data-lit'])
+  const stop = { stopPropagation() {} }
+  let all = render()
+  node(all, 'b').props.onClick(stop)
+  all = render()
+  assert.deepEqual(litOf(all), ['a:dependency', 'b:self', 'c:dependant'], 'the click lights b and its links')
+  assert.equal(node(all, 'b').props['aria-pressed'], true)
+  assert.notEqual(node(all, 'b').props['data-pin'], undefined, 'b is marked as pinned')
+  node(all, 'b').props.onPointerLeave()
+  node(all, 'x').props.onPointerEnter()
+  all = render()
+  assert.deepEqual(litOf(all), ['a:dependency', 'b:self', 'c:dependant'], 'leaving b, or hovering another step, keeps b\'s highlight')
+  assert.equal(opened.length, 0, 'a click does not open the list')
+  node(all, 'b').props.onClick(stop)
+  node(all, 'x').props.onPointerLeave()
+  all = render()
+  assert.deepEqual(litOf(all), [], 'clicking b again clears it')
+  node(all, 'c').props.onClick(stop)
+  all = render()
+  const graph = all.find((n) => 'data-graph' in n.props)
+  graph.props.onClick({ target: { closest: () => null } })
+  all = render()
+  assert.deepEqual(litOf(all), [], 'a click on the background clears it')
+  node(all, 'c').props.onDoubleClick(stop)
+  assert.deepEqual(opened, ['c'], 'a double-click opens the list at that step')
+  assert.match(textOf(all.find((n) => 'data-graph-hint' in n.props)), /double-click/)
+  assert.match(ex.CSS, /\.dshc-gn\[data-pin\],\.dshc-gc\[data-pin\]\{outline:2px solid var\(--dshc-info\)/)
+})
+
+test('graph flow: a lit dependency line runs from the step that comes first to the one that waits; only then, and not with reduced motion', () => {
+  const { exports } = load()
+  const css = exports.CSS
+  assert.match(css, /@keyframes dshc-flow\{from\{stroke-dashoffset:0\}to\{stroke-dashoffset:-7\}\}/, 'a negative offset moves the dashes toward the path\'s end')
+  assert.match(css, /\.dshc-gbox\[data-focus\] \.dshc-gsvg path\[data-edge=depends\]\[data-lit\]\{animation:dshc-flow \.5s linear infinite\}/, 'only lit lines, only while a step is hovered or pinned')
+  assert.match(css, /@media \(prefers-reduced-motion:reduce\)\{\.dshc-gbox\[data-focus\] \.dshc-gsvg path\[data-edge=depends\]\[data-lit\]\{animation:none\}\}/)
+  assert.equal(css.split('\n').filter((l) => /animation|transition|@keyframes/.test(l)).length, 3, 'nothing else moves')
+  // Every line starts at its dependency and ends at the step that waits: the dashes run that way.
+  const g = exports.graphLayout([{ item: 'a' }, { item: 'b', dependsOn: ['a'] }, { item: 'c', dependsOn: ['b'] }, { item: 'p' }, { item: 'q', parent: 'p', dependsOn: ['c'] }], { width: 300 })
+  const at = Object.fromEntries(g.nodes.map((n) => [n.item, n]))
+  for (const e of g.edges) {
+    const [x, y] = e.d.slice(1).split(' ').slice(0, 2).map(Number)
+    const a = at[e.from]
+    assert.ok(x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h, e.from + '>' + e.to + ' starts on its dependency')
+    const end = e.d.trim().split(' ').slice(-2).map(Number)
+    const b = at[e.to]
+    assert.ok(end[0] >= b.x && end[0] <= b.x + b.w && end[1] >= b.y && end[1] <= b.y + b.h, e.from + '>' + e.to + ' ends on the step that waits')
+  }
 })

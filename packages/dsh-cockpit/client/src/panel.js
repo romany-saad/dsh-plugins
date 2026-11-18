@@ -15,7 +15,7 @@ const { callTitle } = require('../../lib/present.js')
 const { inboxCount, inboxOf, inboxPrompts, openInbox, shownInbox } = require('../../lib/inbox.js')
 const { makeCommandBox, copyStep, copyText } = require('./command-box.js')
 const { SEG_GAP, SEG_HEIGHT, SEG_MIN, SEG_RADIUS, fillWidth, halfFill, segmentRadius, segmentWidths, segmentsNeed, stackRuns, wholePx } = require('./segments.js')
-const { graphLayout } = require('./graph.js')
+const { edgeId, graphFocus, graphLayout } = require('./graph.js')
 const h = React.createElement
 
 /**
@@ -141,13 +141,36 @@ const CSS = [
   '.dshc-gsvg path[data-edge=depends]{stroke-dasharray:4 3;stroke:var(--dshc-s)}',
   '.dshc-gn{position:absolute;display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:6px;align-content:center;padding:4px 8px;border:1px solid var(--dshc-border);border-radius:var(--dsw-radius-sm,6px);background:var(--dshc-l0);font:inherit;font-size:12px;line-height:16px;color:var(--dshc-p);text-align:left;cursor:pointer;overflow:hidden}',
   '.dshc-gn:hover{border-color:var(--dshc-s)}',
-  '.dshc-gn[data-parent]{background:var(--dshc-l1);font-weight:500}',
+  // A parent is a box behind its steps: its mark, title and count in a header line, its steps inside.
+  '.dshc-gc{position:absolute;display:block;padding:0;border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-md,8px);background:color-mix(in srgb,var(--dshc-l1) 60%,transparent);font:inherit;color:var(--dshc-p);text-align:left;cursor:pointer}',
+  '.dshc-gc:hover{border-color:var(--dshc-s)}',
+  '.dshc-gch{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:6px;align-items:center;height:30px;padding:0 8px;font-size:12px;line-height:16px}',
+  '.dshc-gch .dshc-gt{font-weight:500}',
+  '.dshc-gch .dshc-gs{font-size:11px;color:var(--dshc-t);white-space:nowrap}',
+  '.dshc-gc[data-kind=now]{border-color:color-mix(in srgb,var(--dshc-info) 60%,var(--dshc-border))}',
+  '.dshc-gc[data-kind=done],.dshc-gc[data-kind=dropped]{color:var(--dshc-s)}',
+  // The lines go over the boxes and under the steps.
+  '.dshc-gsvg{z-index:1}.dshc-gn{z-index:2}',
   '.dshc-gn[data-kind=now]{border-color:var(--dshc-info)}',
   '.dshc-gn[data-kind="needs you"]{border-color:var(--dshc-warn-mark);box-shadow:inset 0 0 0 1px var(--dshc-warn-mark)}',
   '.dshc-gn[data-kind=done],.dshc-gn[data-kind=dropped]{color:var(--dshc-s)}',
   '.dshc-gn[data-kind=dropped] .dshc-gt{text-decoration:line-through}',
   '.dshc-gn .dshc-cst{grid-row:1/3;align-self:center}',
   '.dshc-gn .dshc-gs{grid-column:2;font-size:11px;color:var(--dshc-t);font-weight:400}',
+  // Hover or focus a node: everything but it, its dependencies, its dependants and their edges dims.
+  '.dshc-gbox[data-focus] .dshc-gn:not([data-lit]),.dshc-gbox[data-focus] .dshc-gc:not([data-lit])>.dshc-gch{opacity:.3}',
+  '.dshc-gbox[data-focus] .dshc-gc:not([data-lit]){border-color:color-mix(in srgb,var(--dshc-border) 50%,transparent)}',
+  '.dshc-gbox[data-focus] .dshc-gsvg path:not([data-lit]){opacity:.15}',
+  '.dshc-gbox[data-focus] .dshc-gsvg path[data-lit]{stroke:var(--dshc-p);stroke-width:1.5}',
+  // The one thing that moves on the board: a lit dependency line's dashes run from the step that
+  // comes first to the step that waits for it (each path starts at its dependency, graphLayout),
+  // one dash period (7 px: "4 3") every 0.5 s. Off when the system asks for reduced motion.
+  '@keyframes dshc-flow{from{stroke-dashoffset:0}to{stroke-dashoffset:-7}}',
+  '.dshc-gbox[data-focus] .dshc-gsvg path[data-edge=depends][data-lit]{animation:dshc-flow .5s linear infinite}',
+  '@media (prefers-reduced-motion:reduce){.dshc-gbox[data-focus] .dshc-gsvg path[data-edge=depends][data-lit]{animation:none}}',
+  '.dshc-gbox[data-focus] .dshc-gn[data-lit=self],.dshc-gbox[data-focus] .dshc-gc[data-lit=self]{border-color:var(--dshc-p)}',
+  // The pinned node: an accent ring outside its border, so it reads as chosen, not only hovered.
+  '.dshc-gn[data-pin],.dshc-gc[data-pin]{outline:2px solid var(--dshc-info);outline-offset:1px}',
   '.dshc-glegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px;font-size:11px;line-height:16px;color:var(--dshc-s)}',
   '.dshc-glegend svg{vertical-align:middle;margin-right:4px}',
   // The sections line up with the header's text and the Needs you cards (12 px in).
@@ -182,10 +205,17 @@ const CSS = [
   '.dshc-mk[data-mark=waiting]{background:var(--dshc-mark)}',
   '.dshc-mk[data-mark=needs-you]{border-color:var(--dshc-warn-mark);background:var(--dshc-warn-mark)}',
   '.dshc-mk[data-mark=next]{border-color:var(--dshc-s)}',
+  // A next step's ring, as its bar segment's border: green when ready, dashed when blocked.
+  '.dshc-mk[data-mark=ready]{border-color:var(--dshc-ok-mark)}',
+  '.dshc-mk[data-mark=blocked]{border-style:dashed;border-color:var(--dshc-mark)}',
   '.dshc-mk[data-mark=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) center/6px 1.5px no-repeat}',
   '.dshc-ct{display:flex;align-items:flex-start;min-width:0}',
   '.dshc-indent{flex:none}',
+  // The elbow takes ELBOW_PX (2 + 8 + 6) before a nested title.
   '.dshc-elbow{flex:none;width:8px;height:8px;border-left:1px solid var(--dshc-mark);border-bottom:1px solid var(--dshc-mark);margin:4px 6px 0 2px}',
+  // A nested row's meta lines and detail start where its title text does: --dshc-in is the
+  // indent and the elbow before the title (TaskRow), so nothing under a title sticks out left of it.
+  '.dshc-row>.dshc-cmeta,.dshc-row>.dshc-detail{margin-left:var(--dshc-in,0px)}',
   '.dshc-closed .dshc-ct{color:var(--dshc-s)}',
   '.dshc-dropped .dshc-tt{text-decoration:line-through}',
   '.dshc-cpr{font-size:12px;color:var(--dshc-s);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px}',
@@ -197,7 +227,6 @@ const CSS = [
   // Tags as the host's Tag draws them: a pill with a tinted fill; the text colours keep the 4.5:1 mixes.
   '.dshc-tag{align-self:flex-start;display:inline-flex;align-items:center;border-radius:999px;corner-shape:round;padding:1px 8px;font-size:11px;font-weight:500;line-height:16px;white-space:nowrap}',
   '.dshc-tag-warn{color:var(--dshc-warn);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent)}',
-  '.dshc-tag-ok{color:var(--dshc-ok);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent)}',
   '.dshc-tag-quiet{color:var(--dshc-s);background:var(--dshc-l2)}',
   '.dshc-detail{grid-column:2/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--dshc-border);min-height:0}',
   '.dshc-detail dl{display:grid;grid-template-columns:80px minmax(0,1fr);column-gap:8px;row-gap:4px;margin:0 0 4px;font-size:12px;line-height:16px}',
@@ -555,15 +584,18 @@ function Problems({ list }) {
  * shaped like its bar segment so a row and the bar read the same: done the
  * host's filled step with its check, now a ring half filled (still: the
  * host's ongoing state is a spinner, and nothing on the board moves),
- * waiting filled grey (orange when it needs you), next an empty ring,
- * dropped a ring with a dash through it. Without the host, done is drawn too.
+ * waiting filled grey (orange when it needs you), next a ring that is green
+ * when ready and dashed when blocked, as its segment's border is, dropped a
+ * ring with a dash through it. Without the host, done is drawn too.
  */
-function Mark({ mark, needsYou }) {
+function Mark({ mark, needsYou, ready }) {
   const StateDot = primitives()?.StateDot
   if (mark === 'check' && typeof StateDot === 'function') return h(StateDot, { state: 'done', appearance: 'step', size: MARK_PX })
-  const kind = mark === 'check' ? 'done' : mark === 'ring' ? 'next' : mark === 'dash' ? 'dropped' : mark === 'dot-now' ? 'now' : needsYou ? 'needs-you' : 'waiting'
+  const kind = mark === 'check' ? 'done' : mark === 'ring' ? (ready === undefined ? 'next' : ready ? 'ready' : 'blocked') : mark === 'dash' ? 'dropped' : mark === 'dot-now' ? 'now' : needsYou ? 'needs-you' : 'waiting'
   return h('span', { className: 'dshc-mk', 'data-mark': kind, 'aria-hidden': true }, mark === 'check' ? checkIcon() : null)
 }
+/** The mark's word: the status, with ready or blocked for a next step, as its segment says. */
+const markWord = (status, ready) => (status === 'next' && ready !== undefined ? 'next · ' + (ready ? 'ready' : 'blocked') : status)
 /** Every status mark's box: the host StateDot step's own default size. */
 const MARK_PX = 12
 
@@ -644,7 +676,7 @@ function Meta({ c, bar, parent }) {
     lines.push(h('span', { key: 'b', className: 'dshc-block' }, lockIcon(),
       h('span', { className: 'dshc-wrap' }, h('b', null, 'Blocked by '), c.blockedBy.map((b, i) => h('span', { key: i }, i ? ', ' : '', h('b', { title: b.ref }, shortRef(b.ref, parent)), ' ', h('span', { className: 'dshc-st' }, '(' + b.status + ')'))))))
   }
-  if (c.ready) lines.push(tag('ready', 'dshc-tag-ok', 'ready'))
+  // No "ready" tag: a next row without "Blocked by" is ready; the bars and the key count it.
   c.problems.forEach((p, i) => lines.push(h('span', { key: 'f' + i, className: 'dshc-mprob' }, warnIcon(12), h('span', { className: 'dshc-wrap' }, p))))
   if (c.reported) lines.push(tag('drift', 'dshc-tag-quiet', c.reported.text, c.reported.note))
   return lines.length ? h('div', { className: 'dshc-cmeta' }, lines) : null
@@ -665,6 +697,15 @@ function Detail({ c, title }) {
     c.command ? h(CommandBox, { command: c.command, label: 'Copy command for ' + title }) : null)
 }
 
+/** For a next row that is not in Needs you: true when ready, false when blocked (its segment's kind); else undefined. */
+const nextReady = (row) => (row.status === 'next' && !row.needsYou ? row.ready === true : undefined)
+
+/** Each indent step, and the elbow with its margins (2 + 8 + 6), in px. */
+const INDENT_PX = 16
+const ELBOW_PX = 16
+/** The px before a row's title text in its cell: its indent, then its elbow. */
+const titleInset = (c) => (c.indent || 0) * INDENT_PX + (c.elbow ? ELBOW_PX : 0)
+
 function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView }) {
   const c = rowCells(row, flags)
   const id = boardKey + '\u0000' + row.item
@@ -674,11 +715,14 @@ function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView }) {
   const cls = 'dshc-li' + (c.parent ? ' dshc-parentrow' : '') + (row.closed ? ' dshc-closed' : '') + (row.dropped ? ' dshc-dropped' : '')
   // The step id and the status word, which have no column: in the title's and the mark's tooltips.
   const tip = (c.wrap ? '' : row.title + ' · ') + 'step ' + row.item
+  // Where the title's text starts in its cell: the meta lines and the detail start there too.
+  const inset = titleInset(c)
+  const style = { ...(c.expandable ? { cursor: 'pointer' } : {}), ...(inset ? { '--dshc-in': inset + 'px' } : {}) }
   return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
-    h('div', { className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined, onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: c.expandable ? { cursor: 'pointer' } : undefined },
-      c.parent ? null : h('span', { className: 'dshc-cst', role: 'img', 'aria-label': c.status, title: c.status }, c.mark ? h(Mark, { mark: c.mark, needsYou: c.needsYou }) : null),
+    h('div', { className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined, onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: Object.keys(style).length ? style : undefined },
+      c.parent ? null : h('span', { className: 'dshc-cst', role: 'img', 'aria-label': markWord(c.status, nextReady(row)), title: markWord(c.status, nextReady(row)) }, c.mark ? h(Mark, { mark: c.mark, needsYou: c.needsYou, ready: nextReady(row) }) : null),
       h('span', { className: 'dshc-ct' },
-        c.indent ? h('span', { className: 'dshc-indent', style: { width: c.indent * 16 } }) : null,
+        c.indent ? h('span', { className: 'dshc-indent', style: { width: c.indent * INDENT_PX } }) : null,
         c.elbow ? h('span', { className: 'dshc-elbow', 'aria-hidden': true }) : null,
         h(Title, { task, parent, url: row.issueUrl, className: c.wrap ? 'dshc-wrap' : 'dshc-trunc', plainTitle: tip })),
       c.parent ? h(Count, { progress: c.progress }) : h('span', { className: 'dshc-cpr' }, c.pr ? h(Link, { url: c.prUrl, title: row.pr }, c.pr) : null),
@@ -826,28 +870,61 @@ function GraphView({ board, rows, byItem, onOpen }) {
     const t = byItem.get(r.item) || {}
     return { item: r.item, parent: typeof t.parent === 'string' ? t.parent : undefined, dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn : [] }
   }), { width: px || 296 })
-  const hasDeps = layout.edges.some((e) => e.kind === 'depends')
-  const hasParents = layout.edges.some((e) => e.kind === 'parent')
-  return h('div', { className: 'dshc-graph', 'data-graph': '' },
-    hasDeps || hasParents ? h('div', { className: 'dshc-glegend' },
-      hasParents ? h('span', null, edgeKey('parent'), 'parent → step') : null,
-      hasDeps ? h('span', null, edgeKey('depends'), 'comes first → depends on it') : null) : null,
-    h('div', { ref, className: 'dshc-gbox', style: { height: layout.height } },
+  const hasDeps = layout.edges.length > 0
+  // The hovered (or keyboard-focused) node: it, its dependencies and its dependants stay lit, the rest dim.
+  // A click pins that highlight (pin); it stays when the pointer leaves, until the same node is
+  // clicked again, the background is clicked or Escape. While a node is pinned, hover changes nothing.
+  const [hover, setHover] = React.useState(null)
+  const [pin, setPin] = React.useState(null)
+  const focus = rowOf.has(pin) ? pin : rowOf.has(hover) ? hover : undefined
+  const lit = graphFocus(layout.edges, focus)
+  const enter = (item) => () => setHover(item)
+  const leave = (item) => () => setHover((h) => (h === item ? null : h))
+  const toggle = (item) => setPin((p) => (p === item ? null : item))
+  React.useEffect(() => {
+    if (pin === null || typeof document === 'undefined') return
+    const onKey = (e) => { if (e.key === 'Escape') setPin(null) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pin])
+  // A click anywhere in the graph that is not on a step or a box clears the pin.
+  const clear = (e) => { if (!(e.target && e.target.closest && e.target.closest('.dshc-gn,.dshc-gc'))) setPin(null) }
+  return h('div', { className: 'dshc-graph', 'data-graph': '', onClick: clear },
+    h('div', { className: 'dshc-glegend' },
+      hasDeps ? h('span', null, edgeKey('depends'), 'comes first → depends on it') : null,
+      h('span', { 'data-graph-hint': '' }, pin !== null && rowOf.has(pin) ? 'Pinned · click it again or Esc to clear · double-click to open in the list' : 'Click a step to keep its links lit · double-click to open it in the list')),
+    h('div', { ref, className: 'dshc-gbox', 'data-focus': lit ? '' : undefined, 'data-pinned': focus !== undefined && focus === pin ? '' : undefined, style: { height: layout.height } },
       h('svg', { className: 'dshc-gsvg', width: layout.width, height: layout.height, 'aria-hidden': true },
-        layout.edges.map((e) => h('path', { key: e.from + '>' + e.to + ':' + e.kind, d: e.d, 'data-edge': e.kind }))),
-      layout.nodes.map((n) => {
+        layout.edges.map((e) => h('path', { key: edgeId(e), d: e.d, 'data-edge': e.kind, 'data-lit': lit && lit.edges.has(edgeId(e)) ? '' : undefined }))),
+      // Boxes first (outer before inner), so each step is drawn over the box that holds it.
+      [...layout.nodes].sort((a, b) => (a.container === b.container ? 0 : a.container ? -1 : 1)).map((n) => {
         const row = rowOf.get(n.item)
         const kind = segmentKind(row)
         const line = nodeLine(row, kind)
+        const title = [titleParts(byItem.get(n.item) || {}, board.parent)].map((p) => [p.ref, p.what].filter(Boolean).join(' '))[0] || row.title
+        const mark = h('span', { className: 'dshc-cst', role: 'img', 'aria-label': markWord(row.status, nextReady(row)) }, h(Mark, { mark: STATUS_MARK[row.status], needsYou: row.needsYou, ready: nextReady(row) }))
+        const litAs = lit && lit.items.has(n.item) ? (n.item === focus ? 'self' : lit.dependencies.includes(n.item) ? 'dependency' : 'dependant') : undefined
+        const pinned = n.item === pin
+        const events = {
+          onPointerEnter: enter(n.item), onPointerLeave: leave(n.item), onFocus: enter(n.item), onBlur: leave(n.item),
+          onClick: (e) => { e.stopPropagation(); toggle(n.item) },
+          onDoubleClick: (e) => { e.stopPropagation(); setPin(null); if (onOpen) onOpen(n.item, e) },
+          'aria-pressed': pinned, 'data-pin': pinned ? '' : undefined,
+        }
+        if (n.container) {
+          // A parent: a box holding its steps, its header the parent's mark, title and count.
+          return h('div', {
+            key: n.item, className: 'dshc-gc', role: 'button', tabIndex: 0, 'data-item': n.item, 'data-kind': kind, 'data-lit': litAs,
+            style: { left: n.x, top: n.y, width: n.w, height: n.h }, title: row.title + ' · step ' + row.item + ' · ' + line, 'aria-label': row.title + ', ' + line,
+            ...events, onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(n.item) } },
+          }, h('span', { className: 'dshc-gch' }, mark, h('span', { className: 'dshc-trunc dshc-gt' }, title), h('span', { className: 'dshc-gs' }, line)))
+        }
         return h('button', {
-          key: n.item, type: 'button', className: 'dshc-gn', 'data-item': n.item, 'data-kind': kind, 'data-parent': row.progress ? '' : undefined,
+          key: n.item, type: 'button', className: 'dshc-gn', 'data-item': n.item, 'data-kind': kind,
+          'data-lit': litAs,
           style: { left: n.x, top: n.y, width: n.w, height: n.h },
-          title: row.title + ' · step ' + row.item + ' · ' + line,
-          onClick: (e) => onOpen && onOpen(n.item, e),
-        },
-        h('span', { className: 'dshc-cst', role: 'img', 'aria-label': row.status }, h(Mark, { mark: STATUS_MARK[row.status], needsYou: row.needsYou })),
-        h('span', { className: 'dshc-trunc dshc-gt' }, [titleParts(byItem.get(n.item) || {}, board.parent)].map((p) => [p.ref, p.what].filter(Boolean).join(' '))[0] || row.title),
-        h('span', { className: 'dshc-trunc dshc-gs' }, line))
+          title: row.title + ' · step ' + row.item + ' · ' + line, ...events,
+        }, mark, h('span', { className: 'dshc-trunc dshc-gt' }, title), h('span', { className: 'dshc-trunc dshc-gs' }, line))
       })))
 }
 
@@ -956,7 +1033,18 @@ function dockModel(view) {
 }
 
 /** The bar's width in the strip at its widest: its segments at 10 px with 1 px gaps, between 48 and 120 px; squeezed below that, it is the continuous fill. */
-const stripBarWidth = (bar) => Math.min(120, Math.max(48, segmentsNeed(bar.segments.length)))
+const stripBarWidth = (bar, stripWidth = 0) => {
+  const n = bar.segments.length
+  // A desktop strip (STRIP_WIDE px or more): about 28 px a segment, between 120 px and
+  // a quarter of the strip (at most 280 px); a continuous bar takes that most.
+  if (stripWidth >= STRIP_WIDE) {
+    const most = Math.max(120, Math.min(280, Math.floor(stripWidth / 4)))
+    return bar.continuous ? most : Math.min(most, Math.max(120, n * 28 + (n - 1) * SEG_GAP))
+  }
+  return bar.continuous ? 72 : Math.min(120, Math.max(48, segmentsNeed(n)))
+}
+/** The strip width from which its bar takes the desktop sizes. */
+const STRIP_WIDE = 640
 
 /**
  * The continuous bar: one run per state present (stackRuns), in whole pixels
@@ -1037,7 +1125,7 @@ function StripView({ m, openBoard }) {
       className: 'dshc-strip', role: 'button', tabIndex: 0, 'aria-label': m.line, title: m.tooltip, 'data-kind': m.kind, onClick: open(m.item),
       onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(m.item)() } },
     },
-      m.bar.total ? h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: m.bar.continuous ? 72 : stripBarWidth(m.bar), hasAlt: !m.bar.continuous }) : null,
+      m.bar.total ? h(Bar, { bar: m.bar, onSegment: (item) => open(item)(), width: stripBarWidth(m.bar, snap ? snap.width : 0), hasAlt: !m.bar.continuous }) : null,
       // The narrow strip's bar, shown by the container query instead of the segments.
       m.bar.total && !m.bar.continuous ? h(Bar, { bar: m.bar, fill: true, className: 'dshc-alt' }) : null,
       parts))
@@ -1154,4 +1242,4 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
