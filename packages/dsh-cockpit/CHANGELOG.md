@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0-rc.7
+
+- **Nested steps line up under their title.** On a step nested below another step, the lines under its title (next action, waiting on, blocked by, the ready and Needs you tags) and its opened detail (Reason, Model, the command) started at the row's left edge, left of the indented title. They now start where the title's text does, after its indent and elbow.
+- **Parents are boxes in the graph.** A parent is now a box that holds its steps, with its status mark, title and count in its header, instead of a node joined to its children by lines. Nested parents nest their boxes. Only dependencies are drawn as lines, so the graph has fewer lines to follow. A step that depends on a step inside another box sits below that whole box. Double-clicking a box or a step opens the list at that row.
+- **Click a step in the graph to keep its links lit.** A click keeps the hover highlight on that step (outlined in blue) after the pointer leaves, and hovering other steps leaves it alone. Click it again, click an empty spot or press Esc to clear it; clicking another step moves it. A double-click opens the list at the step, as a single click did before. Enter or Space on a focused step pins it too. A line under the dependency key says so.
+- **Lit lines show which way a dependency goes.** While a step is hovered or pinned, the dashes of its lit dependency lines run from the step that comes first toward the step that waits for it. Nothing else on the board moves, nothing moves when no step is lit, and with the system setting for reduced motion the lines stay still.
+- **Hover a step in the graph to see what it connects to.** In the graph view, pointing at a step (or tabbing to it) dims every other step except the ones it depends on and the ones that depend on it, one step each way, and keeps only their dependency lines bright. Parent lines are not followed. Moving away undims everything.
+- **A next step's mark matches its bar segment.** A step to do next that nothing blocks has a green ring, as its segment has a green border; one that waits on another step has a dashed grey ring, as its segment is dashed. Before, both were the same grey ring, so the row and the bar disagreed. The mark's tooltip says "next · ready" or "next · blocked". The graph's nodes use the same marks.
+- **No "ready" tag on the rows.** A step to do next that nothing blocks no longer carries a green "ready" tag: almost every such step had one, so it added noise. A step that is still waiting on another says "Blocked by …" as before. The bars and the Whole board key still count ready steps.
+- **A wider progress bar on the strip on desktop.** When the strip above the message box is 640 px or wider, its bar is about 28 px a step, at least 120 px and at most a quarter of the strip (280 px at most); a continuous bar takes that most. Before, it was 10 px a step, between 48 and 120 px, so a board with a few steps showed a 48 px bar. A narrower strip keeps the old sizes.
+- **Screenshots.** `board-tab.png` (no ready tag, the new marks) and `board-graph.png` (parents as boxes) are retaken.
+
 ## 0.6.0-rc.6
 
 - **Show or hide Needs you.** The **Needs you** title at the top of the Board tab is now a button: **Hide** folds the cards into one line with the count, **Show** opens them again. The choice is kept in this browser, across reloads and boards. A hidden section still shows its count, so a step that needs you stays in sight, and the rows and the strip still mark it.

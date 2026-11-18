@@ -10,7 +10,7 @@ A task board for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 - **An Inbox** for rough ideas noted for later, kept on the board but outside its steps until they are refined.
 - **The `cockpit-refine` and `cockpit-process` skills**, which turn ideas into requirements and discover the project development process.
 - **Per-project process map** in `.dsh/cockpit/process.yml`: ordered stages, exit checks, skills, and compact/expanded stage tracks on tasks.
-- **The Board tab** in the web GUI's right sidebar: whole-board progress with a count of each state, a "Needs you" list you can hide, separate sections for each top-level parent and its children, and a Standalone tasks section. Each parent has its own local progress. Each step shows its status mark, what is blocked or ready, and links to its PR and issue; hover a mark for its status and a title for the step id. It uses DSH's own icons and status marks, in the light and dark themes. A **Graph** view draws the same steps as a diagram of parents and dependencies.
+- **The Board tab** in the web GUI's right sidebar: whole-board progress with a count of each state, a "Needs you" list you can hide, separate sections for each top-level parent and its children, and a Standalone tasks section. Each parent has its own local progress. Each step shows its status mark, what blocks it, and links to its PR and issue; hover a mark for its status and a title for the step id. It uses DSH's own icons and status marks, in the light and dark themes. A **Graph** view draws the same steps as a diagram of parents and dependencies.
 - **A progress strip** above the chat input: how far the board is, and what is blocked or needs you.
 - **A card per board tool call** in the chat.
 - **A small reader** for scripts, with no DSH needed.
@@ -20,10 +20,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.6
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.7
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.6&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.7&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -91,7 +91,7 @@ On the Board tab, a refined or dropped item has **Clear**, which hides it from t
 
 ### Progress
 
-The strip above the message box shows progress across the whole board: one segment per leaf step (a step with no children), including standalone top-level steps. Parents are not counted again, so a completed group cannot hide a waiting step elsewhere on the board. Done and dropped are counted separately. The **Whole board** bar, the first card above the sections, uses the same counts as the strip, and both put their segments in the order the sections are drawn. It lines up with every parent's bar, and a key under it counts each state. A bar with too many steps for its width shows one run per state instead of its segments, so it still reads how much is done, moving, waiting and left. Below it, each top-level parent and its subtree occupy a separate bordered section; root steps without children appear under **Standalone tasks**. Each parent's local bar counts only its direct children, so its count can differ from the whole-board total. Above 24 leaf steps, the strip uses one continuous bar of those runs.
+The strip above the message box shows progress across the whole board: one segment per leaf step (a step with no children), including standalone top-level steps. Parents are not counted again, so a completed group cannot hide a waiting step elsewhere on the board. Done and dropped are counted separately. The **Whole board** bar, the first card above the sections, uses the same counts as the strip, and both put their segments in the order the sections are drawn. It lines up with every parent's bar, and a key under it counts each state. A bar with too many steps for its width shows one run per state instead of its segments, so it still reads how much is done, moving, waiting and left. Below it, each top-level parent and its subtree occupy a separate bordered section; root steps without children appear under **Standalone tasks**. Each parent's local bar counts only its direct children, so its count can differ from the whole-board total. Above 24 leaf steps, the strip uses one continuous bar of those runs. On a desktop-width strip the bar is wider, growing with the number of steps up to a quarter of the strip.
 
 ![Whole-board progress: 3 of 4 done, including a waiting standalone step outside the completed parent](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/strip-whole-board.png)
 
@@ -99,9 +99,9 @@ The strip above the message box shows progress across the whole board: one segme
 
 ### Graph view
 
-**List | Graph** above the steps switches to a diagram of the board: each step is a node with its status mark, a parent sits above its children (solid lines), and a step sits above the steps that depend on it (dashed lines). The diagram fits the tab's width, so it never scrolls sideways; a wide row of steps wraps. Click a node to go back to the list at that step.
+**List | Graph** above the steps switches to a diagram of the board: each parent is a box holding its steps, with its status mark, title and count in its header, and each step is a box with its status mark. A step sits below the steps it depends on, with a dashed line between them. The diagram fits the tab's width, so it never scrolls sideways; a wide row of steps wraps. Point at a step, or tab to it, to dim everything but that step, the steps it depends on and the steps that depend on it. Click a step or a box to keep that highlight while you move away; click it again, click an empty spot or press Esc to clear it. While a step is lit, the dashes on its lines run from the step that comes first toward the one that waits (still, if your system asks for reduced motion). Double-click to open the list at that step.
 
-![The Board tab's graph view: two parents above their steps, dependencies as dashed lines, the step that needs you outlined in orange, and the whole-board bar with its key above](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-graph.png)
+![The Board tab's graph view: each parent a box holding its steps, dependencies as dashed lines, the step that needs you outlined in orange, and the whole-board bar with its key above](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-graph.png)
 
 When a step needs you, the strip shows its next action. **Copy command** copies that step's `readyCommand`, and **Board ›** opens the Board tab.
 
