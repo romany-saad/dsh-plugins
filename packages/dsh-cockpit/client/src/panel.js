@@ -745,7 +745,54 @@ const ELBOW_PX = 16
 /** The px before a row's title text in its cell: its indent, then its elbow. */
 const titleInset = (c) => (c.indent || 0) * INDENT_PX + (c.elbow ? ELBOW_PX : 0)
 
-function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView, onGraph }) {
+// ---- The step's right-click menu: DSH's context menu, target kind STEP_TARGET ----
+// Every step (list rows, parent rows, graph nodes and boxes) opens DSH's shared menu through the
+// slot's useContextMenu prop. Other plugins add actions with ctx.contextMenus.register({ target:
+// 'dsh-cockpit.step', ... }) and get stepTarget's value, a fixed snapshot: a public contract.
+
+/** The context-menu target kind other plugins register against. */
+const STEP_TARGET = 'dsh-cockpit.step'
+
+/**
+ * The value a step's menu carries, captured when it opens (JSON only, no functions).
+ * { sessionId, boardKey, item, what, title, status, parent?, issue?, issueUrl?, pr?, prUrl?, readyCommand?, view }
+ */
+function stepTarget({ sessionId, boardKey, row, task, view }) {
+  const t = task || {}
+  const v = { sessionId, boardKey, item: row.item, what: String(t.what ?? row.what ?? ''), title: row.title, status: row.status, view }
+  if (typeof t.parent === 'string') v.parent = t.parent
+  const str = (x) => (typeof x === 'string' && x.trim() ? x.trim() : undefined)
+  if (str(t.issue)) v.issue = str(t.issue)
+  if (safeUrl(row.issueUrl)) v.issueUrl = row.issueUrl
+  if (str(t.pr)) v.pr = str(t.pr)
+  if (safeUrl(row.prUrl)) v.prUrl = row.prUrl
+  if (str(t.readyCommand)) v.readyCommand = str(t.readyCommand)
+  return { kind: STEP_TARGET, value: Object.freeze(v) }
+}
+
+/**
+ * Cockpit's own actions for one step: copy its title, its id and its ready command, and copy the
+ * links to its PR and issue. Copy only: the menu writes nothing to the board.
+ */
+function stepCopyActions(step, copy) {
+  const text = (id, label, value) => (value ? { id, label, run: () => copy(value, label) } : null)
+  const links = [
+    step.prUrl ? text('copy-pr-link', 'Copy PR link', step.prUrl) : null,
+    step.issueUrl ? text('copy-issue-link', 'Copy issue link', step.issueUrl) : null,
+  ].filter(Boolean)
+  const copies = [
+    text('copy-title', 'Copy title', step.title || step.what),
+    text('copy-id', 'Copy step id', step.item),
+    step.readyCommand ? text('copy-command', 'Copy ready command', step.readyCommand) : null,
+  ].filter(Boolean)
+  if (links.length) links[0] = { ...links[0], separatorBefore: true }
+  return [...copies, ...links]
+}
+
+/** The props that open a step's menu; none without the host's useContextMenu. */
+const menuProps = (menu, target, handlers) => (menu && typeof menu.getTriggerProps === 'function' ? menu.getTriggerProps(target, handlers) : handlers || {})
+
+function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView, onGraph, menu, sessionId }) {
   const c = rowCells(row, flags)
   const id = boardKey + '\u0000' + row.item
   const [open, setOpen] = React.useState(expanded.get(id) === true)
@@ -757,7 +804,9 @@ function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView, onGrap
   // Where the title's text starts in its cell: the meta lines and the detail start there too.
   const inset = titleInset(c)
   const style = { ...(c.expandable ? { cursor: 'pointer' } : {}), ...(inset ? { '--dshc-in': inset + 'px' } : {}) }
-  return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
+  // Right-click, Shift+F10 or the menu key on a row opens the step's menu (the target is read when it opens).
+  const trigger = menuProps(menu, () => stepTarget({ sessionId, boardKey, row, task, view: 'list' }))
+  return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls, onContextMenu: trigger.onContextMenu, onKeyDown: trigger.onKeyDown },
     h('div', {
       className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined,
       // A click opens the details; a double-click shows the step in the graph, selected. Its two
@@ -914,7 +963,7 @@ const edgeKey = (kind) => h('svg', { width: 22, height: 8, 'aria-hidden': true }
  * whole pixels (graphLayout), wrapping a wide layer, so it never scrolls
  * sideways. A node's click opens the list at its row.
  */
-function GraphView({ board, rows, byItem, onOpen, initialPin }) {
+function GraphView({ board, rows, byItem, onOpen, initialPin, menu, sessionId }) {
   const [ref, px] = useWholeWidth()
   const order = sectionOrder(rows)
   const rowOf = new Map(order.map((r) => [r.item, r]))
@@ -967,7 +1016,11 @@ function GraphView({ board, rows, byItem, onOpen, initialPin }) {
         const mark = h('span', { className: 'dshc-cst', role: 'img', 'aria-label': markWord(row.status, nextReady(row)) }, h(Mark, { mark: STATUS_MARK[row.status], needsYou: row.needsYou, ready: nextReady(row) }))
         const litAs = lit && lit.items.has(n.item) ? (n.item === focus ? 'self' : lit.dependencies.includes(n.item) ? 'dependency' : 'dependant') : undefined
         const pinned = n.item === pin
+        const target = () => stepTarget({ sessionId, boardKey: board.key, row, task: byItem.get(n.item), view: 'graph' })
+        // A box keeps Enter and Space for its pin; the menu's own keys (Shift+F10, the menu key) come after.
+        const trigger = menuProps(menu, target, n.container ? { onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(n.item) } } } : undefined)
         const events = {
+          onContextMenu: trigger.onContextMenu,
           onPointerEnter: enter(n.item), onPointerLeave: leave(n.item), onFocus: enter(n.item), onBlur: leave(n.item),
           onClick: (e) => { e.stopPropagation(); toggle(n.item) },
           onDoubleClick: (e) => { e.stopPropagation(); setPin(null); if (onOpen) onOpen(n.item, e) },
@@ -978,14 +1031,14 @@ function GraphView({ board, rows, byItem, onOpen, initialPin }) {
           return h('div', {
             key: n.item, className: 'dshc-gc', role: 'button', tabIndex: 0, 'data-item': n.item, 'data-kind': kind, 'data-lit': litAs,
             style: { left: n.x, top: n.y, width: n.w, height: n.h }, title: row.title + ' · step ' + row.item + ' · ' + line, 'aria-label': row.title + ', ' + line,
-            ...events, onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(n.item) } },
+            ...events, onKeyDown: trigger.onKeyDown,
           }, h('span', { className: 'dshc-gch' }, mark, h('span', { className: 'dshc-trunc dshc-gt' }, title), h('span', { className: 'dshc-gs' }, line)))
         }
         return h('button', {
           key: n.item, type: 'button', className: 'dshc-gn', 'data-item': n.item, 'data-kind': kind,
           'data-lit': litAs,
           style: { left: n.x, top: n.y, width: n.w, height: n.h },
-          title: row.title + ' · step ' + row.item + ' · ' + line, ...events,
+          title: row.title + ' · step ' + row.item + ' · ' + line, ...events, onKeyDown: trigger.onKeyDown,
         }, mark, h('span', { className: 'dshc-trunc dshc-gt' }, title), h('span', { className: 'dshc-trunc dshc-gs' }, line))
       })))
 }
@@ -1229,7 +1282,7 @@ function AgentsView({ sessionId, useSessions, useSessionStatus, agents }) {
 }
 
 /** The tab's body for one view answer (pure render; exported for tests). */
-function BoardView({ view, now, fill, agentProps }) {
+function BoardView({ view, now, fill, agentProps, menu, sessionId }) {
   if (!view.key) return h(Empty, { fill })
   if (!view.board) return h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error)
   const [expandedView, setExpandedView] = React.useState(false)
@@ -1272,7 +1325,7 @@ function BoardView({ view, now, fill, agentProps }) {
       : graph
       ? h('div', null,
         h('div', { className: 'dshc-groups', style: { paddingBottom: 0 } }, h(Overall, { overall })),
-        h(GraphView, { key: 'graph:' + (graphPin ?? ''), board, rows, byItem, initialPin: graphPin ?? undefined, onOpen: (item, e) => { setGraphPin(null); setFocus({ item, root: boardOf(e) }); setMode('list') } }))
+        h(GraphView, { key: 'graph:' + (graphPin ?? ''), board, rows, byItem, initialPin: graphPin ?? undefined, menu, sessionId, onOpen: (item, e) => { setGraphPin(null); setFocus({ item, root: boardOf(e) }); setMode('list') } }))
       : rows.length
       ? h('div', { className: 'dshc-groups' }, h(Overall, { key: 'overall', overall }), groups.map((g) => h('section', {
         key: (g.standalone ? 'standalone' : 'parent:') + g.item,
@@ -1282,7 +1335,7 @@ function BoardView({ view, now, fill, agentProps }) {
       h('ul', { className: 'dshc-tree', role: 'list' }, g.rows.map((row) => h(TaskRow, {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: row.depth === 0 && row.progress ? boardSegments(board, rows, row.item) : undefined,
-        expandedView, onGraph: toGraph,
+        expandedView, onGraph: toGraph, menu, sessionId,
       }))))))
       : h('p', { className: 'dshc-msg' }, inboxOf(board).length ? 'No tasks yet: refine Inbox items to add them.' : 'No tasks yet.'))
 }
@@ -1306,7 +1359,9 @@ function useShowRow(useTabInfo, ready, root) {
   }, [ready, item, revision])
 }
 
-function BoardBody({ sessionId, useTabInfo, useInput, inputActions, useSessions, useSessionStatus, agents }) {
+function BoardBody({ sessionId, useTabInfo, useInput, inputActions, useSessions, useSessionStatus, agents, useContextMenu }) {
+  // DSH's shared right-click menu (dsh-client-ui-context-menu), when the shell has it.
+  const menu = typeof useContextMenu === 'function' ? useContextMenu() : undefined
   useStyle()
   const { loading, view, error } = useView(sessionId)
   const fill = useFill(useInput, inputActions, Boolean(view && view.inboxSend))
@@ -1317,7 +1372,7 @@ function BoardBody({ sessionId, useTabInfo, useInput, inputActions, useSessions,
   if (loading) return wrap(h('p', { className: 'dshc-msg' }, 'Loading board…'))
   // A failed poll keeps the last view; only with none is the error shown.
   if (!view) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, 'Board unavailable: ' + error))
-  return wrap(h(BoardView, { view, now, fill, agentProps: { sessionId, useSessions, useSessionStatus, agents } }))
+  return wrap(h(BoardView, { view, now, fill, menu, sessionId, agentProps: { sessionId, useSessions, useSessionStatus, agents } }))
 }
 
 // ---- The progress strip above the chat input (conversation.input.dock) ----
@@ -1523,6 +1578,25 @@ function BoardToolRow(props) {
 const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'sessions', 'uiWorkspace']
 
 function apply(ctx) {
+  // The step menu's copy actions. They copy only: the board stays the agent's to write.
+  // A failed copy (no clipboard, or it refused) says so through the menu's toast.
+  // contextMenus is optional (ctx.inject runs this only while the service is there): without it the
+  // board has no right-click menu and works as before.
+  const copy = async (value, label) => {
+    const clip = typeof navigator !== 'undefined' ? navigator.clipboard : undefined
+    const result = await copyText(value, clip)
+    if (result !== 'copied') throw new Error(label + ' failed: the clipboard is not available')
+  }
+  if (typeof ctx.inject === 'function') {
+    ctx.inject(['contextMenus'], (menuCtx) => {
+      menuCtx.effect(() => menuCtx.contextMenus.register({
+        id: 'dsh-cockpit.copy',
+        target: STEP_TARGET,
+        order: 10,
+        resolve: (step) => stepCopyActions(step, copy).map((a) => ({ ...a, failureLabel: 'Could not copy: the clipboard is not available here.' })),
+      }), 'dsh-cockpit: step menu')
+    })
+  }
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: ID,
     kind: KIND,
@@ -1556,4 +1630,4 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, AgentsView, agentModel, agentModelText, agentCatalogOf, agentCatalogs, agentTreeCounts, agentBranchesToLoad, agentChatAddress, agentDurationText, agentTokenText, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, STEP_TARGET, stepTarget, stepCopyActions, AgentsView, agentModel, agentModelText, agentCatalogOf, agentCatalogs, agentTreeCounts, agentBranchesToLoad, agentChatAddress, agentDurationText, agentTokenText, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
