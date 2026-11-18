@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0-rc.8
+
+- **An Agents view.** The view switch on the Board tab is now **List | Graph | Agents**. Agents shows this session's subagents and the ones they started, at any depth, each under its parent, as DSH's subagent menu in the conversation header lists them: the same status dot (a spinner while it runs, green once it completed), label, task, mode, tokens and time, and under them the model it runs on and its effort ("claude-sonnet-5-5 · high"), updating live as they start and finish. A line at the top counts the whole tree ("3 running · 6 in all"); **Running** / **All** filters it, **Collapse all** / **Expand all** folds every branch, and the arrow on a row folds that one. Click a row to open that subagent, or the arrow at its end to open it in the sidebar. A board with no steps yet offers it too, beside **Steps**. The choice of view and of Running or All is kept in this browser.
+- **From the list back to the graph.** Double-click a step in the list, or a parent's row, to open the graph with that step selected, as if you had clicked it there: it and its direct links stay lit and it is scrolled into view. A double-click on a link, a button or the opened details does nothing. With a double-click from the graph opening the list at a step, you can now go both ways. Switching with **List | Graph** still opens the graph with nothing selected. Screenshots are unchanged: they show neither double-click.
+- **The Inbox is a card.** Its items and **Add item…** now sit in one bordered card, drawn like the step groups: a tinted header with the title, the open count and **Refine all**, the items as rows with dividers, and **Add item…** as the last row. Before, they sat loose between Needs you and the steps. Nothing it does changes. `board-tab.png` and `inbox-tab.png` are retaken.
+
 ## 0.6.0-rc.7
 
 - **Nested steps line up under their title.** On a step nested below another step, the lines under its title (next action, waiting on, blocked by, the ready and Needs you tags) and its opened detail (Reason, Model, the command) started at the row's left edge, left of the indented title. They now start where the title's text does, after its indent and elbow.
