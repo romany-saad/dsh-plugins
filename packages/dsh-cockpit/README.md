@@ -20,10 +20,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.7
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.8
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.7&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.8&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -97,9 +97,21 @@ The strip above the message box shows progress across the whole board: one segme
 
 **Needs you** at the top of the tab has **Hide** and **Show**; hidden, it keeps one line with the count. The choice is kept in this browser.
 
+### Agents view
+
+**Agents**, the third choice on the view switch, shows the agents working in this session: its subagents and the ones they started, each under its parent, with the same status dots, labels, tokens and time as DSH's subagent menu in the conversation header, and the model each one runs on with its effort, updating live.
+
+![The Agents view three levels deep: lead with researcher and analyst under it and fact-checker under researcher, builder with drafter, and checker, each with its model and effort, 0 running · 7 in all](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-agents.png)
+
+- The line at the top counts the whole tree, for example **3 running · 6 in all**. **Running** shows only the ones running now; **All** shows every one.
+- Every branch starts open. Fold one with its arrow, or every one with **Collapse all**.
+- Click a row to open that subagent in the conversation pane. The arrow at the end of a row opens its conversation in a sidebar tab of its own, beside the board, so you can read it without leaving this one.
+- The model line shows the model of the subagent's latest request and its reasoning effort, or the one it will use before its first request; it has none until DSH records one. The provider is in its tooltip.
+- Subagents can start their own, and those theirs, as deep as DSH allows: **Plugins → Subagent → Maximum recursion depth**, 1 by default, so out of the box the tree is one level deep. Raise it to see deeper trees.
+
 ### Graph view
 
-**List | Graph** above the steps switches to a diagram of the board: each parent is a box holding its steps, with its status mark, title and count in its header, and each step is a box with its status mark. A step sits below the steps it depends on, with a dashed line between them. The diagram fits the tab's width, so it never scrolls sideways; a wide row of steps wraps. Point at a step, or tab to it, to dim everything but that step, the steps it depends on and the steps that depend on it. Click a step or a box to keep that highlight while you move away; click it again, click an empty spot or press Esc to clear it. While a step is lit, the dashes on its lines run from the step that comes first toward the one that waits (still, if your system asks for reduced motion). Double-click to open the list at that step.
+**List | Graph** above the steps switches to a diagram of the board: each parent is a box holding its steps, with its status mark, title and count in its header, and each step is a box with its status mark. A step sits below the steps it depends on, with a dashed line between them. The diagram fits the tab's width, so it never scrolls sideways; a wide row of steps wraps. Point at a step, or tab to it, to dim everything but that step, the steps it depends on and the steps that depend on it. Click a step or a box to keep that highlight while you move away; click it again, click an empty spot or press Esc to clear it. While a step is lit, the dashes on its lines run from the step that comes first toward the one that waits (still, if your system asks for reduced motion). Double-click to open the list at that step; in the list, double-click a step to come back to the graph with it selected.
 
 ![The Board tab's graph view: each parent a box holding its steps, dependencies as dashed lines, the step that needs you outlined in orange, and the whole-board bar with its key above](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/board-graph.png)
 

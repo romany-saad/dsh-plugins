@@ -93,11 +93,13 @@ test('the bundle is what client/build.mjs builds from the sources', () => {
 
 /** apply() against a stub ctx: the tab, the slots and what openTab was asked. */
 function register(exports) {
-  const calls = { tabs: [], slots: [], opened: [] }
+  const calls = { tabs: [], slots: [], opened: [], sessions: [], aside: [], refresh: [] }
   exports.apply({
     effect: (fn) => fn(),
     sidebarRightTabs: { register: (d) => { calls.tabs.push(d); return () => {} } },
-    sidebarRight: { openTab: (kind, options) => { calls.opened.push([kind, options]) } },
+    sidebarRight: { openTab: (kind, options) => { calls.opened.push([kind, options]) }, openResource: (address, options) => calls.aside.push([address, options]) },
+    sessions: { refreshProjections: (id) => calls.refresh.push(id) },
+    uiWorkspace: { openSession: (address) => calls.sessions.push(address) },
     slots: { inject: (_name, fn) => fn(), register: (entry, Component) => { calls.slots.push({ entry, Component }); return () => {} } },
   })
   return calls
@@ -106,7 +108,7 @@ function register(exports) {
 test('the bundle registers the Board tab, the five tool cards and the strip; materializing it requires only react', () => {
   const { row, exports } = load()
   assert.equal(row.id, '@rs-dsh/dsh-cockpit')
-  assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight'])
+  assert.deepEqual([...exports.inject], ['slots', 'sidebarRightTabs', 'sidebarRight', 'sessions', 'uiWorkspace'], 'sessions and uiWorkspace for the Agents view')
   const calls = register(exports)
   assert.equal(calls.tabs.length, 1)
   assert.equal(calls.tabs[0].id, '@rs-dsh/dsh-cockpit')
@@ -116,7 +118,16 @@ test('the bundle registers the Board tab, the five tool cards and the strip; mat
     ['tool.call.toolview', 'board_open'], ['tool.call.toolview', 'board_read'], ['tool.call.toolview', 'board_add'], ['tool.call.toolview', 'board_update'], ['tool.call.toolview', 'board_inbox'], ['tool.call.toolview', 'board_process'],
     ['conversation.input.dock', 'dsh-cockpit-progress'],
   ])
-  assert.equal(JSON.stringify(calls.slots[0].entry.inject('s1')), '{"sessionId":"s1"}')
+  const tabProps = calls.slots[0].entry.inject('s1')
+  assert.equal(tabProps.sessionId, 's1')
+  // The Agents view's actions go where DSH's subagent dropdown sends them.
+  const address = { parentSessionId: 'root', childSessionId: 'a', mode: 'continuable' }
+  tabProps.agents.open(address)
+  tabProps.agents.aside(address)
+  tabProps.agents.refresh('a')
+  assert.equal(JSON.stringify(calls.sessions), JSON.stringify([address]))
+  assert.equal(JSON.stringify(calls.aside), JSON.stringify([['dsh-resource://subagentchat/session/a?parent=root&mode=continuable', { kind: 'subagentchat', preferNewPane: true }]]))
+  assert.equal(JSON.stringify(calls.refresh), '["a"]')
   const dock = calls.slots[7].entry
   assert.equal(dock.order, 30, 'after the Todo, Goal and Queue docks')
   const props = dock.inject('s1')
@@ -938,7 +949,7 @@ test('graphLayout: a parent is a box holding its steps; steps sit below what the
 test('the graph view: a List | Graph switch; parents as boxes with their steps inside; the overall bar above', () => {
   const { exports } = load({ prefs: { mode: 'graph' } })
   const flat = expandAll(exports.BoardView({ view: live, now: 0 }))
-  assert.deepEqual(flat.filter((n) => 'data-view' in n.props).map((n) => [n.props['data-view'], n.props['aria-pressed']]), [['list', false], ['graph', true]])
+  assert.deepEqual(flat.filter((n) => 'data-view' in n.props).map((n) => [n.props['data-view'], n.props['aria-pressed']]), [['list', false], ['graph', true], ['agents', false]])
   assert.ok(flat.some((n) => 'data-graph' in n.props))
   const boxes = flat.filter((n) => cls(n) === 'dshc-gc').map((n) => n.props['data-item'])
   const steps = flat.filter((n) => cls(n) === 'dshc-gn').map((n) => n.props['data-item'])
@@ -1179,4 +1190,196 @@ test('graph flow: a lit dependency line runs from the step that comes first to t
     const b = at[e.to]
     assert.ok(end[0] >= b.x && end[0] <= b.x + b.w && end[1] >= b.y && end[1] <= b.y + b.h, e.from + '>' + e.to + ' ends on the step that waits')
   }
+})
+
+test('list → graph: a double-click on a row opens the graph with that step pinned; links, buttons and the details do not', () => {
+  // State per component, by its key and hook order, as React keeps it: the graph and the list each keep their own.
+  const store = new Map()
+  let comp = 'BoardView'
+  let at = 0
+  const prefs = new Map()
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useState: (init) => { const k = comp + '#' + at++; if (!store.has(k)) store.set(k, typeof init === 'function' ? init() : init); return [store.get(k), (v) => store.set(k, typeof v === 'function' ? v(store.get(k)) : v)] },
+    useRef: (v) => ({ current: v }), useEffect: () => {}, useLayoutEffect: () => {}, useMemo: (fn) => fn(),
+  }
+  let row
+  vm.runInNewContext(code, { window: { __ModuleLoader__: { load: (r) => { row = r } } }, localStorage: { getItem: (k) => prefs.get(k) ?? null, setItem: (k, v) => prefs.set(k, v) } })
+  const ex = row.factory((name) => { if (name === 'react') return React; throw new Error(name) })
+  const view = { key: 'g', board: { key: 'g', tasks: [
+    { item: 'p', what: 'Parent', status: 'now' },
+    { item: 'a', what: 'A', status: 'done', parent: 'p' }, { item: 'b', what: 'B', status: 'now', parent: 'p', dependsOn: ['a'] },
+    { item: 'c', what: 'C', status: 'next', parent: 'p', dependsOn: ['b'] },
+  ] } }
+  // Expand the tree, giving each function component its own state slots.
+  const render = () => {
+    const out = []
+    const walk = (n) => {
+      if (!n || typeof n !== 'object') return
+      if (Array.isArray(n)) return n.forEach(walk)
+      if (typeof n.type === 'function') {
+        const saved = [comp, at]
+        comp = (n.type.name || 'fn') + ':' + (n.props.key ?? n.props['data-item'] ?? n.props.row?.item ?? ''); at = 0
+        const child = n.type({ ...n.props, children: n.children.length ? n.children : n.props.children })
+        ;[comp, at] = saved
+        return walk(child)
+      }
+      out.push(n); walk(n.children)
+    }
+    comp = 'BoardView'; at = 0
+    walk(ex.BoardView({ view, now: 0 }))
+    return out
+  }
+  const rowOf = (all, item) => all.find((n) => n.type === 'li' && n.props['data-item'] === item).children.find((n) => n && cls(n) === 'dshc-row')
+  const pressed = (all) => all.find((n) => n.props['data-view'] && n.props['aria-pressed'] === true)?.props['data-view']
+  let all = render()
+  assert.equal(pressed(all), 'list')
+  const target = (inLink) => ({ closest: (s) => (inLink && /a,button/.test(s) ? {} : null) })
+  rowOf(all, 'b').props.onDoubleClick({ target: target(true) })
+  assert.equal(pressed(render()), 'list', 'a double-click on a link or a button stays in the list')
+  all = render()
+  assert.match(rowOf(all, 'b').props.title, /Double-click to show in the graph/)
+  rowOf(all, 'b').props.onDoubleClick({ target: target(false) })
+  all = render()
+  assert.equal(pressed(all), 'graph', 'the graph opens')
+  const lit = all.filter((n) => (cls(n) === 'dshc-gn' || cls(n) === 'dshc-gc') && n.props['data-lit']).map((n) => n.props['data-item'] + ':' + n.props['data-lit'])
+  assert.deepEqual(lit, ['a:dependency', 'b:self', 'c:dependant'], 'with b selected and its links lit')
+  assert.notEqual(all.find((n) => cls(n) === 'dshc-gn' && n.props['data-item'] === 'b').props['data-pin'], undefined)
+  // The List | Graph switch starts the graph with nothing pinned.
+  all.find((n) => n.props['data-view'] === 'list').props.onClick()
+  render().find((n) => n.props['data-view'] === 'graph').props.onClick()
+  all = render()
+  assert.ok(!all.some((n) => n.props['data-pin'] !== undefined), 'nothing pinned from the switch')
+  // A parent row works too.
+  all.find((n) => n.props['data-view'] === 'list').props.onClick()
+  all = render()
+  rowOf(all, 'p').props.onDoubleClick({ target: target(false) })
+  all = render()
+  assert.notEqual(all.find((n) => cls(n) === 'dshc-gc' && n.props['data-item'] === 'p').props['data-pin'], undefined, 'a parent row selects its box')
+})
+
+test('the Inbox is one card: a tinted header, the items as rows, and Add item… as its last row', () => {
+  const view = { key: 'k', board: { key: 'k', tasks: [{ item: '1', what: 'one', status: 'next' }],
+    inbox: [{ id: 'i1', text: 'an idea', state: 'open' }, { id: 'i2', text: 'refined one', state: 'refined', refinedInto: ['1'] }] } }
+  const { exports } = load()
+  const fill = () => 'filled'
+  const all = expandAll(exports.BoardView({ view, now: 0, fill }))
+  const sec = all.find((n) => 'data-inbox' in n.props)
+  const card = sec.children.flat().find((n) => n && cls(n) === 'dshc-ibcard')
+  assert.ok(card, 'the section holds one card')
+  const kids = card.children.flat().filter(Boolean)
+  assert.deepEqual(kids.map((n) => (typeof n.type === 'function' ? n.type.name : cls(n))), ['dshc-sech', 'dshc-ib', 'InboxAdd'], 'header, items, Add item…')
+  const css = exports.CSS
+  assert.match(css, /\.dshc-ibcard\{border:\.5px solid var\(--dsw-alias-border-l3,var\(--dshc-border\)\);border-radius:var\(--dsw-radius-md,8px\);overflow:hidden\}/, 'drawn like a step group')
+  assert.match(css, /\.dshc-inbox \.dshc-sech\{[^}]*background:var\(--dshc-l1\);border-bottom:1px solid var\(--dshc-border\)\}/, 'its header tinted like a group title')
+  assert.match(css, /\.dshc-ibcard>\.dshc-ibadd\{margin:0;[^}]*border-top:1px solid var\(--dshc-border\)\}/, 'Add item… is the card\'s last row')
+  assert.match(css, /\.dshc-empty \.dshc-ibadd\{/, 'the empty tab keeps its own Add item…')
+})
+
+// ---- The Agents view: the session's subagents and theirs, as DSH's header dropdown lists them ----
+
+/** Stand-in Session state: root's catalog lists a (running), b and c; a's lists a1; b and c none. */
+function agentState({ nested = true, running = ['a'], empty = false } = {}) {
+  const byId = {
+    root: { id: 'root' },
+    a: { id: 'a', running: running.includes('a'), title: 'Survey', projectionValues: { tokenUsage: { uncachedInputTokens: 1000, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 } } },
+    b: { id: 'b', running: running.includes('b'), projectionValues: { subagentTiming: { settledMs: 65000, lastTurnCompleted: true } } },
+    c: { id: 'c', running: running.includes('c') },
+    a1: { id: 'a1', running: running.includes('a1') },
+  }
+  const projectionsBySession = { root: { state: 'ready', values: { subagentCatalog: empty ? [] : [
+    { id: 'a', label: 'explorer', mode: 'continuable' }, { id: 'b', label: 'reviewer', mode: 'one-shot' }, { id: 'c', label: 'tester', mode: 'continuable' },
+  ] } } }
+  if (nested) {
+    projectionsBySession.a = { state: 'ready', values: { subagentCatalog: [{ id: 'a1', label: 'helper', mode: 'one-shot' }] } }
+    projectionsBySession.b = { state: 'ready', values: { subagentCatalog: [] } }
+    projectionsBySession.c = { state: 'ready', values: { subagentCatalog: [] } }
+    projectionsBySession.a1 = { state: 'ready', values: { subagentCatalog: [] } }
+    // a ran on Sonnet at high effort; b's first request is still to come, so only its next selection is known.
+    projectionsBySession.a.values.modelSelection = { lastUsed: { provider: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high' }, next: null }
+    projectionsBySession.b.values.modelSelection = { lastUsed: null, next: { provider: 'codex', model: 'gpt-6.1-sol' } }
+  }
+  return { byId, projectionsBySession }
+}
+function agentsView(opts = {}, prefs) {
+  const { exports } = load({ prefs })
+  const st = agentState(opts)
+  const calls = { open: [], aside: [], refresh: [] }
+  const agents = { open: (a) => calls.open.push(a), aside: (a) => calls.aside.push(a), refresh: (id) => calls.refresh.push(id) }
+  const all = expandAll(exports.AgentsView({ sessionId: 'root', useSessions: (sel) => sel(st), useSessionStatus: (sel) => sel(new Map()), agents }))
+  return { exports, all, calls }
+}
+const agentRows = (all) => all.filter((n) => n.props.role === 'treeitem').map((n) => n.props['aria-label'].split(' ')[0])
+
+test('the view switch is List | Graph | Agents, and Agents shows the session\'s subagent tree', () => {
+  const { exports } = load({ prefs: { mode: 'agents' } })
+  const st = agentState()
+  const flat = expandAll(exports.BoardView({ view: live, now: 0, agentProps: { sessionId: 'root', useSessions: (sel) => sel(st), useSessionStatus: (sel) => sel(new Map()), agents: {} } }))
+  assert.deepEqual(flat.filter((n) => 'data-view' in n.props).map((n) => [n.props['data-view'], n.props['aria-pressed'], textOf(n)]), [['list', false, 'List'], ['graph', false, 'Graph'], ['agents', true, 'Agents']])
+  assert.ok(flat.some((n) => 'data-agents' in n.props), 'the Agents view')
+  assert.ok(!flat.some((n) => cls(n).startsWith('dshc-li')), 'no step rows')
+  assert.ok(!flat.some((n) => 'data-graph' in n.props), 'no graph')
+  // A board with no steps yet still offers Agents.
+  const bare = expandAll(exports.BoardView({ view: { key: 'k', board: { key: 'k', tasks: [] } }, now: 0, agentProps: {} }))
+  assert.deepEqual(bare.filter((n) => 'data-view' in n.props).map((n) => n.props['data-view']), ['list', 'agents'])
+})
+
+test('Agents: the whole tree with the dropdown\'s rows, statuses, tokens and time', () => {
+  const { all } = agentsView()
+  assert.deepEqual(agentRows(all), ['explorer', 'helper', 'reviewer', 'tester'], 'every branch open, a child under its parent')
+  const row = (label) => all.find((n) => n.props.role === 'treeitem' && n.props['aria-label'].startsWith(label + ' '))
+  assert.match(row('explorer').props['aria-label'], /^explorer Survey · continuable · running claude-sonnet-5-5 · high 1\.2K tok$/)
+  assert.match(row('reviewer').props['aria-label'], /^reviewer one-shot · completed gpt-6\.1-sol 1m 05s$/)
+  assert.match(row('tester').props['aria-label'], /^tester continuable · not running$/)
+  assert.deepEqual(all.filter((n) => n.type === 'li' && n.props['data-agent']).map((n) => [n.props['data-agent'], n.props['data-state']]),
+    [['a', 'ongoing'], ['a1', 'idle'], ['b', 'done'], ['c', 'idle']], 'the dropdown\'s three states')
+  assert.equal(textOf(all.find((n) => 'data-agents-summary' in n.props)), '1 running · 4 in all', 'counts the whole tree')
+})
+
+test('Agents: the root and each branch are asked for once; actions open as the dropdown does', () => {
+  const { all, calls, exports } = agentsView({ nested: false })
+  // What the view's effect asks for (the stub React runs no effects, so the rule is tested directly).
+  const cats = (o) => exports.agentCatalogs(agentState(o).projectionsBySession, {}, new Map())
+  assert.deepEqual(J(exports.agentBranchesToLoad('root', cats({ nested: false }), new Set(), new Set())), ['a', 'b', 'c'], 'each branch of a loaded root')
+  assert.deepEqual(J(exports.agentBranchesToLoad('root', cats({ nested: false }), new Set(['a']), new Set(['b']))), ['c'], 'not one already asked for, not a collapsed one')
+  assert.deepEqual(J(exports.agentBranchesToLoad('root', cats({ nested: true }), new Set(), new Set())), [], 'every branch loaded: nothing more')
+  assert.deepEqual(J(exports.agentBranchesToLoad('root', {}, new Set(), new Set())), [], 'no root catalog yet: the root is asked for on its own')
+  const row = all.find((n) => n.props.role === 'treeitem')
+  row.props.onClick()
+  assert.equal(JSON.stringify(calls.open), JSON.stringify([{ parentSessionId: 'root', childSessionId: 'a', mode: 'continuable' }]))
+  all.find((n) => cls(n) === 'dshc-agaside').props.onClick({ stopPropagation() {} })
+  assert.equal(calls.aside.length, 1)
+  assert.equal(exports.agentChatAddress({ parentSessionId: 'a', childSessionId: 'a1', mode: 'one-shot' }), 'dsh-resource://subagentchat/session/a1?parent=a&mode=one-shot')
+  assert.equal(exports.agentChatAddress({ parentSessionId: 'p q&r', childSessionId: 'x y', mode: 'continuable' }), 'dsh-resource://subagentchat/session/x%20y?parent=' + new URLSearchParams({ parent: 'p q&r' }).toString().slice(7) + '&mode=continuable', 'the same query as URLSearchParams')
+})
+
+test('Agents: Running keeps the ones running now; the choice is kept; no subagents says so', () => {
+  const running = agentsView({}, { agentsFilter: 'running' })
+  assert.deepEqual(agentRows(running.all), ['explorer'], 'a runs; its helper and the others do not')
+  assert.equal(running.all.find((n) => n.props['data-agents-filter'] === 'running').props['aria-pressed'], true)
+  const none = agentsView({ running: [] }, { agentsFilter: 'running' })
+  assert.match(textOf(none.all.find((n) => 'data-agents' in n.props)), /No subagents are running\./)
+  const empty = agentsView({ empty: true })
+  assert.ok(empty.all.some((n) => 'data-empty' in n.props))
+  assert.match(textOf(empty.all.find((n) => 'data-empty' in n.props)), /No subagents in this session yet/)
+  assert.ok(!empty.all.some((n) => n.props.role === 'treeitem'))
+})
+
+test('Agents: the time and token text match the dropdown\'s', () => {
+  const { exports } = load()
+  assert.deepEqual([999, 1200, 15600, 2400000].map(exports.agentTokenText), ['999 tok', '1.2K tok', '15.6K tok', '2.4M tok'])
+  assert.deepEqual([4000, 65000, 3725000, 90000000].map(exports.agentDurationText), ['4s', '1m 05s', '1h 02m 05s', '1d 1h'])
+})
+
+test('Agents: each subagent\'s model and effort, from its own modelSelection, as DSH\'s agent-team rows read it', () => {
+  const { all, exports } = agentsView()
+  const model = (id) => { const li = all.find((n) => n.type === 'li' && n.props['data-agent'] === id); const m = expandAll(li).find((n) => 'data-agent-model' in n.props && expandAll(n).length); return m ? textOf(m) : undefined }
+  // Only a row's own line: the first model line inside its li belongs to it.
+  assert.equal(model('a'), 'claude-sonnet-5-5 · high', 'the latest request\'s model and effort')
+  assert.equal(model('b'), 'gpt-6.1-sol', 'before its first request: the next selection; no effort, none shown')
+  assert.equal(model('c'), undefined, 'no selection recorded: no model line')
+  assert.equal(all.find((n) => 'data-agent-model' in n.props).props.title, 'claude · claude-sonnet-5-5 · high', 'the provider in the tooltip')
+  assert.equal(exports.agentModel(undefined), undefined)
+  assert.equal(exports.agentModel({ values: { modelSelection: { lastUsed: { model: '' }, next: null } } }), undefined)
+  assert.equal(JSON.stringify(exports.agentModel({ values: { modelSelection: { lastUsed: null, next: { provider: 'p', model: 'm', reasoningEffort: 'low' } } } })), '{"model":"m","effort":"low","provider":"p"}')
 })

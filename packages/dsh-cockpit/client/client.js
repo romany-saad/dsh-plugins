@@ -1372,6 +1372,37 @@ const CSS = [
   '.dshc-gbox[data-focus] .dshc-gn[data-lit=self],.dshc-gbox[data-focus] .dshc-gc[data-lit=self]{border-color:var(--dshc-p)}',
   // The pinned node: an accent ring outside its border, so it reads as chosen, not only hovered.
   '.dshc-gn[data-pin],.dshc-gc[data-pin]{outline:2px solid var(--dshc-info);outline-offset:1px}',
+  // The Agents view: the session's subagent tree as DSH's header dropdown draws it (ui-subagent's
+  // CatalogDropdown rows: disclosure, status dot, label over its summary, tokens over time, open aside).
+  '.dshc-agents{padding:8px 12px 12px}',
+  '.dshc-aghead{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px;margin-bottom:6px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-agsum{display:inline-flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.dshc-agtools{display:inline-flex;align-items:center;gap:6px;flex:none}',
+  '.dshc-agtree,.dshc-agkids{list-style:none;margin:0;padding:0}',
+  '.dshc-agbox{border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-md,8px);padding:4px}',
+  '.dshc-agkids{margin-left:16px;padding-left:3px;border-left:.5px solid var(--dsw-alias-border-l2,var(--dshc-border))}',
+  '.dshc-agrow{display:flex;align-items:flex-start;gap:6px;width:100%;min-height:40px;padding:5px 4px 5px 6px;border:0;border-radius:var(--dsw-radius-md,8px);background:none;font:inherit;font-size:12px;line-height:17px;color:var(--dshc-p);text-align:left;cursor:pointer}',
+  '.dshc-agrow:hover,.dshc-agrow:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:none}',
+  '.dshc-agrow[aria-disabled=true]{cursor:default}',
+  '.dshc-agdisc,.dshc-agdisc-space{flex:none;width:14px;height:17px}',
+  '.dshc-agdisc{display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:var(--dshc-t);cursor:pointer}',
+  '.dshc-agdisc:hover{color:var(--dshc-p)}',
+  '.dshc-agdot{flex:none;display:inline-flex;align-items:center;justify-content:center;width:14px;height:17px}',
+  '.dshc-agtext{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}',
+  '.dshc-aglabel,.dshc-agline{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dshc-agline,.dshc-agmetrics{font-size:11px;line-height:15px;color:var(--dshc-t)}',
+  '.dshc-agmodel{font-family:' + MONO + ';font-variant-ligatures:none}',
+  '.dshc-agmetrics{flex:none;display:grid;grid-template-rows:17px 15px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}',
+  '.dshc-agmetrics>:first-child{line-height:17px}',
+  '.dshc-agaside,.dshc-agaside-space{flex:none;width:24px;height:24px;margin-top:2px}',
+  '.dshc-agaside{display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:var(--dsw-radius-sm,6px);background:none;color:var(--dshc-t);cursor:pointer}',
+  '.dshc-agaside:hover,.dshc-agaside:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dshc-p)}',
+  '.dshc-agnote{padding:8px 10px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  '.dshc-agnote[data-kind=error]{color:var(--dshc-err)}',
+  // The drawn dots, when the host has no StateDot: running a ring with a quarter of the accent, done green, idle grey.
+  '.dshc-agmk{box-sizing:border-box;display:inline-block;width:8px;height:8px;border-radius:50%;corner-shape:round;background:var(--dshc-mark)}',
+  '.dshc-agmk[data-state=done]{background:var(--dshc-ok-mark)}',
+  '.dshc-agmk[data-state=ongoing]{width:10px;height:10px;background:none;border:1.5px solid var(--dshc-border);border-top-color:var(--dshc-info)}',
   '.dshc-glegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px;font-size:11px;line-height:16px;color:var(--dshc-s)}',
   '.dshc-glegend svg{vertical-align:middle;margin-right:4px}',
   // The sections line up with the header's text and the Needs you cards (12 px in).
@@ -1465,16 +1496,24 @@ const CSS = [
   '.dshc-run[data-run=dropped]{background:linear-gradient(var(--dshc-mark),var(--dshc-mark)) 0 ' + (SEG_HEIGHT / 2 - 1) + 'px/100% 1px no-repeat,var(--dshc-l2)}',
   '.dshc-legend .dshc-run[data-run=dropped]{box-shadow:inset 0 0 0 1px var(--dshc-mark)}',
   // The Inbox: rough items for later, outside the tree. Its buttons fill the message box; they write nothing.
-  '.dshc-inbox .dshc-sech{justify-content:space-between}',
+  // The Inbox is one card, as the step groups are: a tinted header with its title, count and
+  // Refine all, the items as rows with dividers, and Add item… as the card's last row.
+  '.dshc-inbox{padding:8px 12px 10px}',
+  '.dshc-ibcard{border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));border-radius:var(--dsw-radius-md,8px);overflow:hidden}',
+  '.dshc-inbox .dshc-sech{justify-content:space-between;margin:0;min-height:30px;padding:4px 6px 4px 10px;background:var(--dshc-l1);border-bottom:1px solid var(--dshc-border)}',
+  '.dshc-inbox .dshc-sech:last-child{border-bottom:0}',
   '.dshc-inbox-n{color:var(--dshc-t);font-weight:400}',
   '.dshc-ib{list-style:none;margin:0;padding:0}',
-  '.dshc-ibi{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:start;padding:5px 0;border-top:1px solid var(--dshc-border)}',
+  '.dshc-ibi{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:start;padding:6px 6px 6px 10px;border-top:1px solid var(--dshc-border)}',
   '.dshc-ibi:first-child{border-top:0}',
+  '.dshc-ibcard>.dshc-ibadd{margin:0;padding:6px 6px 6px 10px;border-top:1px solid var(--dshc-border)}',
+  '.dshc-ibcard>.dshc-sech+.dshc-ibadd{border-top:0}',
   '.dshc-ibt{grid-column:1;grid-row:1;font-size:13px;line-height:20px;overflow-wrap:anywhere;min-width:0}',
   '.dshc-ibm{grid-column:1/2;display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
   '.dshc-ibi[data-state=dropped] .dshc-ibt{text-decoration:line-through;color:var(--dshc-s)}',
   '.dshc-ibi[data-state=refined] .dshc-ibt{color:var(--dshc-s)}',
   '.dshc-ibi>.dshc-btn,.dshc-ibi>.dshc-ibsp{grid-column:2;grid-row:1}',
+  '.dshc-inbox>.dshc-ibnote{margin:6px 0 0 2px}',
   '.dshc-ibadd{display:flex;gap:6px;margin-top:6px}',
   '.dshc-ibadd input{flex:1 1 auto;min-width:0;height:24px;padding:0 8px;border-radius:var(--dsw-radius-sm,6px);border:.5px solid var(--dsw-alias-border-l3,var(--dshc-border));background:var(--dshc-l0);color:var(--dshc-p);font:inherit;font-size:12px}',
   '.dshc-ibadd input::placeholder{color:var(--dshc-t)}',
@@ -1907,7 +1946,7 @@ const ELBOW_PX = 16
 /** The px before a row's title text in its cell: its indent, then its elbow. */
 const titleInset = (c) => (c.indent || 0) * INDENT_PX + (c.elbow ? ELBOW_PX : 0)
 
-function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView }) {
+function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView, onGraph }) {
   const c = rowCells(row, flags)
   const id = boardKey + '\u0000' + row.item
   const [open, setOpen] = React.useState(expanded.get(id) === true)
@@ -1920,7 +1959,19 @@ function TaskRow({ boardKey, parent, row, task, flags, bar, expandedView }) {
   const inset = titleInset(c)
   const style = { ...(c.expandable ? { cursor: 'pointer' } : {}), ...(inset ? { '--dshc-in': inset + 'px' } : {}) }
   return h('li', { 'data-item': row.item, 'data-status': row.status, tabIndex: -1, className: cls },
-    h('div', { className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined, onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined, style: Object.keys(style).length ? style : undefined },
+    h('div', {
+      className: 'dshc-row', 'data-expandable': c.expandable ? '' : undefined,
+      // A click opens the details; a double-click shows the step in the graph, selected. Its two
+      // clicks have already toggled the details twice, so they end as they were.
+      onClick: c.expandable ? (e) => { if (!e.target.closest || !e.target.closest('a,button,[data-segment],[data-detail]')) toggle() } : undefined,
+      onDoubleClick: onGraph ? (e) => {
+        if (e.target.closest && e.target.closest('a,button,[data-segment],[data-detail],[data-command-box]')) return
+        if (typeof getSelection === 'function') getSelection()?.removeAllRanges()
+        onGraph(row.item)
+      } : undefined,
+      title: onGraph ? 'Double-click to show in the graph' : undefined,
+      style: Object.keys(style).length ? style : undefined,
+    },
       c.parent ? null : h('span', { className: 'dshc-cst', role: 'img', 'aria-label': markWord(c.status, nextReady(row)), title: markWord(c.status, nextReady(row)) }, c.mark ? h(Mark, { mark: c.mark, needsYou: c.needsYou, ready: nextReady(row) }) : null),
       h('span', { className: 'dshc-ct' },
         c.indent ? h('span', { className: 'dshc-indent', style: { width: c.indent * INDENT_PX } }) : null,
@@ -2025,6 +2076,7 @@ function Inbox({ board, fill }) {
   const open = openInbox(items)
   const act = (text) => setResult(fill(text, { send: true }))
   return h('section', { className: 'dshc-sec dshc-inbox', 'data-inbox': '', 'aria-label': 'Inbox' },
+    h('div', { className: 'dshc-ibcard' },
     h('div', { className: 'dshc-sech' },
       h('span', null, 'Inbox ', h('span', { className: 'dshc-inbox-n' }, open.length ? open.length + ' open' : '')),
       fill && open.length > 1 ? h('button', { type: 'button', className: 'dshc-btn', onClick: () => act(inboxPrompts.refine([])), title: 'Ask the agent to refine every open item' }, 'Refine all') : null),
@@ -2041,7 +2093,7 @@ function Inbox({ board, fill }) {
           meta.length ? h('span', { className: 'dshc-ibm' }, meta.map((m, i) => h('span', { key: i }, m))) : null)
       }))
       : null,
-    fill ? h(InboxAdd, { fill, onResult: setResult }) : null,
+    fill ? h(InboxAdd, { fill, onResult: setResult }) : null),
     h(FillNote, { result }))
 }
 
@@ -2063,7 +2115,7 @@ const edgeKey = (kind) => h('svg', { width: 22, height: 8, 'aria-hidden': true }
  * whole pixels (graphLayout), wrapping a wide layer, so it never scrolls
  * sideways. A node's click opens the list at its row.
  */
-function GraphView({ board, rows, byItem, onOpen }) {
+function GraphView({ board, rows, byItem, onOpen, initialPin }) {
   const [ref, px] = useWholeWidth()
   const order = sectionOrder(rows)
   const rowOf = new Map(order.map((r) => [r.item, r]))
@@ -2076,7 +2128,17 @@ function GraphView({ board, rows, byItem, onOpen }) {
   // A click pins that highlight (pin); it stays when the pointer leaves, until the same node is
   // clicked again, the background is clicked or Escape. While a node is pinned, hover changes nothing.
   const [hover, setHover] = React.useState(null)
-  const [pin, setPin] = React.useState(null)
+  // A double-click on a list row opens the graph with that step already pinned (initialPin).
+  const [pin, setPin] = React.useState(initialPin === undefined ? null : initialPin)
+  // Bring the pinned step into view once its node is drawn (the box is measured first).
+  const shown = React.useRef(false)
+  React.useEffect(() => {
+    if (shown.current || initialPin === undefined || initialPin === null || !px || !ref.current || typeof ref.current.querySelector !== 'function') return
+    const el = ref.current.querySelector('[data-item="' + String(initialPin).replace(/["\\]/g, '\\$&') + '"]')
+    if (!el) return
+    shown.current = true
+    el.scrollIntoView({ block: 'center' })
+  }, [px, initialPin])
   const focus = rowOf.has(pin) ? pin : rowOf.has(hover) ? hover : undefined
   const lit = graphFocus(layout.edges, focus)
   const enter = (item) => () => setHover(item)
@@ -2129,15 +2191,256 @@ function GraphView({ board, rows, byItem, onOpen }) {
       })))
 }
 
+// ---- The Agents view: this session's subagents and theirs, as DSH's header dropdown lists them ----
+// It reads what that dropdown (ui-subagent's CatalogDropdown) reads: the subagentCatalog projection of
+// each Session from the standard useSessions prop, live running state from useSessionStatus, and
+// summaries for titles, tokens and time. Opening a child and opening it aside use the same addresses.
+
+const AGENT_CHAT = 'dsh-resource://subagentchat/session/'
+
+/** One Session's catalog, as ui-subagent derives it: state, error and entries with their activity. */
+function agentCatalogOf(snapshot, summaries, statuses) {
+  const projected = snapshot && snapshot.values ? snapshot.values.subagentCatalog : undefined
+  const state = !snapshot ? 'loading' : snapshot.state === 'idle'
+    ? (projected === undefined ? 'loading' : 'ready')
+    : snapshot.state === 'migration-required' && projected !== undefined ? 'ready' : snapshot.state
+  return {
+    state,
+    error: snapshot ? snapshot.error : undefined,
+    entries: (Array.isArray(projected) ? projected : []).map((entry) => {
+      const live = statuses && typeof statuses.get === 'function' ? statuses.get(entry.id) : undefined
+      const running = (live && live.running !== undefined ? live.running : summaries[entry.id] && summaries[entry.id].running) === true
+      return { ...entry, activity: running ? 'running' : 'inactive' }
+    }),
+  }
+}
+/** Every loaded catalog, by its parent Session's id. */
+function agentCatalogs(projections, summaries, statuses) {
+  const out = {}
+  for (const [id, snapshot] of Object.entries(projections || {})) out[id] = agentCatalogOf(snapshot, summaries || {}, statuses)
+  return out
+}
+/** Every agent under a Session in the loaded catalogs, at any depth, and how many of them run. */
+function agentTreeCounts(sessionId, catalogs) {
+  let total = 0
+  let running = 0
+  const seen = new Set([sessionId])
+  const walk = (id) => {
+    for (const e of (catalogs[id] && catalogs[id].entries) || []) {
+      if (seen.has(e.id)) continue
+      seen.add(e.id)
+      total++
+      if (e.activity === 'running') running++
+      walk(e.id)
+    }
+  }
+  walk(sessionId)
+  return { total, running }
+}
+/**
+ * The branches still to load: each agent in the loaded tree whose own catalog is neither loaded nor
+ * asked for yet, skipping external tasks and collapsed branches, so the whole tree shows as it is found.
+ */
+function agentBranchesToLoad(sessionId, catalogs, requested, collapsed) {
+  const out = []
+  const seen = new Set([sessionId])
+  const walk = (id) => {
+    for (const e of (catalogs[id] && catalogs[id].entries) || []) {
+      if (seen.has(e.id) || e.mode === 'external') continue
+      seen.add(e.id)
+      if (collapsed.has(e.id)) continue
+      if (catalogs[e.id] === undefined) { if (!requested.has(e.id)) out.push(e.id) } else walk(e.id)
+    }
+  }
+  walk(sessionId)
+  return out
+}
+/** ui-subagent's right-sidebar address for one child. */
+// The query as URLSearchParams writes it (spaces as +), built by hand so it needs no browser global.
+const agentQuery = (v) => encodeURIComponent(String(v)).replace(/%20/g, '+')
+const agentChatAddress = (a) => AGENT_CHAT + encodeURIComponent(a.childSessionId) + '?parent=' + agentQuery(a.parentSessionId) + '&mode=' + agentQuery(a.mode)
+const agentTokens = (u) => (u ? u.uncachedInputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens : undefined)
+function agentTokenText(n) {
+  const scaled = (x) => (x >= 100 ? String(Math.round(x)) : String(Math.round(x * 10) / 10))
+  return (n < 1e3 ? String(n) : n < 1e6 ? scaled(n / 1e3) + 'K' : scaled(n / 1e6) + 'M') + ' tok'
+}
+/** Active time from the subagentTiming projection, in ms; a running turn counts up to now. */
+function agentDuration(summary, activity, now) {
+  const timing = summary && summary.projectionValues ? summary.projectionValues.subagentTiming : undefined
+  if (!timing) return undefined
+  if (!timing.active) return timing.settledMs
+  const end = activity === 'running' ? now : timing.active.through
+  return timing.settledMs + Math.max(0, end - timing.active.since)
+}
+function agentDurationText(ms) {
+  const sec = Math.floor(Math.max(0, ms) / 1e3)
+  const m = Math.floor(sec / 60)
+  const hr = Math.floor(m / 60)
+  const d = Math.floor(hr / 24)
+  const p2 = (n) => String(n).padStart(2, '0')
+  if (d > 0) return d + 'd ' + (hr % 24) + 'h'
+  if (hr > 0) return hr + 'h ' + p2(m % 60) + 'm ' + p2(sec % 60) + 's'
+  if (m > 0) return m + 'm ' + p2(sec % 60) + 's'
+  return sec + 's'
+}
+/** The row's status, as the dropdown draws it: running, completed (its last turn ended normally) or idle. */
+const agentState = (entry, summary) => entry.mode === 'external' ? undefined
+  : entry.activity === 'running' ? 'ongoing'
+  : summary && summary.projectionValues && summary.projectionValues.subagentTiming && summary.projectionValues.subagentTiming.lastTurnCompleted === true ? 'done' : 'idle'
+const AGENT_WORDS = { ongoing: 'running', done: 'completed', idle: 'not running' }
+
+/**
+ * The model a subagent runs on, from its own modelSelection projection (as DSH's agent-team rows
+ * read it): the latest request's selection, else the next one. { model, effort, provider } or undefined.
+ */
+function agentModel(snapshot) {
+  const sel = snapshot && snapshot.values ? snapshot.values.modelSelection : undefined
+  const pick = sel ? sel.lastUsed || sel.next : undefined
+  if (!pick || typeof pick.model !== 'string' || !pick.model) return undefined
+  return { model: pick.model, effort: typeof pick.reasoningEffort === 'string' && pick.reasoningEffort ? pick.reasoningEffort : undefined, provider: typeof pick.provider === 'string' ? pick.provider : undefined }
+}
+/** "claude-sonnet-5-5 · high": the model and its effort, as the board's rows write a step's model. */
+const agentModelText = (m) => (m ? [m.model, m.effort].filter(Boolean).join(' · ') : undefined)
+const AGENT_MODES = { external: 'External task', 'one-shot': 'one-shot', continuable: 'continuable', unknown: 'unknown mode' }
+
+/** The host's StateDot when the shell has it, else a drawn dot of the same states. */
+function AgentDot({ state }) {
+  const StateDot = primitives() && primitives().StateDot
+  if (typeof StateDot === 'function') return h(StateDot, { state })
+  return h('span', { className: 'dshc-agmk', 'data-state': state, 'aria-hidden': true })
+}
+
+/** One agent: disclosure, status, label over its summary, tokens over time, open aside; and its own agents under it. */
+function AgentRow({ entry, parentSessionId, catalogs, summaries, collapsed, toggle, filter, now, agents, projections }) {
+  const external = entry.mode === 'external'
+  const child = catalogs[entry.id]
+  const summary = summaries[entry.id]
+  const leaf = external || (child && child.state === 'ready' && child.entries.length === 0)
+  const migrate = (summary && summary.formatStatus === 'migration-required') || (child && child.state === 'migration-required')
+  const canExpand = !leaf && !migrate
+  const open = canExpand && !collapsed.has(entry.id)
+  const label = entry.label || entry.id
+  const state = agentState(entry, summary)
+  const line = [summary && summary.title, migrate ? 'Migration required' : AGENT_MODES[entry.mode] || AGENT_MODES.continuable, state ? AGENT_WORDS[state] : undefined].filter(Boolean).join(' · ')
+  // Its model and effort, on their own line (none for an external task, or before its first request).
+  const model = external ? undefined : agentModel(projections && projections[entry.id])
+  const modelText = agentModelText(model)
+  const tokens = agentTokens(summary && summary.projectionValues && summary.projectionValues.tokenUsage)
+  const ms = agentDuration(summary, entry.activity, now)
+  const address = { parentSessionId, childSessionId: entry.id, mode: entry.mode }
+  const go = () => { if (!external && agents && agents.open) agents.open(address) }
+  return h('li', { 'data-agent': entry.id, 'data-state': state },
+    h('div', {
+      role: 'treeitem', tabIndex: external ? -1 : 0, 'aria-disabled': external || undefined, 'aria-expanded': canExpand ? open : undefined,
+      'aria-label': [label, line, modelText, tokens === undefined ? '' : agentTokenText(tokens), ms === undefined ? '' : agentDurationText(ms)].filter(Boolean).join(' '),
+      className: 'dshc-agrow', title: external ? label : 'Open ' + label,
+      onClick: go,
+      onKeyDown: (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() }
+        else if ((e.key === 'ArrowRight' && canExpand && !open) || (e.key === 'ArrowLeft' && open)) { e.preventDefault(); toggle(entry.id) }
+      },
+    },
+    canExpand
+      ? h('button', { type: 'button', tabIndex: -1, className: 'dshc-agdisc', 'aria-label': (open ? 'Collapse ' : 'Expand ') + label, onClick: (e) => { e.stopPropagation(); toggle(entry.id) } }, chevIcon(open))
+      : h('span', { className: 'dshc-agdisc-space' }),
+    h('span', { className: 'dshc-agdot', role: state ? 'img' : undefined, 'aria-label': state ? AGENT_WORDS[state] : undefined, title: state ? AGENT_WORDS[state] : undefined }, state ? h(AgentDot, { state }) : null),
+    h('span', { className: 'dshc-agtext' }, h('span', { className: 'dshc-aglabel' }, label), h('span', { className: 'dshc-agline' }, line),
+      modelText ? h('span', { className: 'dshc-agline dshc-agmodel', 'data-agent-model': '', title: model.provider ? model.provider + ' · ' + modelText : modelText }, modelText) : null),
+    tokens === undefined && ms === undefined ? null
+      : h('span', { className: 'dshc-agmetrics' }, h('span', null, tokens === undefined ? '' : agentTokenText(tokens)), h('span', null, ms === undefined ? '' : agentDurationText(ms))),
+    external || !agents || !agents.aside ? h('span', { className: 'dshc-agaside-space' })
+      : h('button', { type: 'button', className: 'dshc-agaside', title: 'Open in sidebar', 'aria-label': 'Open ' + label + ' in sidebar', onClick: (e) => { e.stopPropagation(); agents.aside(address) } }, chevIcon(false))),
+    open
+      ? child === undefined || (child.state === 'loading' && child.entries.length === 0)
+        ? h('ul', { className: 'dshc-agkids', role: 'group' }, h('li', { className: 'dshc-agnote' }, 'Loading…'))
+        : h(AgentLevel, { parentSessionId: entry.id, catalog: child, catalogs, summaries, collapsed, toggle, filter, now, agents, projections, nested: true })
+      : null)
+}
+
+/** One level of the tree, filtered as the dropdown filters it: Running keeps the ones running now. */
+function AgentLevel({ parentSessionId, catalog, catalogs, summaries, collapsed, toggle, filter, now, agents, projections, nested }) {
+  const entries = filter === 'running' ? catalog.entries.filter((e) => e.activity === 'running') : catalog.entries
+  const notes = []
+  if (catalog.state === 'error') notes.push(h('li', { key: '~e', className: 'dshc-agnote', 'data-kind': 'error' }, (catalog.error && catalog.error.message) || 'Unable to load subagents', ' ',
+    agents && agents.refresh ? h('button', { type: 'button', className: 'dshc-btn', onClick: () => agents.refresh(parentSessionId) }, 'Retry') : null))
+  return h('ul', { className: nested ? 'dshc-agkids' : 'dshc-agtree', role: nested ? 'group' : undefined },
+    notes, entries.map((entry) => h(AgentRow, { key: entry.id, entry, parentSessionId, catalogs, summaries, collapsed, toggle, filter, now, agents, projections })))
+}
+
+/**
+ * The Agents view: every subagent of this session and the ones they started, at any depth, with the
+ * header dropdown's rows and statuses, live. Every branch opens and loads as it is found; a collapsed
+ * one stays collapsed. Running / All filters as the dropdown does. Pure of the host: it takes the
+ * slot's standard useSessions and useSessionStatus, and agents ({ open, aside, refresh }) from apply.
+ */
+function AgentsView({ sessionId, useSessions, useSessionStatus, agents }) {
+  if (typeof useSessions !== 'function') return h('p', { className: 'dshc-msg' }, 'Agents show here in the DSH web app.')
+  const isChild = useSessions((st) => Boolean(st.byId && st.byId[sessionId] && st.byId[sessionId].origin === 'subagent'))
+  const projections = useSessions((st) => st.projectionsBySession)
+  const summaries = useSessions((st) => st.byId) || {}
+  const statuses = typeof useSessionStatus === 'function' ? useSessionStatus((v) => v) : undefined
+  const catalogs = React.useMemo(() => agentCatalogs(projections, summaries, statuses), [projections, summaries, statuses])
+  const catalog = catalogs[sessionId]
+  const [filter, setFilter] = usePref('agentsFilter', 'all')
+  const [collapsed, setCollapsed] = React.useState(() => new Set())
+  const requested = React.useRef(new Set())
+  const counts = agentTreeCounts(sessionId, catalogs)
+  // A second's clock while anything runs, so running rows count up as the dropdown's do.
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    if (!counts.running) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [counts.running > 0])
+  // The root catalog loads only when something asks for it: this view does, once.
+  React.useEffect(() => {
+    if (catalog === undefined && !requested.current.has(sessionId) && agents && agents.refresh) { requested.current.add(sessionId); agents.refresh(sessionId) }
+  }, [sessionId, catalog === undefined])
+  // Then every open branch as it appears, one request each.
+  React.useEffect(() => {
+    if (!agents || !agents.refresh) return
+    for (const id of agentBranchesToLoad(sessionId, catalogs, requested.current, collapsed)) { requested.current.add(id); agents.refresh(id) }
+  }, [sessionId, catalogs, collapsed])
+  const toggle = (id) => setCollapsed((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  // Every agent that has, or may have, agents of its own.
+  const branches = []
+  const seen = new Set([sessionId])
+  const walk = (pid) => { for (const e of (catalogs[pid] && catalogs[pid].entries) || []) { if (seen.has(e.id) || e.mode === 'external') continue; seen.add(e.id); if (!(catalogs[e.id] && catalogs[e.id].state === 'ready' && catalogs[e.id].entries.length === 0)) branches.push(e.id); walk(e.id) } }
+  walk(sessionId)
+  const anyOpen = branches.some((id) => !collapsed.has(id))
+  const empty = catalog !== undefined && catalog.state === 'ready' && catalog.entries.length === 0
+  const shown = catalog ? (filter === 'running' ? catalog.entries.filter((e) => e.activity === 'running') : catalog.entries) : []
+  const pick = (value, label) => h('button', { key: value, type: 'button', 'aria-pressed': filter === value, 'data-agents-filter': value, onClick: () => setFilter(value) }, label)
+  return h('div', { className: 'dshc-agents', 'data-agents': '' },
+    empty
+      ? h('p', { className: 'dshc-agnote', 'data-empty': '' }, isChild ? 'No subagents of this subagent yet.' : 'No subagents in this session yet. The ones it starts, and the ones they start, show here with their status.')
+      : [
+        h('div', { key: 'h', className: 'dshc-aghead' },
+          h('span', { className: 'dshc-agsum', 'data-agents-summary': '' }, counts.running ? h(AgentDot, { state: 'ongoing' }) : null, counts.running + ' running · ' + counts.total + ' in all'),
+          h('span', { className: 'dshc-agtools' },
+            branches.length ? h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', 'data-agents-collapse': '', onClick: () => setCollapsed(anyOpen ? new Set(branches) : new Set()) }, anyOpen ? 'Collapse all' : 'Expand all') : null,
+            h('span', { className: 'dshc-vsw', role: 'group', 'aria-label': 'Show agents' }, pick('running', 'Running'), pick('all', 'All')))),
+        h('div', { key: 'b', className: 'dshc-agbox', role: 'tree', 'aria-label': 'Subagents of this session' },
+          catalog === undefined ? h('p', { className: 'dshc-agnote' }, 'Loading subagents…')
+            : [
+              filter === 'running' && shown.length === 0 && catalog.state !== 'loading' && catalog.state !== 'error' ? h('p', { key: 'n', className: 'dshc-agnote' }, 'No subagents are running.') : null,
+              h(AgentLevel, { key: 'l', parentSessionId: sessionId, catalog, catalogs, summaries, collapsed, toggle, filter, now, agents, projections: projections || {} }),
+            ]),
+      ])
+}
+
 /** The tab's body for one view answer (pure render; exported for tests). */
-function BoardView({ view, now, fill }) {
+function BoardView({ view, now, fill, agentProps }) {
   if (!view.key) return h(Empty, { fill })
   if (!view.board) return h('p', { className: 'dshc-msg', role: 'alert' }, view.key + ': ' + view.error)
   const [expandedView, setExpandedView] = React.useState(false)
   const [needsHidden, setNeedsHidden] = usePref('needsYouHidden', false)
   const [mode, setMode] = usePref('mode', 'list')
-  // A graph node's click: back to the list, then that row once it is drawn.
+  // A graph node's double-click: back to the list, then that row once it is drawn.
   const [focus, setFocus] = React.useState(null)
+  // A list row's double-click: the graph, with that step pinned. Cleared by the List | Graph switch.
+  const [graphPin, setGraphPin] = React.useState(null)
+  const toGraph = (item) => { setGraphPin(item); setMode('graph') }
   React.useEffect(() => { if (focus && mode !== 'graph') { showRow(focus.item, focus.root); setFocus(null) } }, [focus, mode])
   const { board } = view
   const tasks = Array.isArray(board.tasks) ? board.tasks : []
@@ -2154,19 +2457,23 @@ function BoardView({ view, now, fill }) {
   const groups = boardGroups(rows)
   const hasFlow = tasks.some((t) => t.flow)
   const graph = mode === 'graph' && rows.length > 0
-  const switcher = (value, label) => h('button', { key: value, type: 'button', 'aria-pressed': mode === value, 'data-view': value, onClick: () => setMode(value) }, label)
+  const agentsMode = mode === 'agents'
+  const switcher = (value, label) => h('button', { key: value, type: 'button', 'aria-pressed': mode === value, 'data-view': value, onClick: () => { setGraphPin(null); setMode(value) } }, label)
   return h('div', null,
     h(Header, { board, view, rows, now }),
     h(NeedsYou, { board, rows, byItem, hidden: needsHidden, setHidden: setNeedsHidden }),
     h(Problems, { list }),
     h(Inbox, { board, fill }),
-    rows.length ? h('div', { className: 'dshc-vbar', 'data-view-bar': '' },
-      h('span', { className: 'dshc-vsw', role: 'group', 'aria-label': 'Board view' }, switcher('list', 'List'), switcher('graph', 'Graph')),
-      hasFlow && !graph ? h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', title: expandedView ? 'Show stage tracks on the rows only' : 'Show every flow stage', onClick: () => setExpandedView(!expandedView) }, expandedView ? 'Compact' : 'Expanded') : null) : null,
-    graph
+    // List | Graph | Agents; Agents shows even before the board has steps.
+    h('div', { className: 'dshc-vbar', 'data-view-bar': '' },
+      h('span', { className: 'dshc-vsw', role: 'group', 'aria-label': 'Board view' }, rows.length ? [switcher('list', 'List'), switcher('graph', 'Graph')] : switcher('list', 'Steps'), switcher('agents', 'Agents')),
+      hasFlow && !graph && !agentsMode ? h('button', { type: 'button', className: 'dshc-btn dshc-vtoggle', title: expandedView ? 'Show stage tracks on the rows only' : 'Show every flow stage', onClick: () => setExpandedView(!expandedView) }, expandedView ? 'Compact' : 'Expanded') : null),
+    agentsMode
+      ? h(AgentsView, agentProps || {})
+      : graph
       ? h('div', null,
         h('div', { className: 'dshc-groups', style: { paddingBottom: 0 } }, h(Overall, { overall })),
-        h(GraphView, { board, rows, byItem, onOpen: (item, e) => { setFocus({ item, root: boardOf(e) }); setMode('list') } }))
+        h(GraphView, { key: 'graph:' + (graphPin ?? ''), board, rows, byItem, initialPin: graphPin ?? undefined, onOpen: (item, e) => { setGraphPin(null); setFocus({ item, root: boardOf(e) }); setMode('list') } }))
       : rows.length
       ? h('div', { className: 'dshc-groups' }, h(Overall, { key: 'overall', overall }), groups.map((g) => h('section', {
         key: (g.standalone ? 'standalone' : 'parent:') + g.item,
@@ -2176,7 +2483,7 @@ function BoardView({ view, now, fill }) {
       h('ul', { className: 'dshc-tree', role: 'list' }, g.rows.map((row) => h(TaskRow, {
         key: String(board.key) + '\u0000' + row.item, boardKey: board.key, parent: board.parent, row, task: byItem.get(row.item), flags: flagsOf.get(row.item) || [],
         bar: row.depth === 0 && row.progress ? boardSegments(board, rows, row.item) : undefined,
-        expandedView,
+        expandedView, onGraph: toGraph,
       }))))))
       : h('p', { className: 'dshc-msg' }, inboxOf(board).length ? 'No tasks yet: refine Inbox items to add them.' : 'No tasks yet.'))
 }
@@ -2200,7 +2507,7 @@ function useShowRow(useTabInfo, ready, root) {
   }, [ready, item, revision])
 }
 
-function BoardBody({ sessionId, useTabInfo, useInput, inputActions }) {
+function BoardBody({ sessionId, useTabInfo, useInput, inputActions, useSessions, useSessionStatus, agents }) {
   useStyle()
   const { loading, view, error } = useView(sessionId)
   const fill = useFill(useInput, inputActions, Boolean(view && view.inboxSend))
@@ -2211,7 +2518,7 @@ function BoardBody({ sessionId, useTabInfo, useInput, inputActions }) {
   if (loading) return wrap(h('p', { className: 'dshc-msg' }, 'Loading board…'))
   // A failed poll keeps the last view; only with none is the error shown.
   if (!view) return wrap(h('p', { className: 'dshc-msg', role: 'alert' }, 'Board unavailable: ' + error))
-  return wrap(h(BoardView, { view, now, fill }))
+  return wrap(h(BoardView, { view, now, fill, agentProps: { sessionId, useSessions, useSessionStatus, agents } }))
 }
 
 // ---- The progress strip above the chat input (conversation.input.dock) ----
@@ -2414,7 +2721,7 @@ function BoardToolRow(props) {
     body)
 }
 
-const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
+const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'sessions', 'uiWorkspace']
 
 function apply(ctx) {
   ctx.effect(() => ctx.sidebarRightTabs.register({
@@ -2423,10 +2730,17 @@ function apply(ctx) {
     title: () => 'Board',
     guide: [{ id: 'open', order: 70, title: () => 'Board', description: () => "This session's dsh-cockpit board" }],
   }), 'dsh-cockpit: sidebar tab')
+  // The Agents view's actions, as DSH's subagent dropdown does them: open a child, open it in the
+  // right sidebar (ui-subagent's subagentchat tab), and load a branch's catalog.
+  const agents = {
+    open: (address) => ctx.uiWorkspace.openSession(address),
+    aside: (address) => ctx.sidebarRight.openResource(agentChatAddress(address), { kind: 'subagentchat', preferNewPane: true }),
+    refresh: (id) => ctx.sessions.refreshProjections(id),
+  }
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab',
     key: ID,
-    inject: (sessionId) => ({ sessionId }),
+    inject: (sessionId) => ({ sessionId, agents }),
   }, BoardBody))
   // One card per board tool, keyed by its wire name.
   for (const key of TOOLS) {
@@ -2443,7 +2757,7 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, AgentsView, agentModel, agentModelText, agentCatalogOf, agentCatalogs, agentTreeCounts, agentBranchesToLoad, agentChatAddress, agentDurationText, agentTokenText, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
 
 return module.exports;
 } });
