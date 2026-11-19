@@ -197,6 +197,8 @@ const CSS = [
   '.dshc-agaside{display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:var(--dsw-radius-sm,6px);background:none;color:var(--dshc-t);cursor:pointer}',
   '.dshc-agaside:hover,.dshc-agaside:focus-visible{background:var(--dsw-alias-interactive-bg-hover);color:var(--dshc-p)}',
   '.dshc-agnote{padding:8px 10px;font-size:12px;line-height:16px;color:var(--dshc-s)}',
+  // Under Running, a finished agent shown only for the running one below it: dimmed, its row only.
+  '.dshc-agents li[data-agent-context]>.dshc-agrow{opacity:.6}',
   '.dshc-agnote[data-kind=error]{color:var(--dshc-err)}',
   // The drawn dots, when the host has no StateDot: running a ring with a quarter of the accent, done green, idle grey.
   '.dshc-agmk{box-sizing:border-box;display:inline-block;width:8px;height:8px;border-radius:50%;corner-shape:round;background:var(--dshc-mark)}',
@@ -1107,6 +1109,21 @@ function agentBranchesToLoad(sessionId, catalogs, requested, collapsed) {
   walk(sessionId)
   return out
 }
+/** Whether any agent under this one, at any depth in the loaded catalogs, is running now. */
+function agentRunsBelow(id, catalogs, seen = new Set()) {
+  if (seen.has(id)) return false
+  seen.add(id)
+  for (const e of (catalogs[id] && catalogs[id].entries) || []) if (e.activity === 'running' || agentRunsBelow(e.id, catalogs, seen)) return true
+  return false
+}
+/**
+ * The entries Running keeps: the ones running now, and the ones with a running agent somewhere under
+ * them, so the path down to a nested running agent stays visible. All keeps every entry.
+ */
+function agentShown(entries, filter, catalogs) {
+  return filter === 'running' ? entries.filter((e) => e.activity === 'running' || agentRunsBelow(e.id, catalogs)) : entries
+}
+
 /** ui-subagent's right-sidebar address for one child. */
 // The query as URLSearchParams writes it (spaces as +), built by hand so it needs no browser global.
 const agentQuery = (v) => encodeURIComponent(String(v)).replace(/%20/g, '+')
@@ -1181,7 +1198,9 @@ function AgentRow({ entry, parentSessionId, catalogs, summaries, collapsed, togg
   const ms = agentDuration(summary, entry.activity, now)
   const address = { parentSessionId, childSessionId: entry.id, mode: entry.mode }
   const go = () => { if (!external && agents && agents.open) agents.open(address) }
-  return h('li', { 'data-agent': entry.id, 'data-state': state },
+  // Under Running, a row that is not running itself is there only to lead to a running agent below it.
+  const context = filter === 'running' && entry.activity !== 'running'
+  return h('li', { 'data-agent': entry.id, 'data-state': state, 'data-agent-context': context ? '' : undefined },
     h('div', {
       role: 'treeitem', tabIndex: external ? -1 : 0, 'aria-disabled': external || undefined, 'aria-expanded': canExpand ? open : undefined,
       'aria-label': [label, line, modelText, tokens === undefined ? '' : agentTokenText(tokens), ms === undefined ? '' : agentDurationText(ms)].filter(Boolean).join(' '),
@@ -1211,7 +1230,7 @@ function AgentRow({ entry, parentSessionId, catalogs, summaries, collapsed, togg
 
 /** One level of the tree, filtered as the dropdown filters it: Running keeps the ones running now. */
 function AgentLevel({ parentSessionId, catalog, catalogs, summaries, collapsed, toggle, filter, now, agents, projections, nested }) {
-  const entries = filter === 'running' ? catalog.entries.filter((e) => e.activity === 'running') : catalog.entries
+  const entries = agentShown(catalog.entries, filter, catalogs)
   const notes = []
   if (catalog.state === 'error') notes.push(h('li', { key: '~e', className: 'dshc-agnote', 'data-kind': 'error' }, (catalog.error && catalog.error.message) || 'Unable to load subagents', ' ',
     agents && agents.refresh ? h('button', { type: 'button', className: 'dshc-btn', onClick: () => agents.refresh(parentSessionId) }, 'Retry') : null))
@@ -1261,7 +1280,7 @@ function AgentsView({ sessionId, useSessions, useSessionStatus, agents }) {
   walk(sessionId)
   const anyOpen = branches.some((id) => !collapsed.has(id))
   const empty = catalog !== undefined && catalog.state === 'ready' && catalog.entries.length === 0
-  const shown = catalog ? (filter === 'running' ? catalog.entries.filter((e) => e.activity === 'running') : catalog.entries) : []
+  const shown = catalog ? agentShown(catalog.entries, filter, catalogs) : []
   const pick = (value, label) => h('button', { key: value, type: 'button', 'aria-pressed': filter === value, 'data-agents-filter': value, onClick: () => setFilter(value) }, label)
   return h('div', { className: 'dshc-agents', 'data-agents': '' },
     empty
@@ -1630,4 +1649,4 @@ function apply(ctx) {
   }, BoardDock))
 }
 
-module.exports = { apply, inject, STEP_TARGET, stepTarget, stepCopyActions, AgentsView, agentModel, agentModelText, agentCatalogOf, agentCatalogs, agentTreeCounts, agentBranchesToLoad, agentChatAddress, agentDurationText, agentTokenText, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }
+module.exports = { apply, inject, agentRunsBelow, agentShown, STEP_TARGET, stepTarget, stepCopyActions, AgentsView, agentModel, agentModelText, agentCatalogOf, agentCatalogs, agentTreeCounts, agentBranchesToLoad, agentChatAddress, agentDurationText, agentTokenText, titleInset, graphFocus, GraphView, BoardView, StripView, NeedsYou, useFill, Bar, stackRuns, graphLayout, boardRows, boardSegments, dockModel, segmentWidths, segmentRadius, segmentsFit: (w, n) => segmentWidths(w, n) !== undefined, halfFill, fillWidth, stripBarWidth, toolCardModel, cardBody, whenText, clockText, headerMeta, driftLine, showDrift, safeUrl, copyStep, copyText, refUrl, CSS, ID, KIND, TOOLS }

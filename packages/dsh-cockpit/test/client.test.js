@@ -1498,3 +1498,36 @@ test('copy over plain HTTP: without the clipboard API, or when it refuses, a hid
   assert.equal(await exports.copyText('z', undefined, blocked.doc), 'failed', 'the browser refuses both: failed')
   assert.equal(blocked.log.removed, 1, 'and still cleans up')
 })
+
+test('graph: a parent\'s dependency on its own steps is implied and not drawn; others still are', () => {
+  const { exports } = load()
+  const list = [
+    { item: 'p', dependsOn: ['a', 'b', 'deep', 'x'] },
+    { item: 'a', parent: 'p' }, { item: 'b', parent: 'p', dependsOn: ['a'] },
+    { item: 'q', parent: 'p' }, { item: 'deep', parent: 'q' },
+    { item: 'x' },
+  ]
+  const g = exports.graphLayout(list, { width: 300 })
+  assert.deepEqual(J(g.edges.map((e) => e.from + '>' + e.to)).sort(), ['a>b', 'x>p'], 'p on its steps a, b and the nested deep: not drawn; b on a and p on x outside its box: drawn')
+  assert.deepEqual([...exports.graphFocus(g.edges, 'p').items].sort(), ['p', 'x'], 'hovering p lights only what really comes first')
+})
+
+test('Agents: Running keeps a finished agent that has a running one below it, so nested running agents show', () => {
+  // explorer (a) has finished; its helper (a1) still runs.
+  const nested = agentsView({ running: ['a1'] }, { agentsFilter: 'running' })
+  assert.deepEqual(agentRows(nested.all), ['explorer', 'helper'], 'the path down to the running helper')
+  const li = (id) => nested.all.find((n) => n.type === 'li' && n.props['data-agent'] === id)
+  assert.notEqual(li('a').props['data-agent-context'], undefined, 'explorer is there only to lead to it')
+  assert.equal(li('a1').props['data-agent-context'], undefined, 'the running helper is not')
+  assert.ok(!/No subagents are running/.test(textOf(nested.all.find((n) => 'data-agents' in n.props))), 'no "nothing running" note')
+  assert.equal(textOf(nested.all.find((n) => 'data-agents-summary' in n.props)), '1 running · 4 in all')
+  // All is unchanged and marks nothing as context.
+  const every = agentsView({ running: ['a1'] }, { agentsFilter: 'all' })
+  assert.deepEqual(agentRows(every.all), ['explorer', 'helper', 'reviewer', 'tester'])
+  assert.ok(!every.all.some((n) => n.props['data-agent-context'] !== undefined))
+  // Nothing running anywhere: still the note.
+  const none = agentsView({ running: [] }, { agentsFilter: 'running' })
+  assert.match(textOf(none.all.find((n) => 'data-agents' in n.props)), /No subagents are running/)
+  const { exports } = load()
+  assert.match(exports.CSS, /\.dshc-agents li\[data-agent-context\]>\.dshc-agrow\{opacity:\.6\}/)
+})
