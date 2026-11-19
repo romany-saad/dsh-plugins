@@ -46,6 +46,22 @@ test('the cockpit-refine skill is registered for the model and the user, and goe
   assert.equal(skills.size, 0)
 })
 
+test('the cockpit-delegate skill is registered for the model and the user, and goes with the plugin', async () => {
+  const { ctx, skills } = createHost()
+  const fork = await load(ctx, plugin, {})
+  const skill = skills.get('cockpit-delegate')
+  assert.ok(skill, 'registered')
+  assert.equal(skill.invocation, undefined, 'the registry default: model and user (/cockpit-delegate)')
+  assert.match(skill.description, /hand every piece of work to subagents/)
+  assert.ok(skill.description.length <= 500, 'fits the catalog')
+  for (const tool of ['subagent', 'send_message', 'list_agents', 'interrupt_agent', 'board_update']) assert.match(skill.content, new RegExp('`' + tool + '`'), tool)
+  assert.match(skill.content, /Keep long efforts on the same subagent/)
+  assert.match(skill.content, /Do not wait for the result/)
+  assert.match(skill.content, /Do not do it silently/, 'no silent fallback when delegation is refused')
+  await fork.dispose()
+  assert.equal(skills.size, 0)
+})
+
 test('inbox.refineSkill names the default delegate in the skill', async () => {
   const { ctx, skills } = createHost()
   await load(ctx, plugin, { inbox: { refineSkill: 'grill-me' } })

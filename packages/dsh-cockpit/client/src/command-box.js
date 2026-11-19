@@ -21,15 +21,45 @@ export function copyStep(state, event) {
   return state
 }
 
-/** Write text with clipboard.writeText: 'copied', or 'failed' when there is no clipboard or it refuses. */
-export async function copyText(text, clipboard) {
+/**
+ * Copy through a hidden, read-only text field and document.execCommand('copy'): the way a page
+ * copies where the clipboard API is missing, as on a plain-HTTP address (the API needs HTTPS or
+ * localhost). It must run from the click that asked for it. true when the browser copied.
+ */
+export function copyWithTextField(text, doc) {
+  if (!doc || !doc.body || typeof doc.createElement !== 'function' || typeof doc.execCommand !== 'function') return false
+  const field = doc.createElement('textarea')
+  field.value = text
+  field.setAttribute('readonly', '')
+  field.setAttribute('aria-hidden', 'true')
+  field.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none'
+  const active = doc.activeElement
+  doc.body.appendChild(field)
   try {
-    if (!clipboard || typeof clipboard.writeText !== 'function') return 'failed'
-    await clipboard.writeText(text)
-    return 'copied'
+    field.focus({ preventScroll: true })
+    field.select()
+    field.setSelectionRange(0, text.length)
+    return doc.execCommand('copy') === true
   } catch {
-    return 'failed'
+    return false
+  } finally {
+    field.remove()
+    if (active && typeof active.focus === 'function') active.focus({ preventScroll: true })
   }
+}
+
+/**
+ * Write text to the clipboard: 'copied', or 'failed'. clipboard.writeText first; where there is
+ * none, or it refuses, the hidden text field (copyWithTextField), so copying also works over plain HTTP.
+ */
+export async function copyText(text, clipboard, doc = typeof document === 'undefined' ? undefined : document) {
+  if (clipboard && typeof clipboard.writeText === 'function') {
+    try {
+      await clipboard.writeText(text)
+      return 'copied'
+    } catch {}
+  }
+  return copyWithTextField(String(text), doc) ? 'copied' : 'failed'
 }
 
 /** The copy icon: two overlapping rounded squares. */

@@ -20,10 +20,10 @@ The panel and the strip only show the board. They run no command and change noth
 ## Install
 
 ```sh
-dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.8
+dsh plugin --profile <name> add @rs-dsh/dsh-cockpit@0.6.0-rc.9
 ```
 
-If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.8&path:packages/dsh-cockpit'`.
+If npm is not an option, install from git, pinned to the release tag: `dsh plugin --profile <name> add 'github:romany-saad/dsh-plugins#dsh-cockpit@0.6.0-rc.9&path:packages/dsh-cockpit'`.
 
 The Board tab, the strip and the chat cards need a profile with `@deepseek-ai/dsh-web-app`, such as `web`.
 
@@ -65,6 +65,18 @@ This is guidance in the agent's instructions, not automatic tracking: check the 
 - **Needs you:** a step with `waitingOn: user` shows in the "Needs you" list and on the strip, with its next action, and its `readyCommand` to copy when it has one.
 
 Use `user` when a step needs your action, and a name or specific role such as `reviewer` for someone else. Process-map stages likewise use `who: user` for your actions. Existing boards and process maps using the older `owner` value still work; no manual migration is needed.
+
+## Keep this session free: `/cockpit-delegate`
+
+Type `/cockpit-delegate` to make this session a coordinator for the rest of the conversation. It stops doing the work itself and hands every piece to a subagent, so it stays free: you can ask questions, steer and add work while the subagents run.
+
+- Each piece of work goes to a subagent named after its job (`builder`, `researcher`, `docs`), with a complete brief, since a subagent does not see this conversation. The session notes on the board who works on which step, tells you in a line, and ends its turn instead of waiting.
+- Long efforts stay with the same subagent: follow-ups ("now add the tests", "fix the review comments") go to it with `send_message`, so it keeps what it already knows. A new subagent starts only for a separate line of work.
+- When a subagent reports, the session checks its work, updates the board and tells you what changed. Questions from subagents come to you; your answers go back to them.
+- Follow them in the Board tab's **Agents** view.
+- If DSH refuses a subagent (its depth or capacity limit, or a model that is not allowed), the session asks you before doing that piece itself.
+
+Say "stop delegating" to go back to normal. The agent can also load the skill when you ask it to delegate everything.
 
 ## Inbox
 
@@ -108,6 +120,42 @@ The strip above the message box shows progress across the whole board: one segme
 - Click a row to open that subagent in the conversation pane. The arrow at the end of a row opens its conversation in a sidebar tab of its own, beside the board, so you can read it without leaving this one.
 - The model line shows the model of the subagent's latest request and its reasoning effort, or the one it will use before its first request; it has none until DSH records one. The provider is in its tooltip.
 - Subagents can start their own, and those theirs, as deep as DSH allows: **Plugins → Subagent → Maximum recursion depth**, 1 by default, so out of the box the tree is one level deep. Raise it to see deeper trees.
+
+### The step menu
+
+Right-click a step in the List or the Graph, a parent included, to copy what you need from it: its title, its id, its ready command, and the links to its PR and issue when it has them. From the keyboard, focus a step and press Shift+F10 or the menu key. The menu copies only; it changes nothing on the board.
+
+![The step menu on a step with a PR and an issue: Copy title, Copy step id, Copy ready command, then Copy PR link and Copy issue link](https://raw.githubusercontent.com/romany-saad/dsh-plugins/main/packages/dsh-cockpit/docs/images/step-menu.png)
+
+Copying works on HTTPS, on localhost and on a plain-HTTP address such as a server bound to a LAN or Tailscale IP. If the browser still refuses, the menu says so.
+
+#### Add actions to the step menu
+
+The menu is DSH's shared context menu, so another plugin can add its own actions without importing anything from cockpit. Register them for the target `dsh-cockpit.step`:
+
+```js
+ctx.effect(() => ctx.contextMenus.register({
+  id: 'my-plugin.step',
+  target: 'dsh-cockpit.step',
+  order: 50, // cockpit's copy actions are 10
+  resolve: (step) => [{ id: 'quote', label: 'Quote in message', run: () => quote(step.title) }],
+}))
+```
+
+The plugin lists `@deepseek-ai/dsh-client-ui-context-menu` in `dsh.client.inject` and injects `contextMenus`. `resolve` gets the step as it was when the menu opened:
+
+| Field | |
+|---|---|
+| `sessionId`, `boardKey` | The session and its board |
+| `item` | The step id |
+| `what`, `title` | What the step is, and its title as the board shows it (with its issue) |
+| `status` | `next`, `now`, `waiting`, `done` or `dropped` |
+| `parent` | The parent step's id, when it has one |
+| `issue`, `pr`, `readyCommand` | As written on the step, when present |
+| `issueUrl`, `prUrl` | Their links, when the board can build an `http(s)` one |
+| `view` | `list` or `graph`: where it was opened |
+
+The value is a fixed snapshot: re-read the board before acting on it. Actions can have icons, submenus, a shortcut hint and a danger style, as any DSH context menu action can.
 
 ### Graph view
 

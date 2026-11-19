@@ -1383,3 +1383,118 @@ test('Agents: each subagent\'s model and effort, from its own modelSelection, as
   assert.equal(exports.agentModel({ values: { modelSelection: { lastUsed: { model: '' }, next: null } } }), undefined)
   assert.equal(JSON.stringify(exports.agentModel({ values: { modelSelection: { lastUsed: null, next: { provider: 'p', model: 'm', reasoningEffort: 'low' } } } })), '{"model":"m","effort":"low","provider":"p"}')
 })
+
+// ---- The step menu: DSH's context menu on list rows and graph nodes, target dsh-cockpit.step ----
+
+const menuView = { key: 'm', links: { issue: 'https://github.com/{repo}/issues/{number}', pr: 'https://github.com/{repo}/pull/{number}' }, board: { key: 'm', parent: 'acme/shop#1', tasks: [
+  { item: 'p', what: 'Parent', status: 'now' },
+  { item: 'a', what: 'Wire the provider', status: 'waiting', parent: 'p', issue: 'acme/shop#12', pr: 'acme/shop#34', readyCommand: 'gh pr merge 34' },
+  { item: 'b', what: 'Plain', status: 'next', parent: 'p' },
+] } }
+
+/** A stand-in for DSH's useContextMenu: records each target and the handlers it was given. */
+function fakeMenu() {
+  const opened = []
+  const menu = { getTriggerProps: (target, handlers = {}) => ({
+    onContextMenu: (e) => { opened.push(typeof target === 'function' ? target() : target); if (e && e.preventDefault) e.preventDefault() },
+    onKeyDown: (e) => { if (handlers.onKeyDown) handlers.onKeyDown(e); if (e.shiftKey && e.key === 'F10') opened.push(typeof target === 'function' ? target() : target) },
+  }) }
+  return { menu, opened }
+}
+
+test('step menu: every list row and graph node opens it with the step as a dsh-cockpit.step target', () => {
+  const { exports } = load()
+  assert.equal(exports.STEP_TARGET, 'dsh-cockpit.step')
+  const { menu, opened } = fakeMenu()
+  const list = expandAll(exports.BoardView({ view: menuView, now: 0, menu, sessionId: 's1' }))
+  const li = (item) => list.find((n) => n.type === 'li' && n.props['data-item'] === item)
+  li('a').props.onContextMenu({ preventDefault() {} })
+  li('p').props.onContextMenu({ preventDefault() {} })
+  assert.equal(opened[0].kind, 'dsh-cockpit.step')
+  assert.deepEqual(J(opened[0].value), { sessionId: 's1', boardKey: 'm', item: 'a', what: 'Wire the provider', title: 'acme/shop#12 Wire the provider', status: 'waiting', view: 'list', parent: 'p',
+    issue: 'acme/shop#12', issueUrl: 'https://github.com/acme/shop/issues/12', pr: 'acme/shop#34', prUrl: 'https://github.com/acme/shop/pull/34', readyCommand: 'gh pr merge 34' })
+  assert.ok(Object.isFrozen(opened[0].value), 'a fixed snapshot')
+  assert.equal(opened[1].value.item, 'p', 'a parent row has the menu too')
+  li('b').props.onKeyDown({ shiftKey: true, key: 'F10' })
+  assert.equal(opened[2].value.item, 'b', 'Shift+F10 opens it from the keyboard')
+  // The graph: nodes and boxes, the same target with view: 'graph'.
+  const graph = expandAll(load({ prefs: { mode: 'graph' } }).exports.BoardView({ view: menuView, now: 0, menu, sessionId: 's1' }))
+  const node = (item) => graph.find((n) => (cls(n) === 'dshc-gn' || cls(n) === 'dshc-gc') && n.props['data-item'] === item)
+  node('a').props.onContextMenu({ preventDefault() {} })
+  node('p').props.onContextMenu({ preventDefault() {} })
+  assert.deepEqual(opened.slice(3).map((t) => [t.value.item, t.value.view]), [['a', 'graph'], ['p', 'graph']])
+  // A box keeps Enter for its pin, the menu gets its own keys after it.
+  let prevented = 0
+  node('p').props.onKeyDown({ key: 'Enter', target: 1, currentTarget: 1, preventDefault() { prevented++ } })
+  assert.equal(prevented, 1, 'Enter still pins the box')
+})
+
+test('step menu: cockpit adds copy actions only, links when the step has them', () => {
+  const { exports } = load()
+  const copied = []
+  const copy = (value, label) => copied.push([label, value])
+  const full = exports.stepTarget({ sessionId: 's', boardKey: 'm', row: { item: 'a', title: '#12 Wire', status: 'now', issueUrl: 'https://x/i/12', prUrl: 'https://x/p/34' }, task: { what: 'Wire', issue: '#12', pr: '#34', readyCommand: 'gh pr merge 34' }, view: 'list' }).value
+  const actions = exports.stepCopyActions(full, copy)
+  assert.deepEqual(J(actions.map((a) => [a.id, a.label, a.separatorBefore || false])), [
+    ['copy-title', 'Copy title', false], ['copy-id', 'Copy step id', false], ['copy-command', 'Copy ready command', false],
+    ['copy-pr-link', 'Copy PR link', true], ['copy-issue-link', 'Copy issue link', false],
+  ], 'copies, then links after a divider')
+  actions.forEach((a) => a.run())
+  assert.deepEqual(J(copied.map((c) => c[1])), ['#12 Wire', 'a', 'gh pr merge 34', 'https://x/p/34', 'https://x/i/12'])
+  const bare = exports.stepTarget({ sessionId: 's', boardKey: 'm', row: { item: 'b', title: 'Plain', status: 'next' }, task: { what: 'Plain' }, view: 'graph' }).value
+  assert.deepEqual(J(exports.stepCopyActions(bare, copy).map((a) => a.id)), ['copy-title', 'copy-id'], 'no command, no links: nothing to copy for them')
+  assert.equal(exports.stepTarget({ sessionId: 's', boardKey: 'm', row: { item: 'x', title: 't', status: 'next', prUrl: 'javascript:alert(1)' }, task: { pr: 'evil' }, view: 'list' }).value.prUrl, undefined, 'only http(s) links')
+})
+
+test('step menu: registered with the contextMenus service when there is one, and nothing breaks without it', () => {
+  const { exports } = load()
+  const registered = []
+  let injected
+  const base = {
+    effect: (fn) => fn(),
+    sidebarRightTabs: { register: () => () => {} }, sidebarRight: { openTab() {}, openResource() {} },
+    sessions: { refreshProjections() {} }, uiWorkspace: { openSession() {} },
+    slots: { inject: (_n, fn) => fn(), register: () => () => {} },
+  }
+  exports.apply({ ...base, inject: (names, fn) => { injected = names; fn({ effect: (f) => f(), contextMenus: { register: (c) => { registered.push(c); return () => {} } } }) } })
+  assert.deepEqual(J(injected), ['contextMenus'])
+  assert.equal(registered.length, 1)
+  assert.equal(registered[0].target, 'dsh-cockpit.step')
+  assert.equal(registered[0].id, 'dsh-cockpit.copy')
+  const actions = registered[0].resolve({ item: 'a', title: 'T', what: 'T' }, new AbortController().signal)
+  assert.ok(actions.every((a) => a.failureLabel), 'a failed copy says why')
+  assert.doesNotThrow(() => exports.apply(base), 'no ctx.inject: no menu, the rest still registers')
+  // Without useContextMenu the rows have no menu handlers and still render.
+  const plain = expandAll(exports.BoardView({ view: menuView, now: 0 }))
+  assert.equal(plain.find((n) => n.type === 'li' && n.props['data-item'] === 'a').props.onContextMenu, undefined)
+})
+
+test('copy over plain HTTP: without the clipboard API, or when it refuses, a hidden text field copies', async () => {
+  const { exports } = load()
+  // A fake document: records the field's value when execCommand('copy') runs, and what is left behind.
+  const fakeDoc = (result = true) => {
+    const log = { copied: [], appended: 0, removed: 0, refocused: 0 }
+    const active = { focus: () => { log.refocused++ } }
+    const doc = {
+      activeElement: active,
+      body: { appendChild: () => { log.appended++ } },
+      createElement: () => ({ value: '', style: {}, setAttribute() {}, focus() {}, select() {}, setSelectionRange() {}, remove: () => { log.removed++ } }),
+      execCommand: (cmd) => { if (cmd === 'copy') log.copied.push(doc._field && doc._field.value); return result },
+    }
+    const create = doc.createElement
+    doc.createElement = () => (doc._field = create())
+    return { doc, log }
+  }
+  const http = fakeDoc()
+  assert.equal(await exports.copyText('step-7', undefined, http.doc), 'copied', 'no clipboard API: the text field copies')
+  assert.deepEqual(J(http.log), { copied: ['step-7'], appended: 1, removed: 1, refocused: 1 }, 'the field is removed and focus goes back')
+  const refused = fakeDoc()
+  assert.equal(await exports.copyText('x', { writeText: async () => { throw new Error('denied') } }, refused.doc), 'copied', 'the API refuses: the field copies')
+  const api = fakeDoc()
+  const got = []
+  assert.equal(await exports.copyText('y', { writeText: async (t) => { got.push(t) } }, api.doc), 'copied')
+  assert.deepEqual(J([got, api.log.copied]), [['y'], []], 'the API works: no text field')
+  const blocked = fakeDoc(false)
+  assert.equal(await exports.copyText('z', undefined, blocked.doc), 'failed', 'the browser refuses both: failed')
+  assert.equal(blocked.log.removed, 1, 'and still cleans up')
+})

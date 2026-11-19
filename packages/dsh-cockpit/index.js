@@ -181,11 +181,27 @@ export function apply(ctx, rawConfig) {
   ctx.inject(['tools', 'skills'], (skillCtx) => {
     skillCtx.skills.register(refineSkill(config.inbox.refineSkill))
     skillCtx.skills.register(processSkill())
+    skillCtx.skills.register(delegateSkill())
   })
 }
 
 const REFINE_BODY = readFileSync(new URL('./skills/cockpit-refine.md', import.meta.url), 'utf8')
 const PROCESS_BODY = readFileSync(new URL('./skills/cockpit-process.md', import.meta.url), 'utf8')
+const DELEGATE_BODY = readFileSync(new URL('./skills/cockpit-delegate.md', import.meta.url), 'utf8')
+
+/**
+ * The cockpit-delegate skill: for the rest of the conversation the session coordinates and hands
+ * the work to subagents (DSH's subagent, send_message, list_agents), reusing one per line of work,
+ * so it stays free to talk. As /cockpit-delegate for the user, and for the model when asked.
+ */
+export function delegateSkill() {
+  return {
+    name: 'cockpit-delegate',
+    description: "Coordinate instead of working: hand every piece of work to subagents, reuse the same subagent for follow-ups on a long effort, track them on the board, and stay free to talk with the user. Use when the user types /cockpit-delegate or asks to keep this session free and delegate everything to subagents.",
+    source: 'bundled',
+    content: DELEGATE_BODY,
+  }
+}
 
 /** The cockpit-process skill (#52): discover and map the project's development workflow. */
 export function processSkill() {
