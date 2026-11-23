@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0-rc.10
+
+- **Running shows nested running agents.** In the Agents view, **Running** hid an agent that had finished, and so also every agent still running under it: a finished parent with a running subagent left the view empty, or saying "No subagents are running". Running now keeps a finished agent when one below it still runs, dimmed, so the path down to the running one stays visible.
+- **The graph no longer draws a parent's dependency on its own steps.** A parent is done when its steps are, so a `dependsOn` from a parent to one of its own steps, at any depth, says nothing new, and its box already holds them. Those lines are gone, and hovering or pinning the parent no longer lights them. A parent's dependency on a step outside its box is still drawn, as is every dependency between steps. The board data, the list view and what counts as blocked are unchanged.
+
 ## 0.6.0-rc.9
 
 - **A right-click menu on every step.** Right-click a step in the List or the Graph, a parent row or box included, or focus it and press Shift+F10 or the menu key. It is DSH's own menu, as on sessions and files. Cockpit's actions copy only: **Copy title**, **Copy step id**, **Copy ready command**, and **Copy PR link** and **Copy issue link** when the step has them. The menu changes nothing on the board. A copy the browser refuses says so in a toast.

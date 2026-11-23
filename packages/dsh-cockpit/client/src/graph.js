@@ -114,7 +114,10 @@ export function graphLayout(nodes, { width = 320 } = {}) {
   const w = Math.max(GRAPH_NODE_MIN, Math.floor(Number.isFinite(width) ? width : 320))
   const height = block(list.filter((n) => !parentOf.has(n.item)).map((n) => n.item), w, 0, 0)
   const edges = []
-  for (const n of list) for (const d of deps.get(n.item)) edges.push({ from: d, to: n.item, kind: 'depends', d: route(placed.get(d), placed.get(n.item)) })
+  // A parent's dependency on one of its own steps, at any depth, is implied: the parent is done
+  // when its steps are, and its box already holds them. Such lines are not drawn (nor lit on hover).
+  const inside = (d, owner) => { const seen = new Set(); for (let p = parentOf.get(d); p !== undefined && !seen.has(p); p = parentOf.get(p)) { if (p === owner) return true; seen.add(p) } return false }
+  for (const n of list) for (const d of deps.get(n.item)) if (!inside(d, n.item)) edges.push({ from: d, to: n.item, kind: 'depends', d: route(placed.get(d), placed.get(n.item)) })
   return { nodes: list.map((n) => placed.get(n.item)), edges, width: w, height }
 }
 
